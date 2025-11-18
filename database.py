@@ -72,6 +72,16 @@ async def get_guests_count():
             row = await cursor.fetchone()
             return row[0] if row else 0
 
+async def delete_guest(user_id: int):
+    """Удаляет гостя из базы данных по user_id"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            DELETE FROM guests 
+            WHERE user_id = ?
+        """, (user_id,))
+        await db.commit()
+        return True
+
 async def add_name_mapping(username: str, first_name: str, last_name: str):
     """Добавляет или обновляет соответствие username -> имя"""
     async with aiosqlite.connect(DB_PATH) as db:

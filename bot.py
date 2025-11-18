@@ -12,7 +12,7 @@ from utils import format_wedding_date
 from database import (
     init_db, get_all_guests, get_guests_count,
     get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
-    init_default_mappings
+    init_default_mappings, delete_guest
 )
 from keyboards import get_invitation_keyboard, get_admin_keyboard
 
@@ -358,6 +358,24 @@ async def admin_names(callback: CallbackQuery):
         await callback.message.answer(text, parse_mode="HTML")
     
     await callback.answer()
+
+@dp.callback_query(F.data == "admin_reset_me")
+async def admin_reset_me(callback: CallbackQuery):
+    """Сброс данных регистрации администратора для тестирования"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Удаляем данные о регистрации администратора
+    await delete_guest(callback.from_user.id)
+    
+    await callback.message.answer(
+        "✅ <b>Данные сброшены!</b>\n\n"
+        "Ваша регистрация удалена из базы данных.\n"
+        "Теперь вы можете пройти весь путь заново, нажав /start",
+        parse_mode="HTML"
+    )
+    await callback.answer("✅ Данные сброшены!")
 
 async def init_bot():
     """Инициализация бота"""

@@ -24,7 +24,8 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
         [InlineKeyboardButton(text="🔄 Обновить Mini App", callback_data="admin_reload")],
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
-        [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")]
+        [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")],
+        [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")]
     ])
     return keyboard
 
