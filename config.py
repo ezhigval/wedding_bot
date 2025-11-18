@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Токен бота
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()  # Убираем пробелы
 
 # Данные о свадьбе
 WEDDING_DATE = datetime.strptime(os.getenv("WEDDING_DATE", "2026-06-06"), "%Y-%m-%d")

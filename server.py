@@ -86,15 +86,23 @@ async def start_web_server():
 
 async def main():
     """Главная функция"""
-    # Инициализация бота
-    await init_bot()
-    
-    # Запуск веб-сервера в фоне
-    await start_web_server()
-    
-    # Запуск бота
-    logger.info("🚀 Все сервисы запущены!")
-    await dp.start_polling(bot)
+    try:
+        # Инициализация бота
+        if not await init_bot():
+            logger.error("❌ Не удалось инициализировать бота")
+            return
+        
+        # Запуск веб-сервера
+        await start_web_server()
+        
+        # Запуск бота
+        logger.info("🚀 Все сервисы запущены!")
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())
