@@ -25,8 +25,10 @@ ADMIN_USER_ID = os.getenv("ADMIN_USER_ID")
 # Путь к базе данных
 DB_PATH = "data/wedding.db"
 
-# Путь к фотографии
-PHOTO_PATH = "data/wedding_photo.jpg"
+# Путь к фотографии (для бота)
+PHOTO_PATH = "res/wedding_photo.jpg"
+# Путь к фотографии для Mini App
+WEBAPP_PHOTO_PATH = "res/wedding_photo.jpg"
 
 # Путь к веб-приложению
 WEBAPP_PATH = "webapp"

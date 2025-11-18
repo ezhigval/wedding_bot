@@ -11,7 +11,7 @@ from pathlib import Path
 
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
-from config import WEBAPP_PATH
+from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,13 @@ async def serve_static(request):
     
     file_path = Path(WEBAPP_PATH) / path
     
-    # Специальная обработка для фотографии - проверяем в data/ если нет в webapp/
+    # Специальная обработка для фотографии - проверяем в res/
     if path == 'wedding_photo.jpg' or path.endswith('/wedding_photo.jpg'):
-        photo_path = Path('data') / 'wedding_photo.jpg'
+        photo_path = Path(WEBAPP_PHOTO_PATH)
         if photo_path.exists():
             file_path = photo_path
         else:
-            # Если фото нет, возвращаем 404 или пустое изображение
+            # Если фото нет, возвращаем 404
             return Response(text='Photo not found', status=404)
     
     # Если это директория или файл не существует, возвращаем index.html
