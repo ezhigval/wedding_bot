@@ -67,8 +67,7 @@ let previousValues = {
     months: null,
     days: null,
     hours: null,
-    minutes: null,
-    seconds: null
+    minutes: null
 };
 
 function updateCountdown() {
@@ -81,7 +80,6 @@ function updateCountdown() {
         setClockValue('days', 0);
         setClockValue('hours', 0);
         setClockValue('minutes', 0);
-        setClockValue('seconds', 0);
         return;
     }
     
@@ -89,13 +87,11 @@ function updateCountdown() {
     const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30)) / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
     
     setClockValue('months', months);
     setClockValue('days', days);
     setClockValue('hours', hours);
     setClockValue('minutes', minutes);
-    setClockValue('seconds', seconds);
 }
 
 function setClockValue(type, value) {
@@ -201,7 +197,7 @@ async function checkRegistration() {
 // Инициализация
 loadConfig();
 updateCountdown();
-setInterval(updateCountdown, 1000); // Обновляем каждую секунду
+setInterval(updateCountdown, 60000); // Обновляем каждую минуту
 
 // Проверяем регистрацию при загрузке
 checkRegistration().then(registered => {

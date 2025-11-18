@@ -29,8 +29,17 @@ async def serve_static(request):
     
     file_path = Path(WEBAPP_PATH) / path
     
+    # Специальная обработка для фотографии - проверяем в data/ если нет в webapp/
+    if path == 'wedding_photo.jpg' or path.endswith('/wedding_photo.jpg'):
+        photo_path = Path('data') / 'wedding_photo.jpg'
+        if photo_path.exists():
+            file_path = photo_path
+        else:
+            # Если фото нет, возвращаем 404 или пустое изображение
+            return Response(text='Photo not found', status=404)
+    
     # Если это директория или файл не существует, возвращаем index.html
-    if file_path.is_dir() or not file_path.exists():
+    if file_path.is_dir() or (not file_path.exists() and path != 'wedding_photo.jpg'):
         file_path = Path(WEBAPP_PATH) / 'index.html'
     
     if not file_path.exists():
