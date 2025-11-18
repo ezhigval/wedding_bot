@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Свадьба Валентин и Мария</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Главная карточка с фото -->
+        <section class="hero-section">
+            <div class="photo-hero">
+                <img src="wedding_photo.jpg" alt="Валентин и Мария" id="weddingPhoto" onerror="this.style.display='none'">
+                <div class="photo-overlay">
+                    <div class="couple-names" id="coupleNames">Валентин и Мария</div>
+                    <div class="wedding-date-hero" id="weddingDateHero">06.06.2026</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Приветствие -->
+        <section class="greeting-section">
+            <div class="section-card">
+                <h2 class="section-title">ДОРОГИЕ ГОСТИ!</h2>
+                <p class="greeting-text">
+                    Один день в этом году будет для нас особенным и мы хотим провести его в кругу близких и друзей. 
+                    С большим удовольствием приглашаем вас на знаменательный праздник - нашу свадьбу.
+                </p>
+                <div class="heartbeat-line">
+                    <svg viewBox="0 0 200 20" class="heartbeat-svg">
+                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="#8B0000" stroke-width="2" fill="none"/>
+                        <circle cx="100" cy="10" r="3" fill="#8B0000"/>
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <!-- Календарь и обратный отсчет -->
+        <section class="calendar-section">
+            <div class="section-card">
+                <h2 class="section-title">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
+                <div class="countdown-grid" id="countdownGrid">
+                    <div class="countdown-item">
+                        <div class="countdown-value" id="months">0</div>
+                        <div class="countdown-label">месяцев</div>
+                    </div>
+                    <div class="countdown-item">
+                        <div class="countdown-value" id="days">0</div>
+                        <div class="countdown-label">дней</div>
+                    </div>
+                    <div class="countdown-item">
+                        <div class="countdown-value" id="hours">0</div>
+                        <div class="countdown-label">часов</div>
+                    </div>
+                    <div class="countdown-item">
+                        <div class="countdown-value" id="minutes">0</div>
+                        <div class="countdown-label">минут</div>
+                    </div>
+                </div>
+                <div class="calendar-preview">
+                    <div class="month-name" id="monthName">Июнь</div>
+                    <div class="calendar-date" id="calendarDate">06</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- План дня -->
+        <section class="timeline-section">
+            <div class="section-card">
+                <h2 class="section-title">ПЛАН ДНЯ</h2>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-time">15:30</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">ЦЕРЕМОНИЯ</div>
+                            <div class="timeline-description">Торжественная регистрация брака</div>
+                        </div>
+                    </div>
+                    <div class="heartbeat-line-small"></div>
+                    <div class="timeline-item">
+                        <div class="timeline-time">17:30</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">СВАДЕБНЫЙ УЖИН</div>
+                            <div class="timeline-description">Праздничный банкет</div>
+                        </div>
+                    </div>
+                    <div class="heartbeat-line-small"></div>
+                    <div class="timeline-item">
+                        <div class="timeline-time">20:30</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">ТОРТ</div>
+                            <div class="timeline-description">Сладкое завершение вечера</div>
+                        </div>
+                    </div>
+                    <div class="heartbeat-line-small"></div>
+                    <div class="timeline-item">
+                        <div class="timeline-time">23:30</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">ОКОНЧАНИЕ</div>
+                            <div class="timeline-description">До встречи!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Дресс-код -->
+        <section class="dresscode-section">
+            <div class="section-card">
+                <h2 class="section-title">ДРЕСС-КОД</h2>
+                <p class="dresscode-text">
+                    Пожалуйста, приходите в красивой одежде, которая соответствует торжественному настроению. 
+                    Мы будем рады, если вы поддержите цветовую палитру нашей свадьбы:
+                </p>
+                <div class="color-palette">
+                    <div class="color-circle" style="background: #8B0000;"></div>
+                    <div class="color-circle" style="background: #4B0082;"></div>
+                    <div class="color-circle" style="background: #FFB6C1;"></div>
+                    <div class="color-circle" style="background: #2F2F2F;"></div>
+                    <div class="color-circle" style="background: #000000;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Форма подтверждения -->
+        <section class="rsvp-section">
+            <div class="section-card">
+                <h2 class="section-title">ПРИСУТСТВИЕ</h2>
+                <p class="rsvp-text">
+                    Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
+                    Заполните форму ниже:
+                </p>
+                
+                <form id="guestForm" class="rsvp-form">
+                    <div class="form-group">
+                        <label for="firstName">Имя, Фамилия</label>
+                        <input type="text" id="firstName" required minlength="2" placeholder="Имя">
+                        <input type="text" id="lastName" required minlength="2" placeholder="Фамилия">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="personsCount">Количество персон</label>
+                        <input type="number" id="personsCount" min="1" value="1" required>
+                    </div>
+                    
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-confirm">Подтвердить</button>
+                        <button type="button" class="btn-decline" id="declineBtn">Отклонить</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Анкета (скрыта до подтверждения) -->
+        <section class="questionnaire-section" id="questionnaireSection" style="display: none;">
+            <div class="section-card">
+                <h2 class="section-title">АНКЕТА</h2>
+                <p class="questionnaire-text">
+                    Чтобы все прошло идеально и этот день запомнился надолго, пожалуйста, ответьте на несколько вопросов:
+                </p>
+                
+                <form id="questionnaireForm" class="questionnaire-form">
+                    <div class="form-group">
+                        <label>Понадобится ли вам трансфер?</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="transfer" value="yes">
+                                <span>Да</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="transfer" value="no" checked>
+                                <span>Нет</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Предпочтения по еде:</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="food" value="chicken">
+                                <span>Курица</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="food" value="fish">
+                                <span>Рыба</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="food" value="meat">
+                                <span>Мясо</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="alcohol">Пожелания по алкоголю:</label>
+                        <textarea id="alcohol" placeholder="Ваши предпочтения..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn-confirm">Подтвердить</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Подтверждение -->
+        <section class="confirmation-section" id="confirmationSection" style="display: none;">
+            <div class="section-card confirmation-card">
+                <div class="success-icon">✅</div>
+                <h2 class="confirmation-title">Спасибо, <span id="guestName"></span>!</h2>
+                <p class="confirmation-text">Твоё присутствие подтверждено! 🎉</p>
+                <p class="confirmation-text">Мы будем рады видеть тебя на нашей свадьбе!</p>
+                <div class="guests-count">
+                    Всего подтвердили: <span id="guestsCount">0</span> гостей
+                </div>
+            </div>
+        </section>
+
+        <!-- Заключение -->
+        <section class="closing-section">
+            <div class="section-card">
+                <p class="closing-text">До скорой встречи</p>
+                <div class="couple-names-final" id="coupleNamesFinal">Валентин и Мария</div>
+                <div class="heartbeat-line">
+                    <svg viewBox="0 0 200 20" class="heartbeat-svg">
+                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="#8B0000" stroke-width="2" fill="none"/>
+                        <circle cx="100" cy="10" r="3" fill="#8B0000"/>
+                    </svg>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

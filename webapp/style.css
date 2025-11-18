@@ -1,0 +1,447 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: #f5f5f5;
+    color: #2F2F2F;
+    line-height: 1.6;
+}
+
+.app-container {
+    max-width: 100%;
+    margin: 0 auto;
+    background: white;
+}
+
+/* Hero Section */
+.hero-section {
+    width: 100%;
+    position: relative;
+}
+
+.photo-hero {
+    width: 100%;
+    height: 400px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #8B0000 0%, #4B0082 100%);
+}
+
+.photo-hero img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.9;
+}
+
+.photo-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    padding: 40px 20px 30px;
+    text-align: center;
+}
+
+.couple-names {
+    font-size: 32px;
+    font-weight: bold;
+    color: white;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-family: 'Georgia', serif;
+}
+
+.wedding-date-hero {
+    font-size: 20px;
+    color: #FFB6C1;
+    font-weight: 300;
+}
+
+/* Section Card */
+.section-card {
+    background: white;
+    padding: 40px 20px;
+    margin: 20px 0;
+    border-top: 2px solid #8B0000;
+    border-bottom: 2px solid #8B0000;
+}
+
+.section-title {
+    font-size: 24px;
+    text-align: center;
+    color: #8B0000;
+    margin-bottom: 30px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: bold;
+}
+
+/* Heartbeat Line */
+.heartbeat-line {
+    width: 100%;
+    height: 30px;
+    margin: 30px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.heartbeat-line-small {
+    width: 2px;
+    height: 40px;
+    background: #8B0000;
+    margin: 10px auto;
+    position: relative;
+}
+
+.heartbeat-line-small::before,
+.heartbeat-line-small::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #8B0000;
+    border-radius: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.heartbeat-line-small::before {
+    top: -4px;
+}
+
+.heartbeat-line-small::after {
+    bottom: -4px;
+}
+
+.heartbeat-svg {
+    width: 200px;
+    height: 30px;
+}
+
+/* Greeting */
+.greeting-text {
+    font-size: 16px;
+    text-align: center;
+    color: #2F2F2F;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+/* Countdown */
+.countdown-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.countdown-item {
+    text-align: center;
+    padding: 20px 10px;
+    background: #f8f8f8;
+    border-radius: 10px;
+}
+
+.countdown-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #8B0000;
+    margin-bottom: 5px;
+}
+
+.countdown-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+}
+
+.calendar-preview {
+    text-align: center;
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f8f8;
+    border-radius: 10px;
+}
+
+.month-name {
+    font-size: 18px;
+    color: #8B0000;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.calendar-date {
+    font-size: 48px;
+    font-weight: bold;
+    color: #2F2F2F;
+}
+
+/* Timeline */
+.timeline {
+    position: relative;
+    padding: 20px 0;
+}
+
+.timeline-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+
+.timeline-time {
+    font-size: 20px;
+    font-weight: bold;
+    color: #8B0000;
+    min-width: 80px;
+    text-align: right;
+}
+
+.timeline-content {
+    flex: 1;
+}
+
+.timeline-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #2F2F2F;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.timeline-description {
+    font-size: 14px;
+    color: #666;
+}
+
+/* Dress Code */
+.dresscode-text {
+    font-size: 16px;
+    text-align: center;
+    color: #2F2F2F;
+    margin-bottom: 30px;
+    line-height: 1.8;
+}
+
+.color-palette {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.color-circle {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+}
+
+/* Forms */
+.rsvp-form,
+.questionnaire-form {
+    margin-top: 30px;
+}
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: bold;
+    color: #2F2F2F;
+    font-size: 16px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+    transition: border-color 0.3s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #8B0000;
+}
+
+.form-group input[type="text"] + input[type="text"] {
+    margin-top: 10px;
+}
+
+.form-group textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.radio-group,
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.radio-label,
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 10px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    transition: all 0.3s;
+}
+
+.radio-label:hover,
+.checkbox-label:hover {
+    border-color: #8B0000;
+    background: #fff5f5;
+}
+
+.radio-label input[type="radio"],
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.btn-confirm,
+.btn-decline {
+    flex: 1;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.btn-confirm {
+    background: #8B0000;
+    color: white;
+}
+
+.btn-confirm:hover {
+    background: #A00000;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(139, 0, 0, 0.3);
+}
+
+.btn-decline {
+    background: #f5f5f5;
+    color: #2F2F2F;
+    border: 2px solid #ddd;
+}
+
+.btn-decline:hover {
+    background: #e0e0e0;
+}
+
+/* Confirmation */
+.confirmation-card {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.success-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: scaleIn 0.5s ease-out;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0);
+    }
+    to {
+        transform: scale(1);
+    }
+}
+
+.confirmation-title {
+    font-size: 28px;
+    color: #8B0000;
+    margin-bottom: 20px;
+}
+
+.confirmation-text {
+    font-size: 16px;
+    color: #2F2F2F;
+    margin-bottom: 15px;
+    line-height: 1.8;
+}
+
+.guests-count {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f8f8;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #8B0000;
+}
+
+/* Closing */
+.closing-text {
+    font-size: 20px;
+    text-align: center;
+    color: #2F2F2F;
+    margin-bottom: 20px;
+    font-style: italic;
+}
+
+.couple-names-final {
+    font-size: 28px;
+    text-align: center;
+    color: #8B0000;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .countdown-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .couple-names {
+        font-size: 24px;
+    }
+    
+    .section-title {
+        font-size: 20px;
+    }
+    
+    .form-buttons {
+        flex-direction: column;
+    }
+}

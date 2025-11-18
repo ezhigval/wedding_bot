@@ -1,0 +1,105 @@
+INFO:bot:✅ База данных инициализирована
+INFO:bot:✅ Бот инициализирован
+INFO:bot:💒 Свадьба: Валентин и Мария
+INFO:bot:📅 Дата: 06.06.2026
+INFO:bot:🌐 Mini App URL: https://your-webapp-url.com
+INFO:__main__:🌐 Веб-сервер запущен на порту 8080
+INFO:__main__:📱 Mini App доступен по адресу: http://localhost:8080
+INFO:__main__:🚀 Все сервисы запущены!
+INFO:aiogram.dispatcher:Start polling
+INFO:aiogram.dispatcher:Run polling for bot @wedd_val_mar_bot id=8295772557 - 'wedding_valentin_and_mariya'
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6cb380>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:37:45 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:37:45 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6cb880>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:38:01 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6cb240>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:38:01 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6cb880>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:38:20 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6cb2e0>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:38:27 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a6c9b20>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:38:29 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+WARNING:bot:Не удалось отправить фото: HTTP Client says - ClientOSError: [Errno 2] Can not write request body for https://api.telegram.org/bot8295772557:AAH_udSU1FyjYH-mekFDZht2Yuy0EKI7s5g/sendPhoto
+INFO:aiogram.event:Update id=617561334 is handled. Duration 973 ms by bot id=8295772557
+INFO:aiogram.event:Update id=617561335 is handled. Duration 361 ms by bot id=8295772557
+INFO:aiogram.event:Update id=617561336 is handled. Duration 114 ms by bot id=8295772557
+INFO:aiogram.event:Update id=617561337 is handled. Duration 146 ms by bot id=8295772557
+WARNING:bot:Не удалось отправить фото: HTTP Client says - ClientOSError: [Errno 2] Can not write request body for https://api.telegram.org/bot8295772557:AAH_udSU1FyjYH-mekFDZht2Yuy0EKI7s5g/sendPhoto
+INFO:aiogram.event:Update id=617561338 is handled. Duration 606 ms by bot id=8295772557
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a838220>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:42:56 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:43:25 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
+INFO:aiogram.event:Update id=617561339 is handled. Duration 531 ms by bot id=8295772557
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a838680>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:47:05 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:47:07 +0300] "GET /style.css HTTP/1.1" 200 7518 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a838360>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:47:54 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a838360>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:48:40 +0300] "GET /api/config HTTP/1.1" 500 199 "-" "curl/8.7.1"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:00 +0300] "GET / HTTP/1.1" 200 12636 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:00 +0300] "GET /wedding_photo.jpg HTTP/1.1" 200 12637 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:00 +0300] "GET /style.css HTTP/1.1" 200 7518 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:00 +0300] "GET /app.js HTTP/1.1" 200 7729 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+ERROR:aiohttp.server:Web-handler should return a response instance, got <function init_api.<locals>.cors_middleware.<locals>.middleware_handler at 0x10a838cc0>
+Traceback (most recent call last):
+  File "/Users/valentinezov/Projects/Wedding_bot/venv/lib/python3.13/site-packages/aiohttp/web_protocol.py", line 698, in finish_response
+    prepare_meth = resp.prepare
+                   ^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute 'prepare'
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:01 +0300] "GET /api/config HTTP/1.1" 500 199 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:01 +0300] "GET /favicon.ico HTTP/1.1" 200 12636 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:11 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
+INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:13 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
