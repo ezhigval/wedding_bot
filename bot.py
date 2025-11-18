@@ -454,13 +454,13 @@ async def init_bot():
         logger.error("Пожалуйста, проверьте переменную окружения BOT_TOKEN на Render")
         logger.error("Токен должен быть БЕЗ пробелов и кавычек")
         logger.error("Смотрите инструкцию в файле TOKEN_FIX.md")
-        return False
+        return None
     
     # Проверяем формат токена (должен содержать :)
     if ':' not in token:
         logger.error("❌ ОШИБКА: BOT_TOKEN имеет неверный формат!")
         logger.error("Токен должен быть в формате: 1234567890:ABC...")
-        return False
+        return None
     
     # Создаем бота с очищенным токеном
     try:
@@ -468,7 +468,7 @@ async def init_bot():
         logger.info("✅ Бот создан успешно")
     except Exception as e:
         logger.error(f"❌ Ошибка при создании бота: {e}")
-        return False
+        return None
     
     # Инициализация базы данных
     await init_db()
@@ -480,13 +480,16 @@ async def init_bot():
     logger.info(f"📅 Дата: {format_wedding_date()}")
     logger.info(f"🌐 Mini App URL: {WEBAPP_URL}")
     
-    return True
+    return bot
 
 async def main():
     """Главная функция (для запуска только бота)"""
-    await init_bot()
+    bot_instance = await init_bot()
+    if bot_instance is None:
+        logger.error("❌ Не удалось инициализировать бота")
+        return
     logger.info("🚀 Бот запущен и готов к работе!")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot_instance)
 
 if __name__ == "__main__":
     asyncio.run(main())

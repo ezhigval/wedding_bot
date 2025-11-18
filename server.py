@@ -9,7 +9,7 @@ import aiofiles
 import os
 from pathlib import Path
 
-from bot import bot, dp, init_bot
+from bot import dp, init_bot
 from api import init_api
 from config import WEBAPP_PATH
 
@@ -88,13 +88,10 @@ async def main():
     """Главная функция"""
     try:
         # Инициализация бота
-        if not await init_bot():
+        bot = await init_bot()
+        if bot is None:
             logger.error("❌ Не удалось инициализировать бота")
             logger.error("Проверьте переменные окружения на Render")
-            return
-        
-        if bot is None:
-            logger.error("❌ Бот не создан")
             return
         
         # Запуск веб-сервера
