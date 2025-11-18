@@ -30,7 +30,7 @@ async def serve_static(request):
     file_path = Path(WEBAPP_PATH) / path
     
     # Специальная обработка для фотографии - проверяем в res/
-    if path == 'wedding_photo.jpg' or path.endswith('/wedding_photo.jpg'):
+    if path == 'welcome_photo.jpeg' or path == 'wedding_photo.jpg' or path.endswith('/welcome_photo.jpeg') or path.endswith('/wedding_photo.jpg'):
         photo_path = Path(WEBAPP_PHOTO_PATH)
         if photo_path.exists():
             file_path = photo_path
@@ -39,7 +39,7 @@ async def serve_static(request):
             return Response(text='Photo not found', status=404)
     
     # Если это директория или файл не существует, возвращаем index.html
-    if file_path.is_dir() or (not file_path.exists() and path != 'wedding_photo.jpg'):
+    if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'wedding_photo.jpg'):
         file_path = Path(WEBAPP_PATH) / 'index.html'
     
     if not file_path.exists():
@@ -57,6 +57,10 @@ async def serve_static(request):
         content_type = 'image/png'
     elif path.endswith('.svg'):
         content_type = 'image/svg+xml'
+    
+    # Для фотографии из res/ всегда image/jpeg
+    if file_path == Path(WEBAPP_PHOTO_PATH):
+        content_type = 'image/jpeg'
     
     try:
         async with aiofiles.open(file_path, 'rb') as f:
