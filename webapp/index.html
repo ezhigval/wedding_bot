@@ -41,91 +41,55 @@
         <section class="calendar-section">
             <div class="section-card">
                 <h2 class="section-title">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
-                <div class="countdown-grid" id="countdownGrid">
-                    <div class="countdown-item">
-                        <div class="countdown-value" id="months">0</div>
-                        <div class="countdown-label">месяцев</div>
+                <div class="countdown-clock" id="countdownClock">
+                    <div class="clock-item">
+                        <div class="clock-flip">
+                            <div class="clock-flip-top" id="monthsTop">0</div>
+                            <div class="clock-flip-bottom" id="monthsBottom">0</div>
+                        </div>
+                        <div class="clock-label">месяцев</div>
                     </div>
-                    <div class="countdown-item">
-                        <div class="countdown-value" id="days">0</div>
-                        <div class="countdown-label">дней</div>
+                    <div class="clock-separator">:</div>
+                    <div class="clock-item">
+                        <div class="clock-flip">
+                            <div class="clock-flip-top" id="daysTop">0</div>
+                            <div class="clock-flip-bottom" id="daysBottom">0</div>
+                        </div>
+                        <div class="clock-label">дней</div>
                     </div>
-                    <div class="countdown-item">
-                        <div class="countdown-value" id="hours">0</div>
-                        <div class="countdown-label">часов</div>
+                    <div class="clock-separator">:</div>
+                    <div class="clock-item">
+                        <div class="clock-flip">
+                            <div class="clock-flip-top" id="hoursTop">0</div>
+                            <div class="clock-flip-bottom" id="hoursBottom">0</div>
+                        </div>
+                        <div class="clock-label">часов</div>
                     </div>
-                    <div class="countdown-item">
-                        <div class="countdown-value" id="minutes">0</div>
-                        <div class="countdown-label">минут</div>
+                    <div class="clock-separator">:</div>
+                    <div class="clock-item">
+                        <div class="clock-flip">
+                            <div class="clock-flip-top" id="minutesTop">0</div>
+                            <div class="clock-flip-bottom" id="minutesBottom">0</div>
+                        </div>
+                        <div class="clock-label">минут</div>
+                    </div>
+                    <div class="clock-separator">:</div>
+                    <div class="clock-item">
+                        <div class="clock-flip">
+                            <div class="clock-flip-top" id="secondsTop">0</div>
+                            <div class="clock-flip-bottom" id="secondsBottom">0</div>
+                        </div>
+                        <div class="clock-label">секунд</div>
                     </div>
                 </div>
                 <div class="calendar-preview">
-                    <div class="month-name" id="monthName">Июнь</div>
-                    <div class="calendar-date" id="calendarDate">06</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- План дня -->
-        <section class="timeline-section">
-            <div class="section-card">
-                <h2 class="section-title">ПЛАН ДНЯ</h2>
-                <div class="timeline">
-                    <div class="timeline-item">
-                        <div class="timeline-time">15:30</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">ЦЕРЕМОНИЯ</div>
-                            <div class="timeline-description">Торжественная регистрация брака</div>
-                        </div>
-                    </div>
-                    <div class="heartbeat-line-small"></div>
-                    <div class="timeline-item">
-                        <div class="timeline-time">17:30</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">СВАДЕБНЫЙ УЖИН</div>
-                            <div class="timeline-description">Праздничный банкет</div>
-                        </div>
-                    </div>
-                    <div class="heartbeat-line-small"></div>
-                    <div class="timeline-item">
-                        <div class="timeline-time">20:30</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">ТОРТ</div>
-                            <div class="timeline-description">Сладкое завершение вечера</div>
-                        </div>
-                    </div>
-                    <div class="heartbeat-line-small"></div>
-                    <div class="timeline-item">
-                        <div class="timeline-time">23:30</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">ОКОНЧАНИЕ</div>
-                            <div class="timeline-description">До встречи!</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Дресс-код -->
-        <section class="dresscode-section">
-            <div class="section-card">
-                <h2 class="section-title">ДРЕСС-КОД</h2>
-                <p class="dresscode-text">
-                    Пожалуйста, приходите в красивой одежде, которая соответствует торжественному настроению. 
-                    Мы будем рады, если вы поддержите цветовую палитру нашей свадьбы:
-                </p>
-                <div class="color-palette">
-                    <div class="color-circle" style="background: #8B0000;"></div>
-                    <div class="color-circle" style="background: #4B0082;"></div>
-                    <div class="color-circle" style="background: #FFB6C1;"></div>
-                    <div class="color-circle" style="background: #2F2F2F;"></div>
-                    <div class="color-circle" style="background: #000000;"></div>
+                    <div class="calendar-date-full" id="calendarDateFull">Июнь 06 2026</div>
                 </div>
             </div>
         </section>
 
         <!-- Форма подтверждения -->
-        <section class="rsvp-section">
+        <section class="rsvp-section" id="rsvpSection">
             <div class="section-card">
                 <h2 class="section-title">ПРИСУТСТВИЕ</h2>
                 <p class="rsvp-text">
@@ -134,72 +98,21 @@
                 </p>
                 
                 <form id="guestForm" class="rsvp-form">
-                    <div class="form-group">
+                    <div class="form-group" id="mainGuestGroup">
                         <label for="firstName">Имя, Фамилия</label>
                         <input type="text" id="firstName" required minlength="2" placeholder="Имя">
                         <input type="text" id="lastName" required minlength="2" placeholder="Фамилия">
                     </div>
                     
+                    <div class="guests-list" id="guestsList"></div>
+                    
                     <div class="form-group">
-                        <label for="personsCount">Количество персон</label>
-                        <input type="number" id="personsCount" min="1" value="1" required>
+                        <button type="button" class="btn-add-guest" id="addGuestBtn">+ Добавить гостя</button>
                     </div>
                     
                     <div class="form-buttons">
                         <button type="submit" class="btn-confirm">Подтвердить</button>
-                        <button type="button" class="btn-decline" id="declineBtn">Отклонить</button>
                     </div>
-                </form>
-            </div>
-        </section>
-
-        <!-- Анкета (скрыта до подтверждения) -->
-        <section class="questionnaire-section" id="questionnaireSection" style="display: none;">
-            <div class="section-card">
-                <h2 class="section-title">АНКЕТА</h2>
-                <p class="questionnaire-text">
-                    Чтобы все прошло идеально и этот день запомнился надолго, пожалуйста, ответьте на несколько вопросов:
-                </p>
-                
-                <form id="questionnaireForm" class="questionnaire-form">
-                    <div class="form-group">
-                        <label>Понадобится ли вам трансфер?</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="transfer" value="yes">
-                                <span>Да</span>
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="transfer" value="no" checked>
-                                <span>Нет</span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Предпочтения по еде:</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="food" value="chicken">
-                                <span>Курица</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="food" value="fish">
-                                <span>Рыба</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="food" value="meat">
-                                <span>Мясо</span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="alcohol">Пожелания по алкоголю:</label>
-                        <textarea id="alcohol" placeholder="Ваши предпочтения..."></textarea>
-                    </div>
-                    
-                    <button type="submit" class="btn-confirm">Подтвердить</button>
                 </form>
             </div>
         </section>
@@ -213,6 +126,23 @@
                 <p class="confirmation-text">Мы будем рады видеть тебя на нашей свадьбе!</p>
                 <div class="guests-count">
                     Всего подтвердили: <span id="guestsCount">0</span> гостей
+                </div>
+            </div>
+        </section>
+
+        <!-- Связаться с нами -->
+        <section class="contact-section">
+            <div class="section-card">
+                <h2 class="section-title">СВЯЗАТЬСЯ С НАМИ</h2>
+                <div class="contact-list">
+                    <a href="#" class="contact-item" id="groomContact">
+                        <span class="contact-name">Валентин</span>
+                        <span class="contact-telegram" id="groomTelegram">@ezhigval</span>
+                    </a>
+                    <a href="#" class="contact-item" id="brideContact">
+                        <span class="contact-name">Мария</span>
+                        <span class="contact-telegram" id="brideTelegram">@</span>
+                    </a>
                 </div>
             </div>
         </section>

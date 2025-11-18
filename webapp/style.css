@@ -135,32 +135,105 @@ body {
     margin-bottom: 20px;
 }
 
-/* Countdown */
-.countdown-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
+/* Countdown Clock */
+.countdown-clock {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
     margin: 30px 0;
+    flex-wrap: wrap;
 }
 
-.countdown-item {
-    text-align: center;
-    padding: 20px 10px;
+.clock-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.clock-flip {
+    position: relative;
+    width: 60px;
+    height: 70px;
     background: #f8f8f8;
-    border-radius: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.countdown-value {
+.clock-flip-top,
+.clock-flip-bottom {
+    position: absolute;
+    width: 100%;
+    height: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    font-weight: bold;
+    color: #8B0000;
+    background: #f8f8f8;
+    overflow: hidden;
+}
+
+.clock-flip-top {
+    top: 0;
+    border-bottom: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+}
+
+.clock-flip-bottom {
+    bottom: 0;
+    border-top: 1px solid #ddd;
+    border-radius: 0 0 8px 8px;
+}
+
+.clock-flip-top.flip {
+    animation: flipTop 0.6s ease-in-out;
+}
+
+.clock-flip-bottom.flip {
+    animation: flipBottom 0.6s ease-in-out;
+}
+
+@keyframes flipTop {
+    0% {
+        transform: rotateX(0deg);
+    }
+    50% {
+        transform: rotateX(-90deg);
+    }
+    100% {
+        transform: rotateX(0deg);
+    }
+}
+
+@keyframes flipBottom {
+    0% {
+        transform: rotateX(0deg);
+    }
+    50% {
+        transform: rotateX(90deg);
+    }
+    100% {
+        transform: rotateX(0deg);
+    }
+}
+
+.clock-label {
+    font-size: 11px;
+    color: #666;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.clock-separator {
     font-size: 32px;
     font-weight: bold;
     color: #8B0000;
-    margin-bottom: 5px;
-}
-
-.countdown-label {
-    font-size: 12px;
-    color: #666;
-    text-transform: uppercase;
+    margin: 0 4px;
+    line-height: 70px;
 }
 
 .calendar-preview {
@@ -171,78 +244,71 @@ body {
     border-radius: 10px;
 }
 
-.month-name {
-    font-size: 18px;
-    color: #8B0000;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-}
-
-.calendar-date {
-    font-size: 48px;
-    font-weight: bold;
-    color: #2F2F2F;
-}
-
-/* Timeline */
-.timeline {
-    position: relative;
-    padding: 20px 0;
-}
-
-.timeline-item {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 20px;
-    gap: 20px;
-}
-
-.timeline-time {
+.calendar-date-full {
     font-size: 20px;
     font-weight: bold;
     color: #8B0000;
-    min-width: 80px;
-    text-align: right;
-}
-
-.timeline-content {
-    flex: 1;
-}
-
-.timeline-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #2F2F2F;
-    margin-bottom: 5px;
     text-transform: uppercase;
 }
 
-.timeline-description {
-    font-size: 14px;
-    color: #666;
+/* Guest List */
+.guests-list {
+    margin: 20px 0;
 }
 
-/* Dress Code */
-.dresscode-text {
-    font-size: 16px;
-    text-align: center;
-    color: #2F2F2F;
-    margin-bottom: 30px;
-    line-height: 1.8;
-}
-
-.color-palette {
+.guest-item {
     display: flex;
-    justify-content: center;
-    gap: 15px;
-    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f8f8f8;
+    border-radius: 8px;
+    align-items: center;
 }
 
-.color-circle {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
+.guest-item input {
+    flex: 1;
+    padding: 10px;
     border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+.guest-item .btn-remove {
+    padding: 8px 15px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.guest-item .btn-remove:hover {
+    background: #c82333;
+}
+
+.btn-add-guest {
+    width: 100%;
+    padding: 12px;
+    background: #f8f8f8;
+    border: 2px dashed #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-add-guest:hover {
+    background: #e9e9e9;
+    border-color: #8B0000;
+    color: #8B0000;
+}
+
+.btn-add-guest:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Forms */
@@ -354,14 +420,40 @@ body {
     box-shadow: 0 4px 10px rgba(139, 0, 0, 0.3);
 }
 
-.btn-decline {
-    background: #f5f5f5;
-    color: #2F2F2F;
-    border: 2px solid #ddd;
+/* Contact Section */
+.contact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
 }
 
-.btn-decline:hover {
-    background: #e0e0e0;
+.contact-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: #f8f8f8;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #2F2F2F;
+    transition: all 0.3s;
+}
+
+.contact-item:hover {
+    background: #e9e9e9;
+    transform: translateX(5px);
+}
+
+.contact-name {
+    font-size: 18px;
+    font-weight: bold;
+    color: #8B0000;
+}
+
+.contact-telegram {
+    font-size: 16px;
+    color: #666;
 }
 
 /* Confirmation */
@@ -429,8 +521,27 @@ body {
 
 /* Responsive */
 @media (max-width: 480px) {
-    .countdown-grid {
-        grid-template-columns: repeat(2, 1fr);
+    .countdown-clock {
+        gap: 4px;
+    }
+    
+    .clock-flip {
+        width: 50px;
+        height: 60px;
+    }
+    
+    .clock-flip-top,
+    .clock-flip-bottom {
+        font-size: 28px;
+    }
+    
+    .clock-separator {
+        font-size: 24px;
+        line-height: 60px;
+    }
+    
+    .clock-label {
+        font-size: 9px;
     }
     
     .couple-names {

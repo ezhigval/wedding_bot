@@ -10,8 +10,21 @@ from datetime import datetime
 import hashlib
 import hmac
 
-from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME
+from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM
 from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count
+
+# Импортируем функцию уведомлений (будет доступна после инициализации бота)
+_notify_admins_func = None
+
+def set_notify_function(func):
+    """Установка функции уведомлений из bot.py"""
+    global _notify_admins_func
+    _notify_admins_func = func
+
+async def notify_admins(message_text):
+    """Отправка уведомления админам"""
+    if _notify_admins_func:
+        await _notify_admins_func(message_text)
 
 async def init_api():
     """Инициализация API"""
@@ -43,6 +56,7 @@ async def init_api():
     
     # Routes
     api.router.add_get('/config', get_config)
+    api.router.add_get('/check', check_registration)
     api.router.add_post('/register', register_guest)
     api.router.add_post('/questionnaire', save_questionnaire)
     api.router.add_get('/guests', get_guests_list)
@@ -56,12 +70,32 @@ async def get_config(request):
         return web.json_response({
             'weddingDate': WEDDING_DATE.strftime('%Y-%m-%d'),
             'groomName': GROOM_NAME,
-            'brideName': BRIDE_NAME
+            'brideName': BRIDE_NAME,
+            'groomTelegram': GROOM_TELEGRAM,
+            'brideTelegram': BRIDE_TELEGRAM
         })
     except Exception as e:
         import logging
         logging.error(f"Error in get_config: {e}")
         return web.json_response({'error': str(e)}, status=500)
+
+async def check_registration(request):
+    """Проверить, зарегистрирован ли пользователь"""
+    try:
+        user_id = request.query.get('userId')
+        if not user_id:
+            return web.json_response({'registered': False})
+        
+        user_id = int(user_id)
+        guest = await get_guest(user_id)
+        
+        return web.json_response({
+            'registered': guest is not None
+        })
+    except Exception as e:
+        import logging
+        logging.error(f"Error in check_registration: {e}")
+        return web.json_response({'registered': False})
 
 def verify_telegram_webapp_data(init_data):
     """Проверка подлинности данных от Telegram"""
@@ -102,7 +136,7 @@ async def register_guest(request):
         first_name = data.get('firstName', '').strip()
         last_name = data.get('lastName', '').strip()
         username = data.get('username')
-        persons_count = data.get('personsCount', 1)
+        guests_list = data.get('guests', [])  # Список всех гостей
         init_data = data.get('initData', '')
         
         if not user_id or not first_name or not last_name:
@@ -115,7 +149,7 @@ async def register_guest(request):
         if init_data and not verify_telegram_webapp_data(init_data):
             return web.json_response({'error': 'Неверные данные'}, status=403)
         
-        # Сохранение в базу данных
+        # Сохранение основного гостя в базу данных
         await add_guest(
             user_id=user_id,
             first_name=first_name,
@@ -123,7 +157,20 @@ async def register_guest(request):
             username=username
         )
         
+        # TODO: Сохранить дополнительных гостей в отдельную таблицу
+        # Пока сохраняем только основного гостя
+        
         guests_count = await get_guests_count()
+        
+        # Отправляем уведомление админам
+        username_text = f" @{username}" if username else ""
+        notification_text = (
+            f"✅ <b>Новая регистрация!</b>\n\n"
+            f"👤 {first_name} {last_name}{username_text}\n"
+            f"подтвердил(а) присутствие на свадьбе\n\n"
+            f"📊 Всего гостей: {guests_count}"
+        )
+        await notify_admins(notification_text)
         
         return web.json_response({
             'success': True,

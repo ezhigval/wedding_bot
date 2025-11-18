@@ -31,3 +31,10 @@ PHOTO_PATH = "data/wedding_photo.jpg"
 # Путь к веб-приложению
 WEBAPP_PATH = "webapp"
 
+# Телеграм-аккаунты для связи
+GROOM_TELEGRAM = os.getenv("GROOM_TELEGRAM", "ezhigval")
+BRIDE_TELEGRAM = os.getenv("BRIDE_TELEGRAM", "mrfilmpro")
+
+# Файл с админами
+ADMINS_FILE = "admins.json"
+

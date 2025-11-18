@@ -9,8 +9,8 @@ import aiofiles
 import os
 from pathlib import Path
 
-from bot import dp, init_bot
-from api import init_api
+from bot import dp, init_bot, notify_admins
+from api import init_api, set_notify_function
 from config import WEBAPP_PATH
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,9 @@ async def main():
             logger.error("❌ Не удалось инициализировать бота")
             logger.error("Проверьте переменные окружения на Render")
             return
+        
+        # Устанавливаем функцию уведомлений в API
+        set_notify_function(notify_admins)
         
         # Запуск веб-сервера
         await start_web_server()

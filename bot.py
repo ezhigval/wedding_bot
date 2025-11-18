@@ -7,7 +7,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE
+import json
+import os
 from utils import format_wedding_date
 from database import (
     init_db, get_all_guests, get_guests_count,
@@ -143,11 +145,102 @@ async def cmd_help(message: Message):
 """
     await message.answer(help_text, parse_mode="HTML")
 
+def load_admins():
+    """Загрузка списка админов из файла"""
+    try:
+        if os.path.exists(ADMINS_FILE):
+            with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('admins', [])
+    except Exception as e:
+        logger.error(f"Ошибка загрузки админов: {e}")
+    return []
+
+def save_admin_user_id(username, user_id):
+    """Сохранение user_id админа в файл"""
+    try:
+        admins = load_admins()
+        for admin in admins:
+            if admin.get('username') == username:
+                admin['user_id'] = user_id
+                break
+        
+        with open(ADMINS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'admins': admins}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения user_id админа: {e}")
+
+def get_admin_user_ids():
+    """Получить список user_id всех админов"""
+    admins = load_admins()
+    user_ids = []
+    for admin in admins:
+        if 'user_id' in admin:
+            user_ids.append(admin['user_id'])
+    return user_ids
+
 def is_admin(user_id):
     """Проверка, является ли пользователь администратором"""
-    if not ADMIN_USER_ID:
-        return False
-    return str(user_id) == str(ADMIN_USER_ID)
+    # Проверка по старому способу (ADMIN_USER_ID)
+    if ADMIN_USER_ID and str(user_id) == str(ADMIN_USER_ID):
+        return True
+    
+    # Проверка по новому способу (из файла)
+    admin_ids = get_admin_user_ids()
+    return user_id in admin_ids
+
+async def notify_admins(message_text):
+    """Отправка уведомления всем админам"""
+    if bot is None:
+        logger.warning("Бот не инициализирован, уведомление не отправлено")
+        return
+    
+    admin_ids = get_admin_user_ids()
+    
+    if not admin_ids:
+        logger.warning("Нет админов для отправки уведомлений")
+        return
+    
+    for admin_id in admin_ids:
+        try:
+            await bot.send_message(admin_id, message_text, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Ошибка отправки уведомления админу {admin_id}: {e}")
+
+# Сохраняем user_id админа при первом взаимодействии
+@dp.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext):
+    """Обработчик команды /start"""
+    await state.clear()
+    
+    # Проверяем, является ли пользователь админом по username
+    if message.from_user.username:
+        admins = load_admins()
+        for admin in admins:
+            if admin.get('username') == message.from_user.username.lower():
+                # Сохраняем user_id админа
+                if 'user_id' not in admin or admin.get('user_id') != message.from_user.id:
+                    save_admin_user_id(message.from_user.username.lower(), message.from_user.id)
+                break
+    
+    # Получаем имя из таблицы соответствия или Telegram
+    display_name = await get_user_display_name(message.from_user)
+    
+    # Отправляем приветственное сообщение с фото
+    try:
+        photo = FSInputFile(PHOTO_PATH)
+        await message.answer_photo(
+            photo=photo,
+            caption=f"👋 Привет, {display_name}!",
+            parse_mode="HTML"
+        )
+    except (FileNotFoundError, Exception) as e:
+        # Если фото нет или произошла ошибка, отправляем только текст
+        logger.warning(f"Не удалось отправить фото в приветствии: {e}")
+        await message.answer(f"👋 Привет, {display_name}!")
+    
+    # Отправляем приглашение
+    await send_invitation_card(message)
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message):
