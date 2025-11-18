@@ -103,3 +103,13 @@ INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:01 +0300] "GET /api/config HTTP
 INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:01 +0300] "GET /favicon.ico HTTP/1.1" 200 12636 "http://localhost:8080/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:11 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
 INFO:aiohttp.access:127.0.0.1 [18/Nov/2025:20:49:13 +0300] "GET / HTTP/1.1" 200 12636 "-" "curl/8.7.1"
+ERROR:aiogram.dispatcher:Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 54] Connection reset by peer
+WARNING:aiogram.dispatcher:Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8295772557)
+INFO:aiogram.dispatcher:Connection established (tryings = 1, bot id = 8295772557)
+ERROR:aiogram.dispatcher:Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 54] Connection reset by peer
+WARNING:aiogram.dispatcher:Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8295772557)
+INFO:aiogram.dispatcher:Connection established (tryings = 1, bot id = 8295772557)
+ERROR:aiogram.dispatcher:Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+WARNING:aiogram.dispatcher:Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8295772557)
+INFO:aiogram.dispatcher:Connection established (tryings = 1, bot id = 8295772557)
+INFO:aiogram.event:Update id=617561340 is handled. Duration 207 ms by bot id=8295772557

@@ -9,7 +9,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL
 from utils import get_time_until_wedding, format_wedding_date
-from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count
+from database import (
+    init_db, add_guest, get_guest, get_all_guests, get_guests_count,
+    get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
+    init_default_mappings
+)
 from keyboards import get_invitation_keyboard, get_registration_keyboard, get_admin_keyboard
 
 # Настройка логирования
@@ -26,10 +30,30 @@ class RegistrationStates(StatesGroup):
     waiting_last_name = State()
     confirming = State()
 
+async def get_user_display_name(user):
+    """Получает имя пользователя из таблицы соответствия или из Telegram"""
+    # Сначала проверяем таблицу соответствия
+    if user.username:
+        mapped_name = await get_name_by_username(user.username)
+        if mapped_name:
+            first_name, last_name = mapped_name
+            return f"{first_name} {last_name}"
+    
+    # Если нет в таблице, используем имя из Telegram
+    if user.first_name:
+        if user.last_name:
+            return f"{user.first_name} {user.last_name}"
+        return user.first_name
+    
+    return "друг"  # Fallback
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
     await state.clear()
+    
+    # Получаем имя из таблицы соответствия или Telegram
+    display_name = await get_user_display_name(message.from_user)
     
     # Проверяем, зарегистрирован ли уже пользователь
     guest = await get_guest(message.from_user.id)
@@ -37,12 +61,13 @@ async def cmd_start(message: Message, state: FSMContext):
     if guest:
         first_name, last_name, confirmed_at = guest
         await message.answer(
-            f"👋 Привет, {first_name} {last_name}!\n\n"
+            f"👋 Привет, {display_name}!\n\n"
             f"Ты уже подтвердил(а) своё присутствие на нашей свадьбе! 🎉\n"
             f"Дата подтверждения: {confirmed_at}"
         )
         await send_invitation_card(message)
     else:
+        await message.answer(f"👋 Привет, {display_name}!")
         await send_invitation_card(message)
 
 async def send_invitation_card(message: Message):
@@ -292,6 +317,129 @@ async def admin_reload(callback: CallbackQuery):
     )
     await callback.answer("✅ Информация отправлена")
 
+@dp.message(Command("names"))
+async def cmd_names(message: Message):
+    """Управление таблицей соответствия имен (только для администратора)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    mappings = await get_all_name_mappings()
+    
+    if not mappings:
+        await message.answer("📋 Таблица соответствия пуста.\n\nИспользуйте /addname для добавления.")
+        return
+    
+    text = "📋 <b>Таблица соответствия username → имя:</b>\n\n"
+    for username, first_name, last_name in mappings:
+        text += f"@{username} → {first_name} {last_name}\n"
+    
+    text += "\n💡 Команды:\n"
+    text += "/addname username имя фамилия - добавить\n"
+    text += "/delname username - удалить\n"
+    text += "/importnames - импорт из Google таблицы (скоро)"
+    
+    await message.answer(text, parse_mode="HTML")
+
+# Состояния для добавления имени
+class NameMappingStates(StatesGroup):
+    waiting_username = State()
+    waiting_name = State()
+
+@dp.message(Command("addname"))
+async def cmd_addname(message: Message, state: FSMContext):
+    """Добавление соответствия username → имя"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    # Парсим команду: /addname username имя фамилия
+    parts = message.text.split(maxsplit=3)
+    if len(parts) >= 4:
+        username = parts[1].replace('@', '').strip()
+        first_name = parts[2].strip()
+        last_name = parts[3].strip()
+        
+        await add_name_mapping(username, first_name, last_name)
+        await message.answer(
+            f"✅ Добавлено: @{username} → {first_name} {last_name}"
+        )
+        await state.clear()
+    else:
+        await message.answer(
+            "📝 Формат команды:\n"
+            "/addname username имя фамилия\n\n"
+            "Пример:\n"
+            "/addname ezhigval Валентин Ежов"
+        )
+
+@dp.message(Command("delname"))
+async def cmd_delname(message: Message):
+    """Удаление соответствия username → имя"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    parts = message.text.split(maxsplit=1)
+    if len(parts) >= 2:
+        username = parts[1].replace('@', '').strip()
+        await delete_name_mapping(username)
+        await message.answer(f"✅ Удалено соответствие для @{username}")
+    else:
+        await message.answer(
+            "📝 Формат команды:\n"
+            "/delname username\n\n"
+            "Пример:\n"
+            "/delname ezhigval"
+        )
+
+@dp.message(Command("importnames"))
+async def cmd_importnames(message: Message):
+    """Импорт из Google таблицы (будет реализовано позже)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    await message.answer(
+        "📊 <b>Импорт из Google таблицы</b>\n\n"
+        "Эта функция будет реализована позже.\n\n"
+        "Планируемый формат:\n"
+        "1. Подключение к Google Sheets API\n"
+        "2. Импорт данных из таблицы\n"
+        "3. Автоматическое обновление соответствий\n\n"
+        "Пока используйте команду /addname для ручного добавления.",
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "admin_names")
+async def admin_names(callback: CallbackQuery):
+    """Управление таблицей соответствия имен"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    mappings = await get_all_name_mappings()
+    
+    if not mappings:
+        await callback.message.answer(
+            "📋 Таблица соответствия пуста.\n\n"
+            "Используйте /addname для добавления.\n"
+            "Пример: /addname ezhigval Валентин Ежов"
+        )
+    else:
+        text = "📋 <b>Таблица соответствия:</b>\n\n"
+        for username, first_name, last_name in mappings:
+            text += f"@{username} → {first_name} {last_name}\n"
+        
+        text += "\n💡 Команды:\n"
+        text += "/addname username имя фамилия\n"
+        text += "/delname username\n"
+        text += "/names - полный список"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    
+    await callback.answer()
+
 async def init_bot():
     """Инициализация бота"""
     # Проверка токена
@@ -303,6 +451,7 @@ async def init_bot():
     
     # Инициализация базы данных
     await init_db()
+    await init_default_mappings()  # Инициализация начальных соответствий
     logger.info("✅ База данных инициализирована")
     
     logger.info("✅ Бот инициализирован")
