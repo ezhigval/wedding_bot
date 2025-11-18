@@ -7,8 +7,7 @@ def get_invitation_keyboard():
         [InlineKeyboardButton(
             text="💒 Открыть приглашение",
             web_app=WebAppInfo(url=WEBAPP_URL)
-        )],
-        [InlineKeyboardButton(text="✅ Приду!", callback_data="confirm_attendance")]
+        )]
     ])
     return keyboard
 

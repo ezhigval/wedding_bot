@@ -7,14 +7,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL
-from utils import get_time_until_wedding, format_wedding_date
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS
+from utils import format_wedding_date
 from database import (
-    init_db, add_guest, get_guest, get_all_guests, get_guests_count,
+    init_db, get_all_guests, get_guests_count,
     get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
     init_default_mappings
 )
-from keyboards import get_invitation_keyboard, get_registration_keyboard, get_admin_keyboard
+from keyboards import get_invitation_keyboard, get_admin_keyboard
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +26,7 @@ dp = Dispatcher(storage=MemoryStorage())
 # Бот будет создан в init_bot() после проверки токена
 bot = None
 
-# Состояния для регистрации
+# Состояния для регистрации (больше не используются, оставлены для совместимости)
 class RegistrationStates(StatesGroup):
     waiting_first_name = State()
     waiting_last_name = State()
@@ -57,20 +57,21 @@ async def cmd_start(message: Message, state: FSMContext):
     # Получаем имя из таблицы соответствия или Telegram
     display_name = await get_user_display_name(message.from_user)
     
-    # Проверяем, зарегистрирован ли уже пользователь
-    guest = await get_guest(message.from_user.id)
-    
-    if guest:
-        first_name, last_name, confirmed_at = guest
-        await message.answer(
-            f"👋 Привет, {display_name}!\n\n"
-            f"Ты уже подтвердил(а) своё присутствие на нашей свадьбе! 🎉\n"
-            f"Дата подтверждения: {confirmed_at}"
+    # Отправляем приветственное сообщение с фото
+    try:
+        photo = FSInputFile(PHOTO_PATH)
+        await message.answer_photo(
+            photo=photo,
+            caption=f"👋 Привет, {display_name}!",
+            parse_mode="HTML"
         )
-        await send_invitation_card(message)
-    else:
+    except (FileNotFoundError, Exception) as e:
+        # Если фото нет или произошла ошибка, отправляем только текст
+        logger.warning(f"Не удалось отправить фото в приветствии: {e}")
         await message.answer(f"👋 Привет, {display_name}!")
-        await send_invitation_card(message)
+    
+    # Отправляем приглашение
+    await send_invitation_card(message)
 
 async def send_invitation_card(message: Message):
     """Отправляет красивую открытку-приглашение"""
@@ -81,116 +82,31 @@ async def send_invitation_card(message: Message):
 
 📅 <b>{format_wedding_date()}</b>
 
-{get_time_until_wedding()}
+📍 <b>Адрес:</b> {WEDDING_ADDRESS}
 
 ━━━━━━━━━━━━━━━━━━━━
 Мы будем рады видеть вас на нашем торжестве! 
 Этот день будет особенным, и ваше присутствие сделает его ещё более незабываемым! 💕
+
+Просим предварительно подтвердить ваше присутствие в приложении.
 ━━━━━━━━━━━━━━━━━━━━
 """
     
-    # Пытаемся отправить фото, если оно есть
-    try:
-        photo = FSInputFile(PHOTO_PATH)
-        await message.answer_photo(
-            photo=photo,
-            caption=wedding_text,
-            reply_markup=get_invitation_keyboard(),
-            parse_mode="HTML"
-        )
-    except (FileNotFoundError, Exception) as e:
-        # Если фото нет или произошла ошибка, отправляем только текст
-        logger.warning(f"Не удалось отправить фото: {e}")
-        await message.answer(
-            wedding_text,
-            reply_markup=get_invitation_keyboard(),
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data == "confirm_attendance")
-async def process_confirm_attendance(callback: CallbackQuery, state: FSMContext):
-    """Обработчик нажатия на кнопку 'Приду'"""
-    await callback.answer()
-    
-    # Проверяем, не зарегистрирован ли уже
-    guest = await get_guest(callback.from_user.id)
-    if guest:
-        await callback.message.answer(
-            "✅ Ты уже подтвердил(а) своё присутствие! 🎉"
-        )
-        return
-    
-    await callback.message.answer(
-        "🎉 Отлично! Мы очень рады, что ты сможешь быть с нами!\n\n"
-        "Пожалуйста, заполни небольшую форму:"
-    )
-    await callback.message.answer(
-        "👤 Введите ваше <b>имя</b>:",
-        reply_markup=get_registration_keyboard(),
-        parse_mode="HTML"
-    )
-    await state.set_state(RegistrationStates.waiting_first_name)
-
-@dp.message(RegistrationStates.waiting_first_name)
-async def process_first_name(message: Message, state: FSMContext):
-    """Обработка ввода имени"""
-    first_name = message.text.strip()
-    
-    if len(first_name) < 2:
-        await message.answer("❌ Имя слишком короткое. Пожалуйста, введите корректное имя:")
-        return
-    
-    await state.update_data(first_name=first_name)
     await message.answer(
-        "👤 Введите вашу <b>фамилию</b>:",
-        reply_markup=get_registration_keyboard(),
+        wedding_text,
+        reply_markup=get_invitation_keyboard(),
         parse_mode="HTML"
     )
-    await state.set_state(RegistrationStates.waiting_last_name)
 
-@dp.message(RegistrationStates.waiting_last_name)
-async def process_last_name(message: Message, state: FSMContext):
-    """Обработка ввода фамилии"""
-    last_name = message.text.strip()
-    
-    if len(last_name) < 2:
-        await message.answer("❌ Фамилия слишком короткая. Пожалуйста, введите корректную фамилию:")
-        return
-    
-    data = await state.get_data()
-    first_name = data.get("first_name")
-    
-    # Сохраняем гостя в базу данных
-    await add_guest(
-        user_id=message.from_user.id,
-        first_name=first_name,
-        last_name=last_name,
-        username=message.from_user.username
-    )
-    
-    guests_count = await get_guests_count()
-    
-    await message.answer(
-        f"✅ <b>Спасибо, {first_name} {last_name}!</b>\n\n"
-        f"Твоё присутствие подтверждено! 🎉\n\n"
-        f"Мы будем рады видеть тебя на нашей свадьбе!\n"
-        f"Всего подтвердили: {guests_count} гостей",
-        parse_mode="HTML"
-    )
-    
-    await state.clear()
-
-@dp.callback_query(F.data == "cancel_registration")
-async def process_cancel_registration(callback: CallbackQuery, state: FSMContext):
-    """Обработчик отмены регистрации"""
-    await callback.answer("Регистрация отменена")
-    await state.clear()
-    await callback.message.answer("Регистрация отменена. Если передумаешь, просто нажми /start")
+# Все функции подтверждения присутствия перенесены в Mini App
 
 @dp.message(Command("guests"))
 async def cmd_guests(message: Message):
     """Команда для просмотра списка гостей (только для администраторов)"""
-    # Здесь можно добавить проверку на администратора
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
     guests = await get_all_guests()
     
     if not guests:
@@ -217,12 +133,13 @@ async def cmd_help(message: Message):
     help_text = """
 📖 <b>Доступные команды:</b>
 
-/start - Получить приглашение и зарегистрироваться
+/start - Получить приглашение
 /invite - Отправить приглашение еще раз
 /guests - Посмотреть список гостей (для организаторов)
 /help - Показать эту справку
 
-💡 Просто нажми /start, чтобы начать!
+💡 Просто нажми /start, чтобы получить приглашение!
+💒 Все функции подтверждения присутствия доступны в Mini App.
 """
     await message.answer(help_text, parse_mode="HTML")
 
