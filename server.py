@@ -90,6 +90,11 @@ async def main():
         # Инициализация бота
         if not await init_bot():
             logger.error("❌ Не удалось инициализировать бота")
+            logger.error("Проверьте переменные окружения на Render")
+            return
+        
+        if bot is None:
+            logger.error("❌ Бот не создан")
             return
         
         # Запуск веб-сервера

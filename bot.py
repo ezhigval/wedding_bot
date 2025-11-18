@@ -20,15 +20,11 @@ from keyboards import get_invitation_keyboard, get_registration_keyboard, get_ad
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и диспетчера
-# Проверяем токен перед созданием бота
-if BOT_TOKEN:
-    # Дополнительная очистка токена
-    BOT_TOKEN = BOT_TOKEN.strip().strip('"').strip("'")
-    bot = Bot(token=BOT_TOKEN)
-else:
-    bot = None
+# Инициализация диспетчера
 dp = Dispatcher(storage=MemoryStorage())
+
+# Бот будет создан в init_bot() после проверки токена
+bot = None
 
 # Состояния для регистрации
 class RegistrationStates(StatesGroup):
@@ -448,20 +444,30 @@ async def admin_names(callback: CallbackQuery):
 
 async def init_bot():
     """Инициализация бота"""
-    # Проверка токена
+    global bot
+    
+    # Проверка и очистка токена
     token = BOT_TOKEN.strip().strip('"').strip("'") if BOT_TOKEN else ""
     
     if not token or len(token) < 10:
         logger.error("❌ ОШИБКА: BOT_TOKEN не установлен или неверный!")
         logger.error("Пожалуйста, проверьте переменную окружения BOT_TOKEN на Render")
         logger.error("Токен должен быть БЕЗ пробелов и кавычек")
-        logger.error("Смотрите инструкцию в файле RENDER_FIX.md")
+        logger.error("Смотрите инструкцию в файле TOKEN_FIX.md")
         return False
     
     # Проверяем формат токена (должен содержать :)
     if ':' not in token:
         logger.error("❌ ОШИБКА: BOT_TOKEN имеет неверный формат!")
         logger.error("Токен должен быть в формате: 1234567890:ABC...")
+        return False
+    
+    # Создаем бота с очищенным токеном
+    try:
+        bot = Bot(token=token)
+        logger.info("✅ Бот создан успешно")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при создании бота: {e}")
         return False
     
     # Инициализация базы данных
