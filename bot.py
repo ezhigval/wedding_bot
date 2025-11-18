@@ -21,7 +21,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN)
+# Проверяем токен перед созданием бота
+if BOT_TOKEN:
+    # Дополнительная очистка токена
+    BOT_TOKEN = BOT_TOKEN.strip().strip('"').strip("'")
+    bot = Bot(token=BOT_TOKEN)
+else:
+    bot = None
 dp = Dispatcher(storage=MemoryStorage())
 
 # Состояния для регистрации
@@ -443,10 +449,19 @@ async def admin_names(callback: CallbackQuery):
 async def init_bot():
     """Инициализация бота"""
     # Проверка токена
-    if not BOT_TOKEN:
-        logger.error("❌ ОШИБКА: BOT_TOKEN не установлен!")
-        logger.error("Пожалуйста, создайте файл .env и укажите BOT_TOKEN")
-        logger.error("Смотрите инструкцию в файле GET_TOKEN.md")
+    token = BOT_TOKEN.strip().strip('"').strip("'") if BOT_TOKEN else ""
+    
+    if not token or len(token) < 10:
+        logger.error("❌ ОШИБКА: BOT_TOKEN не установлен или неверный!")
+        logger.error("Пожалуйста, проверьте переменную окружения BOT_TOKEN на Render")
+        logger.error("Токен должен быть БЕЗ пробелов и кавычек")
+        logger.error("Смотрите инструкцию в файле RENDER_FIX.md")
+        return False
+    
+    # Проверяем формат токена (должен содержать :)
+    if ':' not in token:
+        logger.error("❌ ОШИБКА: BOT_TOKEN имеет неверный формат!")
+        logger.error("Токен должен быть в формате: 1234567890:ABC...")
         return False
     
     # Инициализация базы данных
