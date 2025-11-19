@@ -617,6 +617,8 @@ if (cancelInvitationBtn) {
                 document.querySelector('.greeting-section').style.display = 'block';
                 document.querySelector('.calendar-section').style.display = 'block';
                 document.getElementById('rsvpSection').style.display = 'block';
+                document.getElementById('registrationContactSection').style.display = 'block';
+                document.querySelector('.closing-section').style.display = 'block';
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
                 
                 // Очищаем форму
@@ -679,6 +681,8 @@ if (mainCancelInvitationBtn) {
                 document.querySelector('.greeting-section').style.display = 'block';
                 document.querySelector('.calendar-section').style.display = 'block';
                 document.getElementById('rsvpSection').style.display = 'block';
+                document.getElementById('registrationContactSection').style.display = 'block';
+                document.querySelector('.closing-section').style.display = 'block';
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
                 
                 // Очищаем форму
