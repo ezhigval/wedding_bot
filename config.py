@@ -50,4 +50,5 @@ GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")  # JSON c
 GOOGLE_SHEETS_SHEET_NAME = "Список гостей"
 GOOGLE_SHEETS_INVITATIONS_SHEET_NAME = "Пригласительные"  # Вкладка для списка приглашений
 GOOGLE_SHEETS_ADMINS_SHEET_NAME = "Админ бота"  # Вкладка для списка админов
+GOOGLE_SHEETS_TIMELINE_SHEET_NAME = "Публичная План-сетка"  # Вкладка для плана-сетки мероприятия
 

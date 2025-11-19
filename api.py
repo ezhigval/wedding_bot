@@ -11,9 +11,9 @@ import hashlib
 import hmac
 import urllib.parse
 
-from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM
+from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
 from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count, delete_guest
-from google_sheets import add_guest_to_sheets, cancel_invitation
+from google_sheets import add_guest_to_sheets, cancel_invitation, get_timeline
 import traceback
 import logging
 
@@ -68,6 +68,7 @@ async def init_api():
     api.router.add_post('/questionnaire', save_questionnaire)
     api.router.add_get('/guests', get_guests_list)
     api.router.add_get('/stats', get_stats)
+    api.router.add_get('/timeline', get_timeline_endpoint)
     
     return api
 
@@ -79,7 +80,8 @@ async def get_config(request):
             'groomName': GROOM_NAME,
             'brideName': BRIDE_NAME,
             'groomTelegram': GROOM_TELEGRAM,
-            'brideTelegram': BRIDE_TELEGRAM
+            'brideTelegram': BRIDE_TELEGRAM,
+            'weddingAddress': WEDDING_ADDRESS
         })
     except Exception as e:
         import logging
@@ -233,28 +235,29 @@ async def register_guest(request):
             logger.error(traceback.format_exc())
             # Не блокируем ответ, так как это не критично
         
-            guests_count = await get_guests_count()
-            
-            # Формируем уведомление для админов
-            username_text = f" @{username}" if username else ""
-            notification_text = (
-                f"✅ <b>Новая регистрация!</b>\n\n"
-                f"👤 <b>Основной гость:</b>\n"
-                f"{first_name} {last_name}{username_text}\n"
-            )
-            
-            # Добавляем информацию о дополнительных гостях
-            if guests_list and len(guests_list) > 1:
-                additional_guests = guests_list[1:]  # Пропускаем первого (основного)
-                notification_text += f"\n👥 <b>Дополнительные гости ({len(additional_guests)}):</b>\n"
-                for i, guest in enumerate(additional_guests, 1):
-                    guest_telegram = guest.get('telegram', '')
-                    telegram_text = f" @{guest_telegram}" if guest_telegram else ""
-                    notification_text += f"{i}. {guest.get('firstName', '')} {guest.get('lastName', '')}{telegram_text}\n"
-            
-            notification_text += f"\n📊 Всего гостей: {guests_count}"
-            
-            await notify_admins(notification_text)
+        # Получаем количество гостей (вне блока try-except, чтобы всегда была определена)
+        guests_count = await get_guests_count()
+        
+        # Формируем уведомление для админов
+        username_text = f" @{username}" if username else ""
+        notification_text = (
+            f"✅ <b>Новая регистрация!</b>\n\n"
+            f"👤 <b>Основной гость:</b>\n"
+            f"{first_name} {last_name}{username_text}\n"
+        )
+        
+        # Добавляем информацию о дополнительных гостях
+        if guests_list and len(guests_list) > 1:
+            additional_guests = guests_list[1:]  # Пропускаем первого (основного)
+            notification_text += f"\n👥 <b>Дополнительные гости ({len(additional_guests)}):</b>\n"
+            for i, guest in enumerate(additional_guests, 1):
+                guest_telegram = guest.get('telegram', '')
+                telegram_text = f" @{guest_telegram}" if guest_telegram else ""
+                notification_text += f"{i}. {guest.get('firstName', '')} {guest.get('lastName', '')}{telegram_text}\n"
+        
+        notification_text += f"\n📊 Всего гостей: {guests_count}"
+        
+        await notify_admins(notification_text)
         
         return web.json_response({
             'success': True,
@@ -377,5 +380,17 @@ async def get_stats(request):
             'weddingDate': WEDDING_DATE.strftime('%Y-%m-%d')
         })
     except Exception as e:
+        return web.json_response({'error': str(e)}, status=500)
+
+async def get_timeline_endpoint(request):
+    """Получить тайминг мероприятия"""
+    try:
+        timeline = await get_timeline()
+        return web.json_response({
+            'timeline': timeline
+        })
+    except Exception as e:
+        logger.error(f"Ошибка получения тайминга: {e}")
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 

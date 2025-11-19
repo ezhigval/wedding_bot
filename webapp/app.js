@@ -3,15 +3,16 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Загружаем конфигурацию с сервера
-let CONFIG = {
-    weddingDate: '2026-06-06',
-    groomName: 'Валентин',
-    brideName: 'Мария',
-    groomTelegram: 'ezhigval',
-    brideTelegram: '',
-    apiUrl: window.location.origin + '/api'
-};
+    // Загружаем конфигурацию с сервера
+    let CONFIG = {
+        weddingDate: '2026-06-06',
+        groomName: 'Валентин',
+        brideName: 'Мария',
+        groomTelegram: 'ezhigval',
+        brideTelegram: '',
+        weddingAddress: 'Санкт-Петербург',
+        apiUrl: window.location.origin + '/api'
+    };
 
 // Состояние гостей
 let guests = [];
@@ -218,6 +219,228 @@ async function checkRegistration() {
     return false;
 }
 
+// Загрузка данных для основной страницы
+async function loadMainPageData() {
+    // Загружаем конфигурацию если еще не загружена
+    await loadConfig();
+    
+    // Обновляем данные на странице
+    updateMainPageUI();
+    
+    // Загружаем тайминг
+    try {
+        const response = await fetch(`${CONFIG.apiUrl}/timeline`);
+        if (response.ok) {
+            const data = await response.json();
+            renderTimeline(data.timeline || []);
+        }
+    } catch (error) {
+        console.error('Error loading timeline:', error);
+    }
+    
+    // Загружаем изображения дресс-кода
+    loadDresscodeImages();
+    
+    // Загружаем изображение места проведения
+    loadVenueImage();
+    
+    // Инициализируем карту
+    initYandexMap();
+    
+    // Обновляем контакты
+    updateMainContacts();
+}
+
+// Обновление UI основной страницы
+function updateMainPageUI() {
+    const mainCoupleNames = document.getElementById('mainCoupleNames');
+    const mainWeddingDate = document.getElementById('mainWeddingDate');
+    const venueName = document.getElementById('venueName');
+    const venueAddress = document.getElementById('venueAddress');
+    
+    if (mainCoupleNames) {
+        mainCoupleNames.textContent = `${CONFIG.groomName} и ${CONFIG.brideName}`;
+    }
+    
+    if (mainWeddingDate) {
+        const date = new Date(CONFIG.weddingDate);
+        const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 
+                       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+        const day = date.getDate();
+        const month = months[date.getMonth()];
+        const year = date.getFullYear();
+        mainWeddingDate.textContent = `${day} ${month} ${year}`;
+    }
+    
+    if (venueName) {
+        venueName.textContent = CONFIG.weddingAddress || 'Санкт-Петербург';
+    }
+    
+    if (venueAddress) {
+        venueAddress.textContent = CONFIG.weddingAddress || 'Санкт-Петербург';
+    }
+}
+
+// Отрисовка тайминга
+function renderTimeline(timeline) {
+    const container = document.getElementById('timelineContainer');
+    if (!container) return;
+    
+    if (!timeline || timeline.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #666;">План дня будет добавлен позже</p>';
+        return;
+    }
+    
+    container.innerHTML = timeline.map(item => `
+        <div class="timeline-item scroll-reveal-item">
+            <div class="timeline-time">${item.time || ''}</div>
+            <div class="timeline-event">${item.event || ''}</div>
+        </div>
+    `).join('');
+    
+    // Инициализируем анимации появления
+    initScrollReveal();
+}
+
+// Загрузка изображений дресс-кода
+function loadDresscodeImages() {
+    const slider = document.getElementById('dresscodeSlider');
+    if (!slider) return;
+    
+    // Список изображений (будет загружаться из папки res/dresscode)
+    const images = [
+        'res/dresscode/1.jpg',
+        'res/dresscode/2.jpg',
+        'res/dresscode/3.jpg'
+    ];
+    
+    // Пока используем заглушку, пока пользователь не добавит фотографии
+    slider.innerHTML = `
+        <div class="dresscode-slider-container">
+            <div class="dresscode-slide active">
+                <img src="res/dresscode/1.jpg" alt="Дресс-код" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div style="display: none; padding: 40px; text-align: center; color: #666;">
+                    <p>Фотографии дресс-кода будут добавлены позже</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Если есть несколько изображений, создаем слайдер
+    if (images.length > 1) {
+        initDresscodeSlider(images);
+    }
+}
+
+// Инициализация слайдера дресс-кода
+function initDresscodeSlider(images) {
+    const slider = document.getElementById('dresscodeSlider');
+    if (!slider) return;
+    
+    let currentIndex = 0;
+    
+    slider.innerHTML = images.map((img, index) => `
+        <div class="dresscode-slide ${index === 0 ? 'active' : ''}">
+            <img src="${img}" alt="Дресс-код ${index + 1}" onerror="this.style.display='none';">
+        </div>
+    `).join('');
+    
+    // Автоматическая смена слайдов каждые 1500мс (1.5 секунды)
+    setInterval(() => {
+        const slides = slider.querySelectorAll('.dresscode-slide');
+        if (slides.length > 1) {
+            slides[currentIndex].classList.remove('active');
+            currentIndex = (currentIndex + 1) % slides.length;
+            slides[currentIndex].classList.add('active');
+        }
+    }, 1500);
+    
+    // Свайп для мобильных
+    let touchStartX = 0;
+    let touchEndX = 0;
+    
+    slider.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+    });
+    
+    slider.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    });
+    
+    function handleSwipe() {
+        const slides = slider.querySelectorAll('.dresscode-slide');
+        if (slides.length <= 1) return;
+        
+        if (touchEndX < touchStartX - 50) {
+            // Свайп влево - следующий слайд
+            slides[currentIndex].classList.remove('active');
+            currentIndex = (currentIndex + 1) % slides.length;
+            slides[currentIndex].classList.add('active');
+        }
+        if (touchEndX > touchStartX + 50) {
+            // Свайп вправо - предыдущий слайд
+            slides[currentIndex].classList.remove('active');
+            currentIndex = (currentIndex - 1 + slides.length) % slides.length;
+            slides[currentIndex].classList.add('active');
+        }
+    }
+}
+
+// Загрузка изображения места проведения
+function loadVenueImage() {
+    const container = document.getElementById('venueImageContainer');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <img src="res/venue/venue.jpg" alt="Место проведения" class="venue-image" 
+             onerror="this.style.display='none';">
+    `;
+}
+
+// Инициализация Яндекс карты
+function initYandexMap() {
+    const mapContainer = document.getElementById('venueMap');
+    if (!mapContainer) return;
+    
+    const address = CONFIG.weddingAddress || 'Санкт-Петербург';
+    
+    // Используем iframe для встраивания Яндекс карты
+    mapContainer.innerHTML = `
+        <iframe 
+            src="https://yandex.ru/map-widget/v1/?text=${encodeURIComponent(address)}&z=15"
+            width="100%" 
+            height="300" 
+            frameborder="0" 
+            style="border-radius: 10px; margin-top: 20px; border: 2px solid rgba(90, 124, 82, 0.3);">
+        </iframe>
+    `;
+}
+
+// Обновление контактов на основной странице
+function updateMainContacts() {
+    const groomTelegram = document.getElementById('mainGroomTelegram');
+    const brideTelegram = document.getElementById('mainBrideTelegram');
+    
+    if (groomTelegram) {
+        groomTelegram.textContent = `@${CONFIG.groomTelegram || 'ezhigval'}`;
+    }
+    if (brideTelegram) {
+        brideTelegram.textContent = `@${CONFIG.brideTelegram || 'mrfilmpro'}`;
+    }
+    
+    // Обработчики для открытия Telegram
+    const groomContact = document.getElementById('mainGroomContact');
+    const brideContact = document.getElementById('mainBrideContact');
+    
+    if (groomContact) {
+        groomContact.href = `https://t.me/${CONFIG.groomTelegram || 'ezhigval'}`;
+    }
+    if (brideContact) {
+        brideContact.href = `https://t.me/${CONFIG.brideTelegram || 'mrfilmpro'}`;
+    }
+}
+
 // Инициализация
 loadConfig();
 updateCountdown();
@@ -226,18 +449,17 @@ setInterval(updateCountdown, 1000); // Обновляем каждую секу�
 // Проверяем регистрацию при загрузке
 checkRegistration().then(registered => {
     if (registered) {
+        // Скрываем регистрационную страницу
+        document.querySelector('.hero-section').style.display = 'none';
+        document.querySelector('.greeting-section').style.display = 'none';
+        document.querySelector('.calendar-section').style.display = 'none';
         document.getElementById('rsvpSection').style.display = 'none';
-        document.getElementById('confirmationSection').style.display = 'block';
-        document.getElementById('cancelSection').style.display = 'block';
-        // Загружаем количество гостей
-        fetch(`${CONFIG.apiUrl}/stats`)
-            .then(r => r.json())
-            .then(data => {
-                const guestsCountEl = document.getElementById('guestsCount');
-                if (guestsCountEl) {
-                    guestsCountEl.textContent = data.guestsCount || 0;
-                }
-            });
+        
+        // Показываем основную страницу
+        document.getElementById('mainPage').style.display = 'block';
+        
+        // Загружаем данные для основной страницы
+        loadMainPageData();
     }
 });
 
@@ -316,10 +538,18 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
         
         if (response.ok) {
             const data = await response.json();
-            // Скрываем форму и показываем подтверждение
+            // Скрываем регистрационную страницу и показываем основную страницу
+            document.querySelector('.hero-section').style.display = 'none';
+            document.querySelector('.greeting-section').style.display = 'none';
+            document.querySelector('.calendar-section').style.display = 'none';
             document.getElementById('rsvpSection').style.display = 'none';
-            document.getElementById('confirmationSection').style.display = 'block';
-            document.getElementById('confirmationSection').scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('mainPage').style.display = 'block';
+            
+            // Загружаем данные для основной страницы
+            await loadMainPageData();
+            
+            // Прокручиваем вверх
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             
             // Вибрация
             if (tg.HapticFeedback) {
@@ -348,8 +578,10 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
 // Кнопка добавления гостя
 document.getElementById('addGuestBtn').addEventListener('click', addGuest);
 
-// Обработчик отмены приглашения
-document.getElementById('cancelInvitationBtn').addEventListener('click', async () => {
+// Обработчик отмены приглашения (на регистрационной странице)
+const cancelInvitationBtn = document.getElementById('cancelInvitationBtn');
+if (cancelInvitationBtn) {
+    cancelInvitationBtn.addEventListener('click', async () => {
     if (!confirm('Вы уверены, что не сможете прийти?')) {
         return;
     }
@@ -374,28 +606,30 @@ document.getElementById('cancelInvitationBtn').addEventListener('click', async (
             })
         });
         
-        if (response.ok) {
-            // Показываем форму снова
-            document.getElementById('confirmationSection').style.display = 'none';
-            document.getElementById('cancelSection').style.display = 'none';
-            document.getElementById('rsvpSection').style.display = 'block';
-            document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
-            
-            // Очищаем форму
-            document.getElementById('firstName').value = '';
-            document.getElementById('lastName').value = '';
-            document.getElementById('category').value = '';
-            document.getElementById('side').value = '';
-            guests = [];
-            renderGuests();
-            
-            tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
-            
-            // Вибрация
-            if (tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred('warning');
-            }
-        } else {
+            if (response.ok) {
+                // Показываем регистрационную страницу снова
+                document.getElementById('mainPage').style.display = 'none';
+                document.querySelector('.hero-section').style.display = 'block';
+                document.querySelector('.greeting-section').style.display = 'block';
+                document.querySelector('.calendar-section').style.display = 'block';
+                document.getElementById('rsvpSection').style.display = 'block';
+                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+                
+                // Очищаем форму
+                document.getElementById('firstName').value = '';
+                document.getElementById('lastName').value = '';
+                document.getElementById('category').value = '';
+                document.getElementById('side').value = '';
+                guests = [];
+                renderGuests();
+                
+                tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
+                
+                // Вибрация
+                if (tg.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('warning');
+                }
+            } else {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Ошибка при отмене приглашения');
         }
@@ -403,7 +637,70 @@ document.getElementById('cancelInvitationBtn').addEventListener('click', async (
         console.error('Error canceling invitation:', error);
         tg.showAlert(error.message || 'Ошибка при отмене приглашения. Попробуйте позже.');
     }
-});
+    });
+}
+
+// Обработчик отмены приглашения (на основной странице)
+const mainCancelInvitationBtn = document.getElementById('mainCancelInvitationBtn');
+if (mainCancelInvitationBtn) {
+    mainCancelInvitationBtn.addEventListener('click', async () => {
+        if (!confirm('Вы уверены, что не сможете прийти?')) {
+            return;
+        }
+        
+        const user = tg.initDataUnsafe?.user;
+        const userId = user?.id;
+        
+        if (!userId) {
+            tg.showAlert('Ошибка: не удалось получить данные пользователя.');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${CONFIG.apiUrl}/cancel`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId: userId,
+                    initData: tg.initData
+                })
+            });
+            
+            if (response.ok) {
+                // Показываем регистрационную страницу снова
+                document.getElementById('mainPage').style.display = 'none';
+                document.querySelector('.hero-section').style.display = 'block';
+                document.querySelector('.greeting-section').style.display = 'block';
+                document.querySelector('.calendar-section').style.display = 'block';
+                document.getElementById('rsvpSection').style.display = 'block';
+                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+                
+                // Очищаем форму
+                document.getElementById('firstName').value = '';
+                document.getElementById('lastName').value = '';
+                document.getElementById('category').value = '';
+                document.getElementById('side').value = '';
+                guests = [];
+                renderGuests();
+                
+                tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
+                
+                // Вибрация
+                if (tg.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('warning');
+                }
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Ошибка при отмене приглашения');
+            }
+        } catch (error) {
+            console.error('Error canceling invitation:', error);
+            tg.showAlert(error.message || 'Ошибка при отмене приглашения. Попробуйте позже.');
+        }
+    });
+}
 
 // Настройка темы Telegram
 if (tg.colorScheme === 'dark') {

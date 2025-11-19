@@ -17,7 +17,7 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME
+from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -114,7 +114,19 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                 logger.info(f"Гость {full_name} найден в строке {found_row}, обновлено подтверждение на 'ДА' и данные (родство: {category}, сторона: {side})")
                 return True
             else:
-                # Гость не найден - добавляем новую строку
+                # Гость не найден - ищем первую свободную строку (где столбец A пустой)
+                empty_row = None
+                for row_idx, row in enumerate(all_values, start=1):
+                    # Проверяем, пуст ли столбец A (имя)
+                    if len(row) == 0 or (row[0] if row else "").strip() == "":
+                        empty_row = row_idx
+                        break
+                
+                # Если свободная строка не найдена, используем следующую после последней
+                if empty_row is None:
+                    empty_row = len(all_values) + 1
+                
+                # Вставляем данные в найденную свободную строку
                 row_data = [
                     full_name,              # Столбец A - Имя и Фамилия
                     str(age) if age else "", # Столбец B - Возраст
@@ -123,23 +135,38 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                     side if side else ""    # Столбец E - Сторона
                 ]
                 
-                worksheet.append_row(row_data)
-                logger.info(f"Гость {full_name} добавлен в Google Sheets (новая строка)")
+                # Обновляем строку используя update вместо append_row
+                worksheet.update(f'A{empty_row}:E{empty_row}', [row_data])
+                logger.info(f"Гость {full_name} добавлен в Google Sheets в строку {empty_row} (первая свободная строка)")
                 return True
                 
         except Exception as e:
             logger.error(f"Ошибка при поиске/добавлении гостя в Google Sheets: {e}")
-            # Если поиск не удался, пробуем просто добавить
-            row_data = [
-                full_name,              # Столбец A - Имя и Фамилия
-                str(age) if age else "", # Столбец B - Возраст
-                "ДА",                   # Столбец C - Подтверждение (чекбокс)
-                category if category else "", # Столбец D - Категория
-                side if side else ""    # Столбец E - Сторона
-            ]
-            worksheet.append_row(row_data)
-            logger.info(f"Гость {full_name} добавлен в Google Sheets (fallback)")
-            return True
+            # Если поиск не удался, пробуем найти свободную строку и добавить туда
+            try:
+                all_values = worksheet.get_all_values()
+                empty_row = None
+                for row_idx, row in enumerate(all_values, start=1):
+                    if len(row) == 0 or (row[0] if row else "").strip() == "":
+                        empty_row = row_idx
+                        break
+                
+                if empty_row is None:
+                    empty_row = len(all_values) + 1
+                
+                row_data = [
+                    full_name,              # Столбец A - Имя и Фамилия
+                    str(age) if age else "", # Столбец B - Возраст
+                    "ДА",                   # Столбец C - Подтверждение (чекбокс)
+                    category if category else "", # Столбец D - Категория
+                    side if side else ""    # Столбец E - Сторона
+                ]
+                worksheet.update(f'A{empty_row}:E{empty_row}', [row_data])
+                logger.info(f"Гость {full_name} добавлен в Google Sheets в строку {empty_row} (fallback)")
+                return True
+            except Exception as fallback_error:
+                logger.error(f"Ошибка при fallback добавлении: {fallback_error}")
+                return False
             
     except Exception as e:
         logger.error(f"Ошибка добавления гостя в Google Sheets: {e}")

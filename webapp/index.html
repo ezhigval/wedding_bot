@@ -143,15 +143,116 @@
             </div>
         </section>
 
-        <!-- Подтверждение -->
-        <section class="confirmation-section" id="confirmationSection" style="display: none;">
-            <div class="section-card confirmation-card">
-                <div class="success-icon">✅</div>
-                <h2 class="confirmation-title">Отлично, до скорой встречи!</h2>
-                <p class="confirmation-text">Твоё присутствие подтверждено! 🎉</p>
-                <p class="confirmation-text">Мы будем рады видеть тебя на нашей свадьбе!</p>
-            </div>
-        </section>
+        <!-- Основная страница для подтвердивших гостей -->
+        <div id="mainPage" style="display: none;">
+            <!-- Заголовок -->
+            <section class="main-hero-section">
+                <div class="main-hero-card scroll-reveal">
+                    <div class="main-couple-names scroll-reveal-item" id="mainCoupleNames">Валентин и Мария</div>
+                    <div class="main-wedding-date scroll-reveal-item" id="mainWeddingDate">06 июня 2026</div>
+                </div>
+            </section>
+
+            <!-- Приветствие -->
+            <section class="main-greeting-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">Дорогие родные и близкие</h2>
+                    <p class="main-greeting-text scroll-reveal-item" id="mainGreetingText">
+                        Мы давно ждали этого момента, когда сможем разделить с вами самый важный день в нашей жизни.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Тайминг (План-сетка) -->
+            <section class="timeline-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">ПЛАН ДНЯ</h2>
+                    <div class="timeline-container" id="timelineContainer">
+                        <!-- Загружается динамически из API -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Дресс-код -->
+            <section class="dresscode-section">
+                <div class="dresscode-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">ДРЕСС-КОД</h2>
+                    <div class="color-palette scroll-reveal-item">
+                        <div class="color-circle" style="background: #5A7C52;"></div>
+                        <div class="color-circle" style="background: #4A6B42;"></div>
+                        <div class="color-circle" style="background: #FFE9AD;"></div>
+                        <div class="color-circle" style="background: #F8F8F8;"></div>
+                        <div class="color-circle" style="background: #DBD0C4;"></div>
+                    </div>
+                    <div class="dresscode-slider scroll-reveal-item" id="dresscodeSlider">
+                        <!-- Загружается динамически из папки res/dresscode -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Подсказки -->
+            <section class="tips-section">
+                <div class="tips-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">ПОДСКАЗКИ</h2>
+                    <div class="tips-container" id="tipsContainer">
+                        <!-- Загружается из конфига или Google Sheets -->
+                        <div class="tip-item scroll-reveal-item">
+                            <h3 class="tip-title">Сюрпризы</h3>
+                            <p class="tip-text">Мы будем рады любому вниманию, но больше всего ценим ваше присутствие!</p>
+                        </div>
+                        <div class="tip-item scroll-reveal-item">
+                            <h3 class="tip-title">Цветы</h3>
+                            <p class="tip-text">Если хотите подарить цветы, мы будем рады букетам в пастельных тонах.</p>
+                        </div>
+                        <div class="tip-item scroll-reveal-item">
+                            <h3 class="tip-title">Подарки</h3>
+                            <p class="tip-text">Ваше присутствие - лучший подарок! Но если хотите что-то подарить, мы будем благодарны.</p>
+                        </div>
+                        <div class="tip-item scroll-reveal-item">
+                            <h3 class="tip-title">Если возникла проблема</h3>
+                            <p class="tip-text">Свяжитесь с нами через контакты внизу страницы, мы обязательно поможем!</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Место проведения -->
+            <section class="venue-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">МЕСТО ПРОВЕДЕНИЯ</h2>
+                    <div class="venue-info scroll-reveal-item">
+                        <h3 class="venue-name" id="venueName">Санкт-Петербург</h3>
+                        <p class="venue-address" id="venueAddress">Санкт-Петербург</p>
+                    </div>
+                    <div class="venue-image-container scroll-reveal-item" id="venueImageContainer">
+                        <!-- Изображение загружается из res/venue -->
+                    </div>
+                    <div class="venue-map scroll-reveal-item" id="venueMap">
+                        <!-- Яндекс карта -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Футер -->
+            <section class="main-footer-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
+                    <div class="contact-list">
+                        <a href="#" class="contact-item" id="mainGroomContact">
+                            <span class="contact-name">Валентин</span>
+                            <span class="contact-telegram" id="mainGroomTelegram">@ezhigval</span>
+                        </a>
+                        <a href="#" class="contact-item" id="mainBrideContact">
+                            <span class="contact-name">Мария</span>
+                            <span class="contact-telegram" id="mainBrideTelegram">@mrfilmpro</span>
+                        </a>
+                    </div>
+                    <div class="cancel-section">
+                        <button type="button" class="btn-cancel" id="mainCancelInvitationBtn">Отменить приглашение</button>
+                    </div>
+                </div>
+            </section>
+        </div>
 
         <!-- Связаться с нами -->
         <section class="contact-section">
