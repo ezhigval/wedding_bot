@@ -454,6 +454,8 @@ checkRegistration().then(registered => {
         document.querySelector('.greeting-section').style.display = 'none';
         document.querySelector('.calendar-section').style.display = 'none';
         document.getElementById('rsvpSection').style.display = 'none';
+        document.getElementById('registrationContactSection').style.display = 'none';
+        document.querySelector('.closing-section').style.display = 'none';
         
         // Показываем основную страницу
         document.getElementById('mainPage').style.display = 'block';
