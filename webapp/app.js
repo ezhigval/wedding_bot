@@ -538,28 +538,19 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
             })
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            // Скрываем регистрационную страницу и показываем основную страницу
-            document.querySelector('.hero-section').style.display = 'none';
-            document.querySelector('.greeting-section').style.display = 'none';
-            document.querySelector('.calendar-section').style.display = 'none';
-            document.getElementById('rsvpSection').style.display = 'none';
-            document.getElementById('registrationContactSection').style.display = 'none';
-            document.querySelector('.closing-section').style.display = 'none';
-            document.getElementById('mainPage').style.display = 'block';
-            
-            // Загружаем данные для основной страницы
-            await loadMainPageData();
-            
-            // Прокручиваем вверх
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            
-            // Вибрация
-            if (tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred('success');
-            }
-        } else {
+            if (response.ok) {
+                const data = await response.json();
+                // После успешной регистрации проверяем и показываем правильную страницу
+                await checkAndShowPage();
+                
+                // Прокручиваем вверх
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                // Вибрация
+                if (tg.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+            } else {
             // Пытаемся получить детали ошибки
             let errorMessage = 'Ошибка при регистрации';
             try {
