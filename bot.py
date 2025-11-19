@@ -157,27 +157,53 @@ def load_admins():
         from google_sheets import _get_admins_list_sync
         admins = _get_admins_list_sync()
         
-        # Если Google Sheets недоступен или пуст, используем fallback из env
+        # Если Google Sheets недоступен или пуст, используем fallback
         if not admins:
-            logger.warning("Не удалось загрузить админов из Google Sheets, используем fallback из env")
+            logger.warning("Не удалось загрузить админов из Google Sheets, используем fallback")
+            # Сначала пробуем загрузить из файла
+            admins = []
+            try:
+                if os.path.exists(ADMINS_FILE):
+                    with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        file_admins = data.get('admins', [])
+                        admins.extend(file_admins)
+                        logger.info(f"Загружено {len(admins)} админов из файла")
+            except Exception as file_error:
+                logger.warning(f"Не удалось загрузить админов из файла: {file_error}")
+            
+            # Если в файле нет админов, используем env переменную
+            if not admins:
+                for username in ADMINS_LIST:
+                    admins.append({
+                        'username': username.lower(),
+                        'name': username,
+                        'telegram': username
+                    })
+        
+        return admins
+    except Exception as e:
+        logger.error(f"Ошибка загрузки админов: {e}")
+        # Fallback: сначала файл, потом env
+        admins = []
+        try:
+            if os.path.exists(ADMINS_FILE):
+                with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    file_admins = data.get('admins', [])
+                    admins.extend(file_admins)
+                    logger.info(f"Загружено {len(admins)} админов из файла (fallback)")
+        except Exception as file_error:
+            logger.warning(f"Не удалось загрузить админов из файла: {file_error}")
+        
+        # Если в файле нет админов, используем env переменную
+        if not admins:
             for username in ADMINS_LIST:
                 admins.append({
                     'username': username.lower(),
                     'name': username,
                     'telegram': username
                 })
-        
-        return admins
-    except Exception as e:
-        logger.error(f"Ошибка загрузки админов: {e}")
-        # Fallback на env переменную
-        admins = []
-        for username in ADMINS_LIST:
-            admins.append({
-                'username': username.lower(),
-                'name': username,
-                'telegram': username
-            })
         return admins
 
 async def save_admin_user_id(username, user_id):
