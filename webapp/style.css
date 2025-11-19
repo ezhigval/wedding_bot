@@ -4,6 +4,16 @@
     box-sizing: border-box;
 }
 
+body {
+    font-family: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
+    background: #F8F8F8;
+    color: #2F2F2F;
+    line-height: 1.6;
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
 /* Анимация шелковой ткани на фоне */
 .silk-background {
     position: fixed;
