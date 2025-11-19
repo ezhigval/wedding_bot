@@ -698,20 +698,20 @@ async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
     for i, inv in enumerate(invitations, 1):
         guests_list += f"{i}. {inv['name']} - @{inv['telegram_id']}\n"
     
-        guests_list += "\n" + "=" * 40 + "\n\n"
-        guests_list += (
-            "💬 <b>Введите данные гостя для отправки приглашения:</b>\n\n"
-            "Формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
-            "Пример:\n"
-            "<code>Иван Иванов - @ivan_ivanov</code>\n\n"
-            "Или просто скопируйте строку из списка выше."
-        )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        
-        await callback.message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
+    guests_list += "\n" + "=" * 40 + "\n\n"
+    guests_list += (
+        "💬 <b>Введите данные гостя для отправки приглашения:</b>\n\n"
+        "Формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
+        "Пример:\n"
+        "<code>Иван Иванов - @ivan_ivanov</code>\n\n"
+        "Или просто скопируйте строку из списка выше."
+    )
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
     
     # Устанавливаем состояние ожидания ввода
     await state.set_state(InvitationStates.waiting_guest_selection)
