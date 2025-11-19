@@ -42,7 +42,8 @@ def get_google_sheets_client():
         return None
 
 async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int] = None, 
-                             category: Optional[str] = None, side: Optional[str] = None):
+                             category: Optional[str] = None, side: Optional[str] = None, 
+                             user_id: Optional[int] = None):
     """
     Добавить гостя в Google Sheets
     
@@ -60,7 +61,7 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
     try:
         # Запускаем синхронный код в executor
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _add_guest_to_sheets_sync, first_name, last_name, age, category, side)
+        result = await loop.run_in_executor(None, _add_guest_to_sheets_sync, first_name, last_name, age, category, side, user_id)
         return result
         
     except Exception as e:
@@ -68,7 +69,8 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
         return False
 
 def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int] = None, 
-                              category: Optional[str] = None, side: Optional[str] = None):
+                              category: Optional[str] = None, side: Optional[str] = None, 
+                              user_id: Optional[int] = None):
     """Синхронная функция для добавления/обновления гостя в Google Sheets"""
     try:
         client = get_google_sheets_client()
@@ -97,10 +99,11 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                         break
             
             if found_row:
-                # Гость уже существует - обновляем столбцы C, D, E
+                # Гость уже существует - обновляем столбцы C, D, E, F
                 # Столбец C = индекс 3 (подтверждение)
                 # Столбец D = индекс 4 (Родство/Категория)
                 # Столбец E = индекс 5 (Сторона)
+                # Столбец F = индекс 6 (user_id)
                 worksheet.update_cell(found_row, 3, "ДА")  # Столбец C - Подтверждение
                 
                 # Обновляем Родство (столбец D) если передано
@@ -111,7 +114,11 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                 if side:
                     worksheet.update_cell(found_row, 5, side)  # Столбец E - Сторона
                 
-                logger.info(f"Гость {full_name} найден в строке {found_row}, обновлено подтверждение на 'ДА' и данные (родство: {category}, сторона: {side})")
+                # Обновляем user_id (столбец F) если передан
+                if user_id:
+                    worksheet.update_cell(found_row, 6, str(user_id))  # Столбец F - user_id
+                
+                logger.info(f"Гость {full_name} найден в строке {found_row}, обновлено подтверждение на 'ДА' и данные (родство: {category}, сторона: {side}, user_id: {user_id})")
                 return True
             else:
                 # Гость не найден - ищем первую свободную строку (где столбец A пустой)
@@ -154,11 +161,12 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                     str(age) if age else "", # Столбец B - Возраст
                     "ДА",                   # Столбец C - Подтверждение (чекбокс)
                     category if category else "", # Столбец D - Категория
-                    side if side else ""    # Столбец E - Сторона
+                    side if side else "",   # Столбец E - Сторона
+                    str(user_id) if user_id else ""  # Столбец F - user_id
                 ]
                 
                 # Обновляем строку используя update вместо append_row
-                worksheet.update(f'A{empty_row}:E{empty_row}', [row_data])
+                worksheet.update(f'A{empty_row}:F{empty_row}', [row_data])
                 logger.info(f"Гость {full_name} добавлен в Google Sheets в строку {empty_row} (первая свободная строка)")
                 return True
                 
@@ -191,14 +199,15 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                 if empty_row is None:
                     empty_row = len(all_values) + 1
                 
-                row_data = [
-                    full_name,              # Столбец A - Имя и Фамилия
-                    str(age) if age else "", # Столбец B - Возраст
-                    "ДА",                   # Столбец C - Подтверждение (чекбокс)
-                    category if category else "", # Столбец D - Категория
-                    side if side else ""    # Столбец E - Сторона
-                ]
-                worksheet.update(f'A{empty_row}:E{empty_row}', [row_data])
+                    row_data = [
+                        full_name,              # Столбец A - Имя и Фамилия
+                        str(age) if age else "", # Столбец B - Возраст
+                        "ДА",                   # Столбец C - Подтверждение (чекбокс)
+                        category if category else "", # Столбец D - Категория
+                        side if side else "",   # Столбец E - Сторона
+                        str(user_id) if user_id else ""  # Столбец F - user_id
+                    ]
+                    worksheet.update(f'A{empty_row}:F{empty_row}', [row_data])
                 logger.info(f"Гость {full_name} добавлен в Google Sheets в строку {empty_row} (fallback)")
                 return True
             except Exception as fallback_error:
@@ -668,3 +677,237 @@ def _get_timeline_sync() -> List[Dict[str, str]]:
         import traceback
         logger.error(traceback.format_exc())
         return []
+
+# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ГОСТЯМИ (ТОЛЬКО GOOGLE SHEETS) ==========
+
+async def check_guest_registration(user_id: int) -> bool:
+    """
+    Проверить, зарегистрирован ли гость по user_id
+    
+    Args:
+        user_id: Telegram user_id
+        
+    Returns:
+        True если гость зарегистрирован (столбец C = "ДА" и столбец F = user_id)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _check_guest_registration_sync, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка проверки регистрации гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _check_guest_registration_sync(user_id: int) -> bool:
+    """Синхронная функция для проверки регистрации гостя"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Ищем строку с user_id в столбце F (индекс 5) и подтверждением "ДА" в столбце C (индекс 2)
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 5:  # Проверяем, что есть столбец F
+                user_id_cell = row[5].strip() if row[5] else ""  # Столбец F (индекс 5)
+                confirmation = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C (индекс 2)
+                
+                if user_id_cell == str(user_id) and confirmation.upper() == "ДА":
+                    logger.info(f"Гость с user_id {user_id} найден и зарегистрирован (строка {row_idx})")
+                    return True
+        
+        logger.info(f"Гость с user_id {user_id} не найден или не подтвердил участие")
+        return False
+    except Exception as e:
+        logger.error(f"Ошибка проверки регистрации: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+async def get_all_guests_from_sheets() -> List[Dict]:
+    """
+    Получить список всех зарегистрированных гостей из Google Sheets
+    
+    Returns:
+        Список словарей с информацией о гостях:
+        [{'first_name': str, 'last_name': str, 'username': str, 'user_id': str, 'category': str, 'side': str}, ...]
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_all_guests_from_sheets_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка получения списка гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+def _get_all_guests_from_sheets_sync() -> List[Dict]:
+    """Синхронная функция для получения списка всех гостей"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        guests = []
+        for row in all_values:
+            if len(row) > 0 and row[0].strip():  # Проверяем, что есть имя
+                full_name = row[0].strip()
+                confirmation = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C
+                
+                # Берем только тех, кто подтвердил участие (столбец C = "ДА")
+                if confirmation.upper() == "ДА":
+                    # Парсим имя и фамилию
+                    name_parts = full_name.split(maxsplit=1)
+                    first_name = name_parts[0] if name_parts else ""
+                    last_name = name_parts[1] if len(name_parts) > 1 else ""
+                    
+                    # Получаем дополнительные данные
+                    category = row[3].strip() if len(row) > 3 and row[3] else ""
+                    side = row[4].strip() if len(row) > 4 and row[4] else ""
+                    user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+                    
+                    guests.append({
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'username': "",  # Username не хранится в таблице, можно добавить столбец G если нужно
+                        'user_id': user_id,
+                        'category': category,
+                        'side': side
+                    })
+        
+        return guests
+    except Exception as e:
+        logger.error(f"Ошибка получения списка гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+async def get_guests_count_from_sheets() -> int:
+    """
+    Получить количество зарегистрированных гостей из Google Sheets
+    
+    Returns:
+        Количество гостей со статусом "ДА" в столбце C
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return 0
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_guests_count_from_sheets_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка получения количества гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return 0
+
+def _get_guests_count_from_sheets_sync() -> int:
+    """Синхронная функция для получения количества гостей"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return 0
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        count = 0
+        for row in all_values:
+            if len(row) > 2 and row[2]:  # Проверяем столбец C (подтверждение)
+                confirmation = row[2].strip().upper()
+                if confirmation == "ДА":
+                    count += 1
+        
+        return count
+    except Exception as e:
+        logger.error(f"Ошибка получения количества гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return 0
+
+async def cancel_guest_registration_by_user_id(user_id: int) -> bool:
+    """
+    Отменить регистрацию гостя по user_id (установить столбец C в "НЕТ")
+    
+    Args:
+        user_id: Telegram user_id
+        
+    Returns:
+        True если операция успешна
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _cancel_guest_registration_by_user_id_sync, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка отмены регистрации гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _cancel_guest_registration_by_user_id_sync(user_id: int) -> bool:
+    """Синхронная функция для отмены регистрации гостя по user_id"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Ищем строку с user_id в столбце F (индекс 5)
+        found_row = None
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 5:  # Проверяем, что есть столбец F
+                user_id_cell = row[5].strip() if row[5] else ""
+                if user_id_cell == str(user_id):
+                    found_row = row_idx
+                    break
+        
+        if found_row:
+            # Обновляем столбец C на "НЕТ"
+            worksheet.update_cell(found_row, 3, "НЕТ")  # Столбец C - Подтверждение
+            logger.info(f"Регистрация гостя с user_id {user_id} отменена (строка {found_row})")
+            return True
+        else:
+            logger.warning(f"Гость с user_id {user_id} не найден в Google Sheets")
+            return False
+    except Exception as e:
+        logger.error(f"Ошибка отмены регистрации: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False

@@ -11,9 +11,12 @@ import hashlib
 import hmac
 import urllib.parse
 
-from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
-from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count, delete_guest
-from google_sheets import add_guest_to_sheets, cancel_invitation, get_timeline
+from config import BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
+from google_sheets import (
+    add_guest_to_sheets, cancel_invitation, get_timeline,
+    check_guest_registration, get_all_guests_from_sheets, 
+    get_guests_count_from_sheets, cancel_guest_registration_by_user_id
+)
 import traceback
 import logging
 
@@ -96,14 +99,15 @@ async def check_registration(request):
             return web.json_response({'registered': False})
         
         user_id = int(user_id)
-        guest = await get_guest(user_id)
+        registered = await check_guest_registration(user_id)
         
         return web.json_response({
-            'registered': guest is not None
+            'registered': registered
         })
     except Exception as e:
-        import logging
-        logging.error(f"Error in check_registration: {e}")
+        logger.error(f"Error in check_registration: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return web.json_response({'registered': False})
 
 def verify_telegram_webapp_data(init_data):
@@ -185,32 +189,20 @@ async def register_guest(request):
                 # Не блокируем регистрацию, так как у нас есть userId
                 # Это безопасно, так как userId - это уникальный идентификатор от Telegram
         
-        # Сохранение основного гостя в базу данных
-        try:
-            await add_guest(
-                user_id=user_id,
-                first_name=first_name,
-                last_name=last_name,
-                username=username
-            )
-        except Exception as db_error:
-            logger.error(f"Ошибка сохранения в БД: {db_error}")
-            logger.error(traceback.format_exc())
-            return web.json_response({'error': f'Ошибка сохранения: {str(db_error)}'}, status=500)
-        
         # Получаем данные основного гостя из запроса
         main_guest_data = guests_list[0] if guests_list else {}
         category = main_guest_data.get('category') or data.get('category')
         side = main_guest_data.get('side') or data.get('side')
         
-        # Добавляем в Google Sheets (асинхронно, не блокируем ответ)
+        # Добавляем в Google Sheets (единственный источник данных)
         try:
             result = await add_guest_to_sheets(
                 first_name=first_name,
                 last_name=last_name,
                 age=None,  # Пока не собираем возраст
                 category=category,
-                side=side
+                side=side,
+                user_id=user_id  # Сохраняем user_id в столбец F
             )
             if result:
                 logger.info(f"Гость {first_name} {last_name} успешно добавлен в Google Sheets")
@@ -237,9 +229,9 @@ async def register_guest(request):
             logger.error(traceback.format_exc())
             # Не блокируем ответ, так как это не критично
         
-        # Получаем количество гостей (вне блока try-except, чтобы всегда была определена)
+        # Получаем количество гостей из Google Sheets
         try:
-            guests_count = await get_guests_count()
+            guests_count = await get_guests_count_from_sheets()
         except Exception as count_error:
             logger.error(f"Ошибка получения количества гостей: {count_error}")
             guests_count = 0  # Используем значение по умолчанию
@@ -287,35 +279,40 @@ async def cancel_guest_registration(request):
             logger.error("Недостаточно данных для отмены: user_id отсутствует")
             return web.json_response({'error': 'Недостаточно данных'}, status=400)
         
-        # Получаем данные гостя перед удалением
-        guest = await get_guest(user_id)
-        if not guest:
+        user_id = int(user_id)
+        
+        # Получаем данные гостя из Google Sheets перед отменой
+        guests = await get_all_guests_from_sheets()
+        guest_info = None
+        for guest in guests:
+            if guest.get('user_id') == str(user_id):
+                guest_info = guest
+                break
+        
+        if not guest_info:
             return web.json_response({'error': 'Гость не найден'}, status=404)
         
-        first_name, last_name, username = guest[0], guest[1], guest[2]
-        
-        # Удаляем из базы данных
-        try:
-            await delete_guest(user_id)
-            logger.info(f"Гость {first_name} {last_name} удален из БД")
-        except Exception as db_error:
-            logger.error(f"Ошибка удаления из БД: {db_error}")
-            logger.error(traceback.format_exc())
-            return web.json_response({'error': f'Ошибка удаления: {str(db_error)}'}, status=500)
+        first_name = guest_info.get('first_name', '')
+        last_name = guest_info.get('last_name', '')
         
         # Обновляем Google Sheets - ставим "НЕТ" в столбец C
         try:
-            await cancel_invitation(first_name, last_name)
+            result = await cancel_guest_registration_by_user_id(user_id)
+            if not result:
+                logger.warning(f"Не удалось отменить регистрацию для user_id {user_id}")
+                return web.json_response({'error': 'Не удалось отменить регистрацию'}, status=500)
+            logger.info(f"Регистрация гостя {first_name} {last_name} (user_id: {user_id}) отменена в Google Sheets")
         except Exception as sheets_error:
-            logger.warning(f"Ошибка обновления Google Sheets при отмене (не критично): {sheets_error}")
+            logger.error(f"Ошибка обновления Google Sheets при отмене: {sheets_error}")
+            logger.error(traceback.format_exc())
+            return web.json_response({'error': f'Ошибка отмены регистрации: {str(sheets_error)}'}, status=500)
         
-        guests_count = await get_guests_count()
+        guests_count = await get_guests_count_from_sheets()
         
         # Отправляем уведомление админам
-        username_text = f" @{username}" if username else ""
         notification_text = (
             f"❌ <b>Отмена регистрации</b>\n\n"
-            f"👤 {first_name} {last_name}{username_text}\n"
+            f"👤 {first_name} {last_name}\n"
             f"отменил(а) присутствие на свадьбе\n\n"
             f"📊 Всего гостей: {guests_count}"
         )
@@ -339,53 +336,74 @@ async def save_questionnaire(request):
         food = data.get('food', [])
         alcohol = data.get('alcohol', '')
         
-        # Здесь можно добавить сохранение в отдельную таблицу
+        if not user_id:
+            return web.json_response({'error': 'Недостаточно данных'}, status=400)
+        
+        user_id = int(user_id)
+        
+        # Получаем данные гостя из Google Sheets
+        guests = await get_all_guests_from_sheets()
+        guest_info = None
+        for guest in guests:
+            if guest.get('user_id') == str(user_id):
+                guest_info = guest
+                break
+        
+        if not guest_info:
+            return web.json_response({'error': 'Гость не найден'}, status=404)
+        
+        # Здесь можно добавить сохранение в отдельную таблицу Google Sheets
         # Пока просто возвращаем успех
         
-        guest = await get_guest(user_id)
-        if guest:
-            first_name, last_name, _ = guest
-            guests_count = await get_guests_count()
-            
-            return web.json_response({
-                'success': True,
-                'firstName': first_name,
-                'lastName': last_name,
-                'guestsCount': guests_count
-            })
-        else:
-            return web.json_response({'error': 'Гость не найден'}, status=404)
+        first_name = guest_info.get('first_name', '')
+        last_name = guest_info.get('last_name', '')
+        guests_count = await get_guests_count_from_sheets()
+        
+        return web.json_response({
+            'success': True,
+            'firstName': first_name,
+            'lastName': last_name,
+            'guestsCount': guests_count
+        })
     except Exception as e:
+        logger.error(f"Ошибка в save_questionnaire: {e}")
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
 async def get_guests_list(request):
     """Получить список гостей"""
     try:
-        guests = await get_all_guests()
+        guests = await get_all_guests_from_sheets()
         return web.json_response({
             'guests': [
                 {
-                    'firstName': g[0],
-                    'lastName': g[1],
-                    'username': g[2],
-                    'confirmedAt': g[3]
+                    'firstName': g.get('first_name', ''),
+                    'lastName': g.get('last_name', ''),
+                    'username': g.get('username', ''),
+                    'user_id': g.get('user_id', ''),
+                    'category': g.get('category', ''),
+                    'side': g.get('side', '')
                 }
                 for g in guests
             ],
             'count': len(guests)
         })
     except Exception as e:
+        logger.error(f"Ошибка в get_guests_list: {e}")
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
 async def get_stats(request):
     """Получить статистику"""
     try:
-        guests_count = await get_guests_count()
+        guests_count = await get_guests_count_from_sheets()
         return web.json_response({
             'guestsCount': guests_count,
             'weddingDate': WEDDING_DATE.strftime('%Y-%m-%d')
         })
     except Exception as e:
+        logger.error(f"Ошибка в get_stats: {e}")
+        logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
 async def get_timeline_endpoint(request):

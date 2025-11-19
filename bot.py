@@ -11,13 +11,11 @@ from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID,
 import json
 import os
 from utils import format_wedding_date
-from database import (
-    init_db, get_all_guests, get_guests_count,
-    get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
-    init_default_mappings, delete_guest
-)
 from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, get_group_management_keyboard
-from google_sheets import get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets
+from google_sheets import (
+    get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
+    get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id
+)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -46,15 +44,8 @@ class GroupManagementStates(StatesGroup):
     waiting_remove_member = State()
 
 async def get_user_display_name(user):
-    """Получает имя пользователя из таблицы соответствия или из Telegram"""
-    # Сначала проверяем таблицу соответствия
-    if user.username:
-        mapped_name = await get_name_by_username(user.username)
-        if mapped_name:
-            first_name, last_name = mapped_name
-            return f"{first_name} {last_name}"
-    
-    # Если нет в таблице, используем имя из Telegram
+    """Получает имя пользователя из Telegram"""
+    # Используем имя из Telegram (name_mapping больше не используется, все в Google Sheets)
     if user.first_name:
         if user.last_name:
             return f"{user.first_name} {user.last_name}"
@@ -452,8 +443,8 @@ async def admin_stats(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
-    guests_count = await get_guests_count()
-    guests = await get_all_guests()
+    guests_count = await get_guests_count_from_sheets()
+    guests = await get_all_guests_from_sheets()
     
     stats_text = f"""
 📊 <b>Статистика</b>
@@ -493,7 +484,10 @@ async def admin_guests_list(callback: CallbackQuery):
         return
     
     guests_text = "📋 <b>Список всех гостей:</b>\n\n"
-    for i, (first_name, last_name, username, confirmed_at) in enumerate(guests, 1):
+    for i, guest in enumerate(guests, 1):
+        first_name = guest.get('first_name', '')
+        last_name = guest.get('last_name', '')
+        username = guest.get('username', '')
         username_text = f" (@{username})" if username else ""
         guests_text += f"{i}. {first_name} {last_name}{username_text}\n"
     
@@ -530,99 +524,7 @@ async def admin_reload(callback: CallbackQuery):
     )
     await callback.answer("✅ Информация отправлена")
 
-@dp.message(Command("names"))
-async def cmd_names(message: Message):
-    """Управление таблицей соответствия имен (только для администратора)"""
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет доступа к этой команде.")
-        return
-    
-    mappings = await get_all_name_mappings()
-    
-    if not mappings:
-        await message.answer("📋 Таблица соответствия пуста.\n\nИспользуйте /addname для добавления.")
-        return
-    
-    text = "📋 <b>Таблица соответствия username → имя:</b>\n\n"
-    for username, first_name, last_name in mappings:
-        text += f"@{username} → {first_name} {last_name}\n"
-    
-    text += "\n💡 Команды:\n"
-    text += "/addname username имя фамилия - добавить\n"
-    text += "/delname username - удалить\n"
-    text += "/importnames - импорт из Google таблицы (скоро)"
-    
-    await message.answer(text, parse_mode="HTML")
-
-# Состояния для добавления имени
-class NameMappingStates(StatesGroup):
-    waiting_username = State()
-    waiting_name = State()
-
-@dp.message(Command("addname"))
-async def cmd_addname(message: Message, state: FSMContext):
-    """Добавление соответствия username → имя"""
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет доступа к этой команде.")
-        return
-    
-    # Парсим команду: /addname username имя фамилия
-    parts = message.text.split(maxsplit=3)
-    if len(parts) >= 4:
-        username = parts[1].replace('@', '').strip()
-        first_name = parts[2].strip()
-        last_name = parts[3].strip()
-        
-        await add_name_mapping(username, first_name, last_name)
-        await message.answer(
-            f"✅ Добавлено: @{username} → {first_name} {last_name}"
-        )
-        await state.clear()
-    else:
-        await message.answer(
-            "📝 Формат команды:\n"
-            "/addname username имя фамилия\n\n"
-            "Пример:\n"
-            "/addname ezhigval Валентин Ежов"
-        )
-
-@dp.message(Command("delname"))
-async def cmd_delname(message: Message):
-    """Удаление соответствия username → имя"""
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет доступа к этой команде.")
-        return
-    
-    parts = message.text.split(maxsplit=1)
-    if len(parts) >= 2:
-        username = parts[1].replace('@', '').strip()
-        await delete_name_mapping(username)
-        await message.answer(f"✅ Удалено соответствие для @{username}")
-    else:
-        await message.answer(
-            "📝 Формат команды:\n"
-            "/delname username\n\n"
-            "Пример:\n"
-            "/delname ezhigval"
-        )
-
-@dp.message(Command("importnames"))
-async def cmd_importnames(message: Message):
-    """Импорт из Google таблицы (будет реализовано позже)"""
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет доступа к этой команде.")
-        return
-    
-    await message.answer(
-        "📊 <b>Импорт из Google таблицы</b>\n\n"
-        "Эта функция будет реализована позже.\n\n"
-        "Планируемый формат:\n"
-        "1. Подключение к Google Sheets API\n"
-        "2. Импорт данных из таблицы\n"
-        "3. Автоматическое обновление соответствий\n\n"
-        "Пока используйте команду /addname для ручного добавления.",
-        parse_mode="HTML"
-    )
+# Команды name_mapping удалены - все данные теперь в Google Sheets
 
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
@@ -646,27 +548,16 @@ async def admin_names(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
-    mappings = await get_all_name_mappings()
-    
-    if not mappings:
-        await callback.message.answer(
-            "📋 Таблица соответствия пуста.\n\n"
-            "Используйте /addname для добавления.\n"
-            "Пример: /addname ezhigval Валентин Ежов"
-        )
-    else:
-        text = "📋 <b>Таблица соответствия:</b>\n\n"
-        for username, first_name, last_name in mappings:
-            text += f"@{username} → {first_name} {last_name}\n"
-        
-        text += "\n💡 Команды:\n"
-        text += "/addname username имя фамилия\n"
-        text += "/delname username\n"
-        text += "/names - полный список"
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
     ])
+    
+    text = (
+        "📋 <b>Управление именами</b>\n\n"
+        "Все данные теперь хранятся в Google Sheets.\n\n"
+        "Таблица соответствия имен больше не используется.\n"
+        "Имена гостей берутся из Google Sheets или из Telegram профиля."
+    )
     
     await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
@@ -820,8 +711,8 @@ async def admin_reset_me(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
-    # Удаляем данные о регистрации администратора
-    await delete_guest(callback.from_user.id)
+    # Отменяем регистрацию администратора в Google Sheets
+    await cancel_guest_registration_by_user_id(callback.from_user.id)
     
     await callback.message.answer(
         "✅ <b>Данные сброшены!</b>\n\n"
@@ -1231,10 +1122,8 @@ async def init_bot():
         logger.error(f"❌ Ошибка при создании бота: {e}")
         return None
     
-    # Инициализация базы данных
-    await init_db()
-    await init_default_mappings()  # Инициализация начальных соответствий
-    logger.info("✅ База данных инициализирована")
+    # База данных больше не используется - все данные в Google Sheets
+    logger.info("✅ Бот использует Google Sheets как единственный источник данных")
     
     logger.info("✅ Бот инициализирован")
     logger.info(f"💒 Свадьба: {GROOM_NAME} и {BRIDE_NAME}")
