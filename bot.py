@@ -463,7 +463,13 @@ async def admin_stats(callback: CallbackQuery):
     if len(guests) > 5:
         stats_text += f"\n... и еще {len(guests) - 5} гостей"
     
-    await callback.message.answer(stats_text, parse_mode="HTML")
+    # Добавляем кнопку "Вернуться"
+    from keyboards import get_admin_keyboard
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(stats_text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_guests")
@@ -487,7 +493,12 @@ async def admin_guests_list(callback: CallbackQuery):
     
     guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
     
-    await callback.message.answer(guests_text, parse_mode="HTML")
+    # Добавляем кнопку "Вернуться"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_reload")
@@ -497,6 +508,10 @@ async def admin_reload(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
     await callback.message.answer(
         f"🔄 <b>Информация о Mini App</b>\n\n"
         f"Mini App работает автоматически.\n"
@@ -504,6 +519,7 @@ async def admin_reload(callback: CallbackQuery):
         f"1. Измените файлы в папке webapp/\n"
         f"2. Перезапустите сервер командой /restart (если доступно)\n\n"
         f"🌐 URL: {WEBAPP_URL}",
+        reply_markup=keyboard,
         parse_mode="HTML"
     )
     await callback.answer("✅ Информация отправлена")
@@ -602,6 +618,21 @@ async def cmd_importnames(message: Message):
         parse_mode="HTML"
     )
 
+@dp.callback_query(F.data == "admin_back")
+async def admin_back(callback: CallbackQuery):
+    """Возврат в главное меню админа"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.message.answer(
+        "👋 <b>Главное меню</b>\n\n"
+        "Выберите действие:",
+        reply_markup=get_admin_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
 @dp.callback_query(F.data == "admin_names")
 async def admin_names(callback: CallbackQuery):
     """Управление таблицей соответствия имен"""
@@ -626,9 +657,12 @@ async def admin_names(callback: CallbackQuery):
         text += "/addname username имя фамилия\n"
         text += "/delname username\n"
         text += "/names - полный список"
-        
-        await callback.message.answer(text, parse_mode="HTML")
     
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_send_invite")
@@ -731,18 +765,7 @@ async def process_guest_selection(message: Message, state: FSMContext):
     # Создаем клавиатуру с кнопкой для отправки
     keyboard, _ = get_send_invitation_keyboard(guest_name, telegram_id)
     
-    # Отправляем сообщение с текстом и кнопкой
-    await message.answer(
-        f"💌 <b>Приглашение для {guest_name}</b>\n\n"
-        f"{invitation_text}\n\n"
-        f"📱 Телеграм: @{telegram_id}\n\n"
-        f"Нажмите кнопку ниже, чтобы открыть диалог с этим человеком:",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
-    
-    # Также отправляем готовый текст для копирования с кнопкой для бота
-    # Создаем кнопку для открытия бота
+    # Создаем клавиатуру с кнопкой для отправки приглашения
     bot_invite_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="💒 Открыть приглашение",
@@ -750,13 +773,24 @@ async def process_guest_selection(message: Message, state: FSMContext):
         )]
     ])
     
+    # Отправляем сообщение с текстом приглашения и кнопками
     await message.answer(
-        f"📋 <b>Готовый текст для отправки гостю:</b>\n\n"
+        f"💌 <b>Приглашение для {guest_name}</b>\n\n"
+        f"📋 <b>Готовый текст:</b>\n"
         f"<code>{invitation_text}</code>\n\n"
-        f"После открытия диалога:\n"
-        f"1. Скопируйте текст выше\n"
-        f"2. Отправьте сообщение гостю\n"
-        f"3. Добавьте кнопку 'Открыть приглашение' (используйте кнопку ниже как пример)",
+        f"📱 Телеграм: @{telegram_id}\n\n"
+        f"<b>Инструкция:</b>\n"
+        f"1. Нажмите '💬 Открыть диалог' - откроется диалог с @{telegram_id}\n"
+        f"2. Скопируйте текст выше и отправьте гостю\n"
+        f"3. Добавьте кнопку '💒 Открыть приглашение' (используйте кнопку ниже)",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    # Отправляем отдельное сообщение с кнопкой для примера
+    await message.answer(
+        f"📋 <b>Пример кнопки для гостя:</b>\n\n"
+        f"Используйте эту кнопку в сообщении гостю:",
         reply_markup=bot_invite_keyboard,
         parse_mode="HTML"
     )
