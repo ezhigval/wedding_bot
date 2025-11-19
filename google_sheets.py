@@ -57,6 +57,21 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
         return False
     
     try:
+        import asyncio
+        
+        # Запускаем синхронный код в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _add_guest_to_sheets_sync, first_name, last_name, age, category, side)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Ошибка добавления гостя в Google Sheets: {e}")
+        return False
+
+def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int] = None, 
+                              category: Optional[str] = None, side: Optional[str] = None):
+    """Синхронная функция для добавления гостя в Google Sheets"""
+    try:
         client = get_google_sheets_client()
         if not client:
             return False
@@ -64,10 +79,6 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
         # Открываем таблицу
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
         worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
-        
-        # Находим первую свободную строку
-        all_values = worksheet.get_all_values()
-        next_row = len(all_values) + 1
         
         # Подготавливаем данные
         row_data = [
@@ -86,5 +97,7 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
         
     except Exception as e:
         logger.error(f"Ошибка добавления гостя в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
