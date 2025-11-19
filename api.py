@@ -14,6 +14,9 @@ from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GRO
 from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count
 from google_sheets import add_guest_to_sheets
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Импортируем функцию уведомлений (будет доступна после инициализации бота)
 _notify_admins_func = None

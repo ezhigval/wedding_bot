@@ -21,7 +21,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout)
     ]
-), WEBAPP_PHOTO_PATH
+)
 
 logger = logging.getLogger(__name__)
 
