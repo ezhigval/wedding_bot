@@ -37,6 +37,10 @@ WEBAPP_PATH = "webapp"
 GROOM_TELEGRAM = os.getenv("GROOM_TELEGRAM", "ezhigval")
 BRIDE_TELEGRAM = os.getenv("BRIDE_TELEGRAM", "mrfilmpro")
 
+# Ссылка на группу для гостей
+GROUP_LINK = os.getenv("GROUP_LINK", "https://t.me/+ow7ttcFCmoUzYzRi")
+GROUP_ID = os.getenv("GROUP_ID", "")  # ID группы (можно получить через @userinfobot или API)
+
 # Файл с админами
 ADMINS_FILE = "admins.json"
 

@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST, GROUP_LINK, GROUP_ID
 import json
 import os
 from utils import format_wedding_date
@@ -16,7 +16,7 @@ from database import (
     get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
     init_default_mappings, delete_guest
 )
-from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard
+from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, get_group_management_keyboard
 from google_sheets import get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets
 
 # Настройка логирования
@@ -38,6 +38,12 @@ class RegistrationStates(StatesGroup):
 # Состояния для рассылки приглашений
 class InvitationStates(StatesGroup):
     waiting_guest_selection = State()
+
+# Состояния для управления группой
+class GroupManagementStates(StatesGroup):
+    waiting_message = State()
+    waiting_add_member = State()
+    waiting_remove_member = State()
 
 async def get_user_display_name(user):
     """Получает имя пользователя из таблицы соответствия или из Telegram"""

@@ -1351,6 +1351,63 @@ body {
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
 
+/* Группа для гостей */
+.group-section {
+    margin: 20px 0;
+}
+
+.group-section .section-card {
+    background: rgba(255, 233, 173, 0.85);
+    backdrop-filter: blur(3px);
+    text-align: center;
+}
+
+.group-description {
+    font-size: 16px;
+    color: #2F2F2F;
+    line-height: 1.6;
+    margin-bottom: 25px;
+    font-family: 'Cormorant Garamond', 'Georgia', serif;
+}
+
+.btn-group-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 18px 40px;
+    background: linear-gradient(135deg, #5A7C52 0%, #4A6B42 100%);
+    color: white;
+    text-decoration: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: 'Playfair Display', 'Georgia', serif;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.3);
+    transition: all 0.3s ease;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-group-link:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(90, 124, 82, 0.4);
+    background: linear-gradient(135deg, #4A6B42 0%, #5A7C52 100%);
+}
+
+.btn-group-link:active {
+    transform: translateY(-1px);
+}
+
+.btn-group-icon {
+    font-size: 24px;
+}
+
+.btn-group-text {
+    font-size: 18px;
+}
+
 /* Место проведения */
 .venue-info {
     text-align: center;

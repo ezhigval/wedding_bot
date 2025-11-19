@@ -26,8 +26,20 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
         [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
+        [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+    ])
+    return keyboard
+
+def get_group_management_keyboard():
+    """Клавиатура для управления группой"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Отправить сообщение в группу", callback_data="group_send_message")],
+        [InlineKeyboardButton(text="➕ Добавить участника", callback_data="group_add_member")],
+        [InlineKeyboardButton(text="➖ Удалить участника", callback_data="group_remove_member")],
+        [InlineKeyboardButton(text="👥 Список участников", callback_data="group_list_members")],
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
     ])
     return keyboard
 
