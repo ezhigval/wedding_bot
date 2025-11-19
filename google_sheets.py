@@ -575,3 +575,57 @@ def _save_admin_to_sheets_sync(username: str, user_id: int):
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+async def get_timeline() -> List[Dict[str, str]]:
+    """
+    Получить тайминг мероприятия из Google Sheets (вкладка "Публичная План-сетка")
+    
+    Returns:
+        Список словарей с ключами 'time' и 'event'
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_timeline_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка получения тайминга из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+def _get_timeline_sync() -> List[Dict[str, str]]:
+    """Синхронная функция для получения тайминга из Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_TIMELINE_SHEET_NAME)
+        except Exception:
+            logger.warning(f"Вкладка '{GOOGLE_SHEETS_TIMELINE_SHEET_NAME}' не найдена")
+            return []
+        
+        # Получаем все данные (столбец A - время, столбец B - событие)
+        values = worksheet.get_all_values()
+        
+        timeline = []
+        for row in values:
+            if len(row) >= 2 and row[0].strip() and row[1].strip():
+                timeline.append({
+                    'time': row[0].strip(),
+                    'event': row[1].strip()
+                })
+        
+        return timeline
+    except Exception as e:
+        logger.error(f"Ошибка получения тайминга: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
