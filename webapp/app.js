@@ -241,11 +241,15 @@ checkRegistration().then(registered => {
     if (registered) {
         document.getElementById('rsvpSection').style.display = 'none';
         document.getElementById('confirmationSection').style.display = 'block';
+        document.getElementById('cancelSection').style.display = 'block';
         // Загружаем количество гостей
         fetch(`${CONFIG.apiUrl}/stats`)
             .then(r => r.json())
             .then(data => {
-                document.getElementById('guestsCount').textContent = data.guestsCount || 0;
+                const guestsCountEl = document.getElementById('guestsCount');
+                if (guestsCountEl) {
+                    guestsCountEl.textContent = data.guestsCount || 0;
+                }
             });
     }
 });
@@ -356,6 +360,63 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
 // Кнопка добавления гостя
 document.getElementById('addGuestBtn').addEventListener('click', addGuest);
 
+// Обработчик отмены приглашения
+document.getElementById('cancelInvitationBtn').addEventListener('click', async () => {
+    if (!confirm('Вы уверены, что не сможете прийти?')) {
+        return;
+    }
+    
+    const user = tg.initDataUnsafe?.user;
+    const userId = user?.id;
+    
+    if (!userId) {
+        tg.showAlert('Ошибка: не удалось получить данные пользователя.');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${CONFIG.apiUrl}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                userId: userId,
+                initData: tg.initData
+            })
+        });
+        
+        if (response.ok) {
+            // Показываем форму снова
+            document.getElementById('confirmationSection').style.display = 'none';
+            document.getElementById('cancelSection').style.display = 'none';
+            document.getElementById('rsvpSection').style.display = 'block';
+            document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+            
+            // Очищаем форму
+            document.getElementById('firstName').value = '';
+            document.getElementById('lastName').value = '';
+            document.getElementById('category').value = '';
+            document.getElementById('side').value = '';
+            guests = [];
+            renderGuests();
+            
+            tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
+            
+            // Вибрация
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred('warning');
+            }
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка при отмене приглашения');
+        }
+    } catch (error) {
+        console.error('Error canceling invitation:', error);
+        tg.showAlert(error.message || 'Ошибка при отмене приглашения. Попробуйте позже.');
+    }
+});
+
 // Настройка темы Telegram
 if (tg.colorScheme === 'dark') {
     document.body.style.background = '#1a1a1a';
@@ -365,4 +426,27 @@ if (tg.colorScheme === 'dark') {
 // Плавная прокрутка при загрузке
 window.addEventListener('load', () => {
     window.scrollTo(0, 0);
+    initScrollReveal();
 });
+
+// Инициализация анимаций появления при скролле
+function initScrollReveal() {
+    const revealItems = document.querySelectorAll('.scroll-reveal-item');
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('revealed');
+                // Опционально: отключаем наблюдение после появления
+                observer.unobserve(entry.target);
+            }
+        });
+    }, {
+        threshold: 0.1, // Элемент должен быть виден на 10%
+        rootMargin: '0px 0px -50px 0px' // Запускаем анимацию немного раньше
+    });
+    
+    revealItems.forEach(item => {
+        observer.observe(item);
+    });
+}

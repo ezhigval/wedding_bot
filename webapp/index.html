@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Свадьба Валентин и Мария</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Cormorant+Garamond:wght@300;400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Фон с анимацией шелковой ткани -->
+    <div class="silk-background"></div>
     <div class="app-container">
         <!-- Главная карточка с фото -->
         <section class="hero-section">
@@ -22,9 +27,9 @@
 
         <!-- Приветствие -->
         <section class="greeting-section">
-            <div class="section-card">
-                <h2 class="section-title">ДОРОГИЕ ГОСТИ!</h2>
-                <p class="greeting-text">
+            <div class="section-card scroll-reveal">
+                <h2 class="section-title scroll-reveal-item">ДОРОГИЕ ГОСТИ!</h2>
+                <p class="greeting-text scroll-reveal-item">
                     Один день в этом году будет для нас особенным и мы хотим провести его в кругу близких и друзей. 
                     С большим удовольствием приглашаем вас на знаменательный праздник - нашу свадьбу.
                 </p>
@@ -39,8 +44,8 @@
 
         <!-- Календарь и обратный отсчет -->
         <section class="calendar-section">
-            <div class="section-card">
-                <h2 class="section-title">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
+            <div class="section-card scroll-reveal">
+                <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
                 <div class="countdown-clock" id="countdownClock">
                     <!-- Первый ряд: месяцы и дни -->
                     <div class="clock-row">
@@ -95,9 +100,9 @@
 
         <!-- Форма подтверждения -->
         <section class="rsvp-section" id="rsvpSection">
-            <div class="section-card">
-                <h2 class="section-title">ПРИСУТСТВИЕ</h2>
-                <p class="rsvp-text">
+            <div class="section-card scroll-reveal">
+                <h2 class="section-title scroll-reveal-item">ПРИСУТСТВИЕ</h2>
+                <p class="rsvp-text scroll-reveal-item">
                     Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
                     Заполните форму ниже:
                 </p>
@@ -150,8 +155,8 @@
 
         <!-- Связаться с нами -->
         <section class="contact-section">
-            <div class="section-card">
-                <h2 class="section-title">СВЯЗАТЬСЯ С НАМИ</h2>
+            <div class="section-card scroll-reveal">
+                <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
                 <div class="contact-list">
                     <a href="#" class="contact-item" id="groomContact">
                         <span class="contact-name">Валентин</span>
@@ -162,14 +167,17 @@
                         <span class="contact-telegram" id="brideTelegram">@</span>
                     </a>
                 </div>
+                <div class="cancel-section" id="cancelSection" style="display: none;">
+                    <button type="button" class="btn-cancel" id="cancelInvitationBtn">Не смогу прийти</button>
+                </div>
             </div>
         </section>
 
         <!-- Заключение -->
         <section class="closing-section">
-            <div class="section-card">
-                <p class="closing-text">До скорой встречи</p>
-                <div class="couple-names-final" id="coupleNamesFinal">Валентин и Мария</div>
+            <div class="section-card scroll-reveal">
+                <p class="closing-text scroll-reveal-item">До скорой встречи</p>
+                <div class="couple-names-final scroll-reveal-item" id="coupleNamesFinal">Валентин и Мария</div>
                 <div class="heartbeat-line">
                     <svg viewBox="0 0 200 20" class="heartbeat-svg">
                         <path d="M0,10 Q50,5 100,10 T200,10" stroke="#5A7C52" stroke-width="2" fill="none"/>

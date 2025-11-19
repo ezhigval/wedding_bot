@@ -12,8 +12,8 @@ import hmac
 import urllib.parse
 
 from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM
-from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count
-from google_sheets import add_guest_to_sheets
+from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count, delete_guest
+from google_sheets import add_guest_to_sheets, cancel_invitation
 import traceback
 import logging
 
@@ -64,6 +64,7 @@ async def init_api():
     api.router.add_get('/config', get_config)
     api.router.add_get('/check', check_registration)
     api.router.add_post('/register', register_guest)
+    api.router.add_post('/cancel', cancel_guest_registration)
     api.router.add_post('/questionnaire', save_questionnaire)
     api.router.add_get('/guests', get_guests_list)
     api.router.add_get('/stats', get_stats)
@@ -200,13 +201,17 @@ async def register_guest(request):
         
         # Добавляем в Google Sheets (асинхронно, не блокируем ответ)
         try:
-            await add_guest_to_sheets(
+            result = await add_guest_to_sheets(
                 first_name=first_name,
                 last_name=last_name,
                 age=None,  # Пока не собираем возраст
                 category=category,
                 side=side
             )
+            if result:
+                logger.info(f"Гость {first_name} {last_name} успешно добавлен в Google Sheets")
+            else:
+                logger.warning(f"Не удалось добавить гостя {first_name} {last_name} в Google Sheets (возможно, нет credentials)")
             
             # Добавляем дополнительных гостей в Google Sheets
             for guest in guests_list[1:]:  # Пропускаем первого (основного гостя)
@@ -224,7 +229,9 @@ async def register_guest(request):
                         side=guest_side
                     )
         except Exception as sheets_error:
-            logger.warning(f"Ошибка добавления в Google Sheets (не критично): {sheets_error}")
+            logger.error(f"Ошибка добавления в Google Sheets: {sheets_error}")
+            logger.error(traceback.format_exc())
+            # Не блокируем ответ, так как это не критично
         
         guests_count = await get_guests_count()
         
@@ -246,6 +253,60 @@ async def register_guest(request):
         })
     except Exception as e:
         logger.error(f"Критическая ошибка в register_guest: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
+
+async def cancel_guest_registration(request):
+    """Отмена регистрации гостя"""
+    try:
+        data = await request.json()
+        user_id = data.get('userId')
+        init_data = data.get('initData', '')
+        
+        if not user_id:
+            logger.error("Недостаточно данных для отмены: user_id отсутствует")
+            return web.json_response({'error': 'Недостаточно данных'}, status=400)
+        
+        # Получаем данные гостя перед удалением
+        guest = await get_guest(user_id)
+        if not guest:
+            return web.json_response({'error': 'Гость не найден'}, status=404)
+        
+        first_name, last_name, username = guest[0], guest[1], guest[2]
+        
+        # Удаляем из базы данных
+        try:
+            await delete_guest(user_id)
+            logger.info(f"Гость {first_name} {last_name} удален из БД")
+        except Exception as db_error:
+            logger.error(f"Ошибка удаления из БД: {db_error}")
+            logger.error(traceback.format_exc())
+            return web.json_response({'error': f'Ошибка удаления: {str(db_error)}'}, status=500)
+        
+        # Обновляем Google Sheets - ставим "НЕТ" в столбец C
+        try:
+            await cancel_invitation(first_name, last_name)
+        except Exception as sheets_error:
+            logger.warning(f"Ошибка обновления Google Sheets при отмене (не критично): {sheets_error}")
+        
+        guests_count = await get_guests_count()
+        
+        # Отправляем уведомление админам
+        username_text = f" @{username}" if username else ""
+        notification_text = (
+            f"❌ <b>Отмена регистрации</b>\n\n"
+            f"👤 {first_name} {last_name}{username_text}\n"
+            f"отменил(а) присутствие на свадьбе\n\n"
+            f"📊 Всего гостей: {guests_count}"
+        )
+        await notify_admins(notification_text)
+        
+        return web.json_response({
+            'success': True,
+            'guestsCount': guests_count
+        })
+    except Exception as e:
+        logger.error(f"Критическая ошибка в cancel_guest_registration: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
 

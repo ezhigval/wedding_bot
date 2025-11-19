@@ -17,7 +17,7 @@ from database import (
     init_default_mappings, delete_guest
 )
 from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard
-from google_sheets import get_invitations_list, normalize_telegram_id
+from google_sheets import get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -151,48 +151,77 @@ async def cmd_help(message: Message):
     await message.answer(help_text, parse_mode="HTML")
 
 def load_admins():
-    """Загрузка списка админов из файла и env переменных"""
-    admins = []
-    
-    # Загружаем из env переменной
-    for username in ADMINS_LIST:
-        admins.append({
-            'username': username.lower(),
-            'name': username,
-            'telegram': username
-        })
-    
-    # Загружаем из файла (для сохранения user_id)
+    """Загрузка списка админов из Google Sheets (синхронная версия для использования в синхронном коде)"""
+    # Используем синхронную версию из google_sheets
     try:
-        if os.path.exists(ADMINS_FILE):
-            with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                file_admins = data.get('admins', [])
-                # Объединяем с env админами, сохраняя user_id из файла
-                for file_admin in file_admins:
-                    username = file_admin.get('username', '').lower()
-                    for env_admin in admins:
-                        if env_admin['username'] == username and 'user_id' in file_admin:
-                            env_admin['user_id'] = file_admin['user_id']
-                            break
-    except Exception as e:
-        logger.error(f"Ошибка загрузки админов из файла: {e}")
-    
-    return admins
-
-def save_admin_user_id(username, user_id):
-    """Сохранение user_id админа в файл"""
-    try:
-        admins = load_admins()
-        for admin in admins:
-            if admin.get('username') == username:
-                admin['user_id'] = user_id
-                break
+        from google_sheets import _get_admins_list_sync
+        admins = _get_admins_list_sync()
         
-        with open(ADMINS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({'admins': admins}, f, ensure_ascii=False, indent=2)
+        # Если Google Sheets недоступен или пуст, используем fallback из env
+        if not admins:
+            logger.warning("Не удалось загрузить админов из Google Sheets, используем fallback из env")
+            for username in ADMINS_LIST:
+                admins.append({
+                    'username': username.lower(),
+                    'name': username,
+                    'telegram': username
+                })
+        
+        return admins
+    except Exception as e:
+        logger.error(f"Ошибка загрузки админов: {e}")
+        # Fallback на env переменную
+        admins = []
+        for username in ADMINS_LIST:
+            admins.append({
+                'username': username.lower(),
+                'name': username,
+                'telegram': username
+            })
+        return admins
+
+async def save_admin_user_id(username, user_id):
+    """Сохранение user_id админа в Google Sheets"""
+    try:
+        # Сохраняем в Google Sheets
+        result = await save_admin_to_sheets(username, user_id)
+        if result:
+            logger.info(f"Сохранен user_id для админа {username} в Google Sheets: {user_id}")
+        else:
+            logger.warning(f"Не удалось сохранить админа {username} в Google Sheets, сохраняем в файл")
+            # Fallback: сохраняем в файл
+            try:
+                if os.path.exists(ADMINS_FILE):
+                    with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        admins = data.get('admins', [])
+                else:
+                    admins = []
+                
+                # Обновляем или добавляем админа
+                found = False
+                for admin in admins:
+                    if admin.get('username') == username.lower():
+                        admin['user_id'] = user_id
+                        found = True
+                        break
+                
+                if not found:
+                    admins.append({
+                        'username': username.lower(),
+                        'user_id': user_id
+                    })
+                
+                with open(ADMINS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump({'admins': admins}, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"Сохранен user_id для админа {username} в файл: {user_id}")
+            except Exception as file_error:
+                logger.error(f"Ошибка сохранения в файл: {file_error}")
     except Exception as e:
         logger.error(f"Ошибка сохранения user_id админа: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 def get_admin_user_ids():
     """Получить список user_id всех админов"""
@@ -223,29 +252,82 @@ async def notify_admins(message_text):
     
     if not admin_ids:
         logger.warning("Нет админов для отправки уведомлений")
+        logger.info(f"Список админов из env: {ADMINS_LIST}")
+        logger.info(f"Проверьте, что админы написали /start боту для сохранения их user_id")
         return
+    
+    logger.info(f"Отправка уведомления {len(admin_ids)} админам: {admin_ids}")
     
     for admin_id in admin_ids:
         try:
             await bot.send_message(admin_id, message_text, parse_mode="HTML")
+            logger.info(f"Уведомление отправлено админу {admin_id}")
         except Exception as e:
             logger.error(f"Ошибка отправки уведомления админу {admin_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
-# Сохраняем user_id админа при первом взаимодействии
+@dp.message(Command("set_me_admins"))
+async def cmd_set_me_admins(message: Message):
+    """Команда для регистрации админа"""
+    username = message.from_user.username
+    
+    if not username:
+        await message.answer(
+            "❌ <b>Ошибка</b>\n\n"
+            "У вас не установлен username в Telegram.\n"
+            "Пожалуйста, установите username в настройках Telegram и попробуйте снова.",
+            parse_mode="HTML"
+        )
+        return
+    
+    username_lower = username.lower()
+    
+    # Загружаем список админов из Google Sheets
+    try:
+        admins_list = await get_admins_list()
+        admin_usernames = [admin.get('username', '').lower() for admin in admins_list]
+        
+        # Проверяем, есть ли этот username в списке админов
+        if username_lower not in admin_usernames:
+            # Fallback: проверяем env переменную
+            if username_lower not in [admin.lower() for admin in ADMINS_LIST]:
+                await message.answer(
+                    "❌ <b>Доступ запрещен</b>\n\n"
+                    f"Ваш username (@{username}) не найден в списке администраторов.\n\n"
+                    "Проверьте, что ваш username добавлен во вкладку 'Админ бота' в Google Sheets.",
+                    parse_mode="HTML"
+                )
+                return
+    except Exception as e:
+        logger.error(f"Ошибка загрузки списка админов: {e}")
+        # Fallback на env переменную
+        if username_lower not in [admin.lower() for admin in ADMINS_LIST]:
+            await message.answer(
+                "❌ <b>Доступ запрещен</b>\n\n"
+                f"Ваш username (@{username}) не найден в списке администраторов.",
+                parse_mode="HTML"
+            )
+            return
+    
+    # Сохраняем user_id админа
+    await save_admin_user_id(username_lower, message.from_user.id)
+    
+    await message.answer(
+        "✅ <b>Вы успешно зарегистрированы как администратор!</b>\n\n"
+        f"Username: @{username}\n"
+        f"User ID: {message.from_user.id}\n\n"
+        "Теперь вы будете получать уведомления о регистрациях гостей.\n\n"
+        "Используйте /admin для доступа к панели управления.",
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"Админ @{username} (user_id: {message.from_user.id}) зарегистрирован через /set_me_admins")
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
     await state.clear()
-    
-    # Проверяем, является ли пользователь админом по username
-    if message.from_user.username:
-        admins = load_admins()
-        for admin in admins:
-            if admin.get('username') == message.from_user.username.lower():
-                # Сохраняем user_id админа
-                if 'user_id' not in admin or admin.get('user_id') != message.from_user.id:
-                    save_admin_user_id(message.from_user.username.lower(), message.from_user.id)
-                break
     
     # Получаем имя из таблицы соответствия или Telegram
     display_name = await get_user_display_name(message.from_user)

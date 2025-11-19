@@ -5,6 +5,7 @@ import os
 import json
 import logging
 from typing import List, Dict, Optional
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME
+from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -57,8 +58,6 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
         return False
     
     try:
-        import asyncio
-        
         # Запускаем синхронный код в executor
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _add_guest_to_sheets_sync, first_name, last_name, age, category, side)
@@ -141,9 +140,74 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
             worksheet.append_row(row_data)
             logger.info(f"Гость {full_name} добавлен в Google Sheets (fallback)")
             return True
-        
+            
     except Exception as e:
         logger.error(f"Ошибка добавления гостя в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+async def cancel_invitation(first_name: str, last_name: str):
+    """
+    Отменить приглашение - обновить столбец C на "НЕТ"
+    
+    Args:
+        first_name: Имя
+        last_name: Фамилия
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        # Запускаем синхронный код в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _cancel_invitation_sync, first_name, last_name)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Ошибка отмены приглашения в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _cancel_invitation_sync(first_name: str, last_name: str):
+    """Синхронная функция для отмены приглашения в Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        # Открываем таблицу
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Формируем полное имя для поиска
+        full_name = f"{first_name} {last_name}".strip()
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Ищем существующую строку по имени и фамилии
+        found_row = None
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 0:
+                existing_name = row[0].strip() if row[0] else ""
+                if existing_name.lower() == full_name.lower():
+                    found_row = row_idx
+                    break
+        
+        if found_row:
+            # Обновляем столбец C на "НЕТ"
+            worksheet.update_cell(found_row, 3, "НЕТ")  # Столбец C - Подтверждение
+            logger.info(f"Приглашение для {full_name} отменено (строка {found_row})")
+            return True
+        else:
+            logger.warning(f"Гость {full_name} не найден в Google Sheets для отмены")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Ошибка отмены приглашения в Google Sheets: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
@@ -192,8 +256,6 @@ async def get_invitations_list() -> List[Dict[str, str]]:
         return []
     
     try:
-        import asyncio
-        
         # Запускаем синхронный код в executor
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _get_invitations_list_sync)
@@ -265,3 +327,174 @@ def _get_invitations_list_sync() -> List[Dict[str, str]]:
         logger.error(traceback.format_exc())
         return []
 
+async def get_admins_list() -> List[Dict[str, any]]:
+    """
+    Получить список админов из Google Sheets (вкладка "Админ бота")
+    
+    Returns:
+        Список словарей с ключами 'username' и 'user_id' (если есть)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        # Запускаем синхронный код в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_admins_list_sync)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения списка админов из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+def _get_admins_list_sync() -> List[Dict[str, any]]:
+    """Синхронная функция для получения списка админов из Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        # Открываем таблицу
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Пытаемся открыть вкладку "Админ бота"
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}")
+            return []
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Пропускаем заголовок (первую строку, если есть)
+        # Столбец A - username, столбец B - user_id (опционально)
+        admins = []
+        start_row = 0
+        
+        # Проверяем, есть ли заголовок
+        if all_values and len(all_values) > 0:
+            first_row = all_values[0]
+            # Если первая строка похожа на заголовок, пропускаем
+            if any(keyword in str(first_row[0]).lower() for keyword in ['username', 'админ', 'admin']):
+                start_row = 1
+        
+        # Обрабатываем данные
+        for row in all_values[start_row:]:
+            if len(row) >= 1:
+                username = row[0].strip() if row[0] else ""
+                user_id = row[1].strip() if len(row) >= 2 and row[1] else None
+                
+                # Пропускаем пустые строки
+                if not username:
+                    continue
+                
+                # Убираем @ если есть
+                username = username.replace('@', '').lower()
+                
+                admin_data = {
+                    'username': username,
+                    'name': username,
+                    'telegram': username
+                }
+                
+                # Если есть user_id, добавляем его
+                if user_id and user_id.isdigit():
+                    admin_data['user_id'] = int(user_id)
+                
+                admins.append(admin_data)
+        
+        logger.info(f"Получено {len(admins)} админов из Google Sheets")
+        return admins
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения списка админов из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+async def save_admin_to_sheets(username: str, user_id: int):
+    """
+    Сохранить или обновить админа в Google Sheets (вкладка "Админ бота")
+    
+    Args:
+        username: Username админа (без @)
+        user_id: Telegram user_id админа
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        # Запускаем синхронный код в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _save_admin_to_sheets_sync, username, user_id)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения админа в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _save_admin_to_sheets_sync(username: str, user_id: int):
+    """Синхронная функция для сохранения админа в Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        # Открываем таблицу
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Пытаемся открыть вкладку "Админ бота"
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}")
+            return False
+        
+        username_lower = username.lower().replace('@', '')
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Пропускаем заголовок
+        start_row = 0
+        if all_values and len(all_values) > 0:
+            first_row = all_values[0]
+            if any(keyword in str(first_row[0]).lower() for keyword in ['username', 'админ', 'admin']):
+                start_row = 1
+        
+        # Ищем существующую строку по username
+        found_row = None
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
+            if len(row) > 0:
+                existing_username = row[0].strip().replace('@', '').lower() if row[0] else ""
+                if existing_username == username_lower:
+                    found_row = row_idx
+                    break
+        
+        if found_row:
+            # Обновляем user_id в столбце B
+            worksheet.update_cell(found_row, 2, str(user_id))  # Столбец B - user_id
+            logger.info(f"Админ @{username} обновлен в Google Sheets (строка {found_row}, user_id: {user_id})")
+        else:
+            # Добавляем новую строку
+            row_data = [
+                username_lower,  # Столбец A - username
+                str(user_id)     # Столбец B - user_id
+            ]
+            worksheet.append_row(row_data)
+            logger.info(f"Админ @{username} добавлен в Google Sheets (user_id: {user_id})")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения админа в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
