@@ -21,8 +21,14 @@ GOOGLE_SHEETS_ID=15-S90u4kI97Kp1NRNhyyA_cuFriUwWAgmGEa80zZ5EI
 
 ```
 ADMIN_USER_ID=ваш_telegram_user_id
-GOOGLE_SHEETS_CREDENTIALS={"type":"service_account",...}
+GOOGLE_SHEETS_CREDENTIALS={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}
 ```
+
+**Важно для GOOGLE_SHEETS_CREDENTIALS:**
+- JSON должен быть **в одну строку** (без переносов)
+- Скопируйте весь JSON из файла Service Account
+- Удалите все переносы строк перед вставкой
+- Подробная инструкция: см. `RENDER_GOOGLE_SHEETS_SETUP.md`
 
 ## Как добавить на Render:
 
