@@ -12,6 +12,8 @@ import hmac
 
 from config import DB_PATH, BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM
 from database import init_db, add_guest, get_guest, get_all_guests, get_guests_count
+from google_sheets import add_guest_to_sheets
+import traceback
 
 # Импортируем функцию уведомлений (будет доступна после инициализации бота)
 _notify_admins_func = None
@@ -140,25 +142,42 @@ async def register_guest(request):
         init_data = data.get('initData', '')
         
         if not user_id or not first_name or not last_name:
+            logger.error(f"Недостаточно данных: user_id={user_id}, first_name={first_name}, last_name={last_name}")
             return web.json_response({'error': 'Недостаточно данных'}, status=400)
         
         if len(first_name) < 2 or len(last_name) < 2:
+            logger.error(f"Слишком короткие имена: first_name={first_name}, last_name={last_name}")
             return web.json_response({'error': 'Имя и фамилия должны быть не менее 2 символов'}, status=400)
         
         # Проверка подлинности (опционально)
         if init_data and not verify_telegram_webapp_data(init_data):
+            logger.error("Неверные данные Telegram")
             return web.json_response({'error': 'Неверные данные'}, status=403)
         
         # Сохранение основного гостя в базу данных
-        await add_guest(
-            user_id=user_id,
-            first_name=first_name,
-            last_name=last_name,
-            username=username
-        )
+        try:
+            await add_guest(
+                user_id=user_id,
+                first_name=first_name,
+                last_name=last_name,
+                username=username
+            )
+        except Exception as db_error:
+            logger.error(f"Ошибка сохранения в БД: {db_error}")
+            logger.error(traceback.format_exc())
+            return web.json_response({'error': f'Ошибка сохранения: {str(db_error)}'}, status=500)
         
-        # TODO: Сохранить дополнительных гостей в отдельную таблицу
-        # Пока сохраняем только основного гостя
+        # Добавляем в Google Sheets (асинхронно, не блокируем ответ)
+        try:
+            await add_guest_to_sheets(
+                first_name=first_name,
+                last_name=last_name,
+                age=None,  # Пока не собираем возраст
+                category=None,  # Пока не собираем категорию
+                side=None  # Пока не собираем сторону
+            )
+        except Exception as sheets_error:
+            logger.warning(f"Ошибка добавления в Google Sheets (не критично): {sheets_error}")
         
         guests_count = await get_guests_count()
         
@@ -179,7 +198,9 @@ async def register_guest(request):
             'lastName': last_name
         })
     except Exception as e:
-        return web.json_response({'error': str(e)}, status=500)
+        logger.error(f"Критическая ошибка в register_guest: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
 
 async def save_questionnaire(request):
     """Сохранение анкеты"""

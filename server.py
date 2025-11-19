@@ -3,6 +3,7 @@
 """
 import asyncio
 import logging
+import sys
 from aiohttp import web
 from aiohttp.web import Response
 import aiofiles
@@ -11,7 +12,16 @@ from pathlib import Path
 
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
-from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+from config import WEBAPP_PATH
+
+# Настройка логирования с выводом в stdout для Render
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+), WEBAPP_PHOTO_PATH
 
 logger = logging.getLogger(__name__)
 

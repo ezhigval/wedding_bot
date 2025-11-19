@@ -269,8 +269,6 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
             // Скрываем форму и показываем подтверждение
             document.getElementById('rsvpSection').style.display = 'none';
             document.getElementById('confirmationSection').style.display = 'block';
-            document.getElementById('guestName').textContent = `${firstName} ${lastName}`;
-            document.getElementById('guestsCount').textContent = data.guestsCount || 0;
             document.getElementById('confirmationSection').scrollIntoView({ behavior: 'smooth' });
             
             // Вибрация
@@ -278,12 +276,22 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 tg.HapticFeedback.notificationOccurred('success');
             }
         } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Ошибка при регистрации');
+            // Пытаемся получить детали ошибки
+            let errorMessage = 'Ошибка при регистрации';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+                console.error('Server error:', errorData);
+            } catch (e) {
+                console.error('Response status:', response.status, response.statusText);
+            }
+            throw new Error(errorMessage);
         }
     } catch (error) {
-        console.error('Error:', error);
-        tg.showAlert('Ошибка при отправке данных. Попробуйте позже.');
+        console.error('Error details:', error);
+        console.error('Error stack:', error.stack);
+        const errorMessage = error.message || 'Ошибка при отправке данных. Попробуйте позже.';
+        tg.showAlert(errorMessage);
     }
 });
 

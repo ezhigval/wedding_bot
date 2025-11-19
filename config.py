@@ -40,3 +40,12 @@ BRIDE_TELEGRAM = os.getenv("BRIDE_TELEGRAM", "mrfilmpro")
 # Файл с админами
 ADMINS_FILE = "admins.json"
 
+# Список админов из переменной окружения (формат: @username1, @username2)
+ADMINS_ENV = os.getenv("ADMINS", "@ezhigval, @mrfilmpro")
+ADMINS_LIST = [admin.strip().replace('@', '') for admin in ADMINS_ENV.split(',') if admin.strip()]
+
+# Google Sheets настройки
+GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID", "15-S90u4kI97Kp1NRNhyyA_cuFriUwWAgmGEa80zZ5EI")
+GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")  # JSON credentials
+GOOGLE_SHEETS_SHEET_NAME = "Список гостей"
+

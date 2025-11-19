@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST
 import json
 import os
 from utils import format_wedding_date
@@ -146,15 +146,34 @@ async def cmd_help(message: Message):
     await message.answer(help_text, parse_mode="HTML")
 
 def load_admins():
-    """Загрузка списка админов из файла"""
+    """Загрузка списка админов из файла и env переменных"""
+    admins = []
+    
+    # Загружаем из env переменной
+    for username in ADMINS_LIST:
+        admins.append({
+            'username': username.lower(),
+            'name': username,
+            'telegram': username
+        })
+    
+    # Загружаем из файла (для сохранения user_id)
     try:
         if os.path.exists(ADMINS_FILE):
             with open(ADMINS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return data.get('admins', [])
+                file_admins = data.get('admins', [])
+                # Объединяем с env админами, сохраняя user_id из файла
+                for file_admin in file_admins:
+                    username = file_admin.get('username', '').lower()
+                    for env_admin in admins:
+                        if env_admin['username'] == username and 'user_id' in file_admin:
+                            env_admin['user_id'] = file_admin['user_id']
+                            break
     except Exception as e:
-        logger.error(f"Ошибка загрузки админов: {e}")
-    return []
+        logger.error(f"Ошибка загрузки админов из файла: {e}")
+    
+    return admins
 
 def save_admin_user_id(username, user_id):
     """Сохранение user_id админа в файл"""
