@@ -831,6 +831,378 @@ async def admin_reset_me(callback: CallbackQuery):
     )
     await callback.answer("✅ Данные сброшены!")
 
+# ========== ОБРАБОТЧИКИ УПРАВЛЕНИЯ ГРУППОЙ ==========
+
+@dp.callback_query(F.data == "admin_group")
+async def admin_group_menu(callback: CallbackQuery):
+    """Меню управления группой"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    if not GROUP_ID:
+        await callback.answer(
+            "❌ GROUP_ID не настроен в конфигурации!\n\n"
+            "Добавьте GROUP_ID в переменные окружения.",
+            show_alert=True
+        )
+        return
+    
+    keyboard = get_group_management_keyboard()
+    
+    await callback.message.answer(
+        f"💬 <b>Управление группой</b>\n\n"
+        f"🔗 Ссылка: {GROUP_LINK}\n"
+        f"🆔 ID группы: <code>{GROUP_ID}</code>\n\n"
+        f"Выберите действие:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "group_send_message")
+async def group_send_message_start(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса отправки сообщения в группу"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    if not GROUP_ID:
+        await callback.answer("❌ GROUP_ID не настроен", show_alert=True)
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_group")]
+    ])
+    
+    await callback.message.answer(
+        "📢 <b>Отправка сообщения в группу</b>\n\n"
+        "Введите текст сообщения, которое будет отправлено в группу от имени группы:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(GroupManagementStates.waiting_message)
+    await callback.answer()
+
+@dp.message(GroupManagementStates.waiting_message)
+async def process_group_message(message: Message, state: FSMContext):
+    """Обработка сообщения для отправки в группу"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+    
+    if not GROUP_ID:
+        await message.answer("❌ GROUP_ID не настроен в конфигурации.")
+        await state.clear()
+        return
+    
+    try:
+        # Отправляем сообщение в группу
+        # Бот должен быть администратором группы с правами на отправку сообщений от имени группы
+        await bot.send_message(
+            chat_id=GROUP_ID,
+            text=message.text,
+            parse_mode="HTML"
+        )
+        
+        await message.answer(
+            f"✅ <b>Сообщение отправлено в группу!</b>\n\n"
+            f"📝 Текст:\n<code>{message.text}</code>",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Админ {message.from_user.id} отправил сообщение в группу {GROUP_ID}")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка отправки сообщения в группу: {e}")
+        
+        if "chat not found" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Группа не найдена!</b>\n\n"
+                "Проверьте, что:\n"
+                "1. Бот добавлен в группу\n"
+                "2. GROUP_ID указан правильно\n"
+                "3. Бот является администратором группы",
+                parse_mode="HTML"
+            )
+        elif "not enough rights" in error_msg.lower() or "rights" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Недостаточно прав!</b>\n\n"
+                "Бот должен быть администратором группы с правами на отправку сообщений.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                f"❌ <b>Ошибка отправки сообщения:</b>\n\n"
+                f"<code>{error_msg}</code>",
+                parse_mode="HTML"
+            )
+    
+    await state.clear()
+
+@dp.callback_query(F.data == "group_add_member")
+async def group_add_member_start(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса добавления участника в группу"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    if not GROUP_ID:
+        await callback.answer("❌ GROUP_ID не настроен", show_alert=True)
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_group")]
+    ])
+    
+    await callback.message.answer(
+        "➕ <b>Добавление участника в группу</b>\n\n"
+        "Введите username или user_id участника для добавления:\n\n"
+        "Примеры:\n"
+        "• <code>@username</code>\n"
+        "• <code>123456789</code> (user_id)",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(GroupManagementStates.waiting_add_member)
+    await callback.answer()
+
+@dp.message(GroupManagementStates.waiting_add_member)
+async def process_group_add_member(message: Message, state: FSMContext):
+    """Обработка добавления участника в группу"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+    
+    if not GROUP_ID:
+        await message.answer("❌ GROUP_ID не настроен в конфигурации.")
+        await state.clear()
+        return
+    
+    user_input = message.text.strip()
+    
+    # Парсим user_id или username
+    user_id = None
+    if user_input.startswith("@"):
+        # Это username, нужно получить user_id (в реальности это сложнее, но для простоты попробуем)
+        await message.answer(
+            "⚠️ <b>Добавление по username требует дополнительных прав.</b>\n\n"
+            "Пожалуйста, используйте user_id для добавления участника.\n"
+            "User_id можно получить через @userinfobot",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    else:
+        try:
+            user_id = int(user_input)
+        except ValueError:
+            await message.answer(
+                "❌ <b>Неверный формат!</b>\n\n"
+                "Введите user_id (число) или @username",
+                parse_mode="HTML"
+            )
+            return
+    
+    try:
+        # Добавляем участника в группу
+        await bot.unban_chat_member(
+            chat_id=GROUP_ID,
+            user_id=user_id,
+            only_if_banned=True
+        )
+        
+        # Приглашаем пользователя
+        invite_link = GROUP_LINK
+        await message.answer(
+            f"✅ <b>Участник добавлен в группу!</b>\n\n"
+            f"👤 User ID: <code>{user_id}</code>\n"
+            f"🔗 Ссылка для приглашения: {invite_link}\n\n"
+            f"Отправьте пользователю ссылку для вступления в группу.",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Админ {message.from_user.id} добавил участника {user_id} в группу {GROUP_ID}")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка добавления участника в группу: {e}")
+        
+        if "chat not found" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Группа не найдена!</b>\n\n"
+                "Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.",
+                parse_mode="HTML"
+            )
+        elif "not enough rights" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Недостаточно прав!</b>\n\n"
+                "Бот должен быть администратором группы с правами на добавление участников.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                f"❌ <b>Ошибка добавления участника:</b>\n\n"
+                f"<code>{error_msg}</code>",
+                parse_mode="HTML"
+            )
+    
+    await state.clear()
+
+@dp.callback_query(F.data == "group_remove_member")
+async def group_remove_member_start(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса удаления участника из группы"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    if not GROUP_ID:
+        await callback.answer("❌ GROUP_ID не настроен", show_alert=True)
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_group")]
+    ])
+    
+    await callback.message.answer(
+        "➖ <b>Удаление участника из группы</b>\n\n"
+        "Введите user_id участника для удаления:\n\n"
+        "Пример: <code>123456789</code>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(GroupManagementStates.waiting_remove_member)
+    await callback.answer()
+
+@dp.message(GroupManagementStates.waiting_remove_member)
+async def process_group_remove_member(message: Message, state: FSMContext):
+    """Обработка удаления участника из группы"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+    
+    if not GROUP_ID:
+        await message.answer("❌ GROUP_ID не настроен в конфигурации.")
+        await state.clear()
+        return
+    
+    user_input = message.text.strip()
+    
+    try:
+        user_id = int(user_input)
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат!</b>\n\n"
+            "Введите user_id (число)",
+            parse_mode="HTML"
+        )
+        return
+    
+    try:
+        # Удаляем участника из группы (баним)
+        await bot.ban_chat_member(
+            chat_id=GROUP_ID,
+            user_id=user_id
+        )
+        
+        await message.answer(
+            f"✅ <b>Участник удален из группы!</b>\n\n"
+            f"👤 User ID: <code>{user_id}</code>",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Админ {message.from_user.id} удалил участника {user_id} из группы {GROUP_ID}")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка удаления участника из группы: {e}")
+        
+        if "chat not found" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Группа не найдена!</b>\n\n"
+                "Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.",
+                parse_mode="HTML"
+            )
+        elif "not enough rights" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Недостаточно прав!</b>\n\n"
+                "Бот должен быть администратором группы с правами на удаление участников.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                f"❌ <b>Ошибка удаления участника:</b>\n\n"
+                f"<code>{error_msg}</code>",
+                parse_mode="HTML"
+            )
+    
+    await state.clear()
+
+@dp.callback_query(F.data == "group_list_members")
+async def group_list_members(callback: CallbackQuery):
+    """Список участников группы"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    if not GROUP_ID:
+        await callback.answer("❌ GROUP_ID не настроен", show_alert=True)
+        return
+    
+    try:
+        # Получаем информацию о группе
+        chat = await bot.get_chat(chat_id=GROUP_ID)
+        
+        # Получаем количество участников
+        member_count = chat.members_count if hasattr(chat, 'members_count') else "неизвестно"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_group")]
+        ])
+        
+        await callback.message.answer(
+            f"👥 <b>Информация о группе</b>\n\n"
+            f"📛 Название: {chat.title}\n"
+            f"🆔 ID: <code>{GROUP_ID}</code>\n"
+            f"👥 Участников: {member_count}\n"
+            f"🔗 Ссылка: {GROUP_LINK}\n\n"
+            f"<i>Для получения полного списка участников используйте сторонние боты или API.</i>",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Админ {callback.from_user.id} запросил информацию о группе {GROUP_ID}")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка получения информации о группе: {e}")
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_group")]
+        ])
+        
+        if "chat not found" in error_msg.lower():
+            await callback.message.answer(
+                "❌ <b>Группа не найдена!</b>\n\n"
+                "Проверьте, что:\n"
+                "1. Бот добавлен в группу\n"
+                "2. GROUP_ID указан правильно",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await callback.message.answer(
+                f"❌ <b>Ошибка получения информации:</b>\n\n"
+                f"<code>{error_msg}</code>",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+    
+    await callback.answer()
+
 async def init_bot():
     """Инициализация бота"""
     global bot
