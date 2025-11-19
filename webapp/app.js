@@ -543,6 +543,8 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
             document.querySelector('.greeting-section').style.display = 'none';
             document.querySelector('.calendar-section').style.display = 'none';
             document.getElementById('rsvpSection').style.display = 'none';
+            document.getElementById('registrationContactSection').style.display = 'none';
+            document.querySelector('.closing-section').style.display = 'none';
             document.getElementById('mainPage').style.display = 'block';
             
             // Загружаем данные для основной страницы

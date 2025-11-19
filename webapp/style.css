@@ -1159,41 +1159,13 @@ body {
 }
 
 /* Стили для основной страницы (mainPage) */
-
-/* Основная страница - заголовок */
-.main-hero-section {
-    width: 100%;
-    padding: 60px 20px;
-    text-align: center;
-    position: relative;
-}
-
-.main-hero-card {
-    background: rgba(248, 248, 248, 0.85);
-    backdrop-filter: blur(3px);
-    padding: 50px 30px;
-    border-radius: 15px;
-    box-shadow: 0 8px 25px rgba(90, 124, 82, 0.2);
-}
-
-.main-couple-names {
-    font-size: 36px;
-    font-weight: 700;
-    color: #5A7C52;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    margin-bottom: 20px;
-    font-family: 'Playfair Display', 'Georgia', serif;
-}
-
-.main-wedding-date {
-    font-size: 24px;
-    color: #4A6B42;
-    font-weight: 400;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
-}
+/* Переиспользуем стили регистрационной страницы для заголовка и даты */
 
 /* Тайминг */
+.timeline-section {
+    margin: 20px 0;
+}
+
 .timeline-container {
     margin-top: 30px;
 }

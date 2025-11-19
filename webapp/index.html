@@ -146,18 +146,21 @@
         <!-- Основная страница для подтвердивших гостей -->
         <div id="mainPage" style="display: none;">
             <!-- Заголовок -->
-            <section class="main-hero-section">
-                <div class="main-hero-card scroll-reveal">
-                    <div class="main-couple-names scroll-reveal-item" id="mainCoupleNames">Валентин и Мария</div>
-                    <div class="main-wedding-date scroll-reveal-item" id="mainWeddingDate">06 июня 2026</div>
+            <section class="hero-section">
+                <div class="photo-hero">
+                    <img src="welcome_photo.jpeg" alt="Валентин и Мария" id="mainWeddingPhoto" onerror="this.style.display='none'">
+                    <div class="photo-overlay">
+                        <div class="couple-names scroll-reveal-item" id="mainCoupleNames">Валентин и Мария</div>
+                        <div class="wedding-date-hero scroll-reveal-item" id="mainWeddingDate">06 июня 2026</div>
+                    </div>
                 </div>
             </section>
 
             <!-- Приветствие -->
-            <section class="main-greeting-section">
+            <section class="greeting-section">
                 <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">Дорогие родные и близкие</h2>
-                    <p class="main-greeting-text scroll-reveal-item" id="mainGreetingText">
+                    <h2 class="section-title scroll-reveal-item">ДОРОГИЕ РОДНЫЕ И БЛИЗКИЕ</h2>
+                    <p class="greeting-text scroll-reveal-item" id="mainGreetingText">
                         Мы давно ждали этого момента, когда сможем разделить с вами самый важный день в нашей жизни.
                     </p>
                 </div>
@@ -248,7 +251,7 @@
             </section>
 
             <!-- Футер -->
-            <section class="main-footer-section">
+            <section class="contact-section">
                 <div class="section-card scroll-reveal">
                     <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
                     <div class="contact-list">
@@ -268,8 +271,8 @@
             </section>
         </div>
 
-        <!-- Связаться с нами -->
-        <section class="contact-section">
+        <!-- Связаться с нами (для регистрационной страницы) -->
+        <section class="contact-section" id="registrationContactSection">
             <div class="section-card scroll-reveal">
                 <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
                 <div class="contact-list">
@@ -279,7 +282,7 @@
                     </a>
                     <a href="#" class="contact-item" id="brideContact">
                         <span class="contact-name">Мария</span>
-                        <span class="contact-telegram" id="brideTelegram">@</span>
+                        <span class="contact-telegram" id="brideTelegram">@mrfilmpro</span>
                     </a>
                 </div>
                 <div class="cancel-section" id="cancelSection" style="display: none;">
