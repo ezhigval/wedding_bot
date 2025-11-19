@@ -446,10 +446,12 @@ loadConfig();
 updateCountdown();
 setInterval(updateCountdown, 1000); // Обновляем каждую секунду
 
-// Проверяем регистрацию при загрузке
-checkRegistration().then(registered => {
+// Функция для проверки регистрации и отображения правильной страницы
+async function checkAndShowPage() {
+    const registered = await checkRegistration();
+    
     if (registered) {
-        // Скрываем регистрационную страницу
+        // Гость зарегистрирован - показываем основную страницу
         document.querySelector('.hero-section').style.display = 'none';
         document.querySelector('.greeting-section').style.display = 'none';
         document.querySelector('.calendar-section').style.display = 'none';
@@ -462,7 +464,35 @@ checkRegistration().then(registered => {
         
         // Загружаем данные для основной страницы
         loadMainPageData();
+    } else {
+        // Гость не зарегистрирован или отменил приглашение - показываем страницу регистрации
+        document.querySelector('.hero-section').style.display = 'block';
+        document.querySelector('.greeting-section').style.display = 'block';
+        document.querySelector('.calendar-section').style.display = 'block';
+        document.getElementById('rsvpSection').style.display = 'block';
+        document.getElementById('registrationContactSection').style.display = 'block';
+        document.querySelector('.closing-section').style.display = 'block';
+        
+        // Скрываем основную страницу
+        document.getElementById('mainPage').style.display = 'none';
     }
+}
+
+// Проверка регистрации при загрузке страницы
+checkAndShowPage();
+
+// Также проверяем при каждом открытии Mini App (когда пользователь возвращается)
+// Telegram Web App может быть открыт в фоне, поэтому проверяем при видимости страницы
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        // Страница стала видимой - проверяем регистрацию снова
+        checkAndShowPage();
+    }
+});
+
+// Проверяем при фокусе окна (если Mini App открыт в браузере)
+window.addEventListener('focus', () => {
+    checkAndShowPage();
 });
 
 // Обработчик формы RSVP
@@ -602,15 +632,8 @@ if (cancelInvitationBtn) {
         });
         
             if (response.ok) {
-                // Показываем регистрационную страницу снова
-                document.getElementById('mainPage').style.display = 'none';
-                document.querySelector('.hero-section').style.display = 'block';
-                document.querySelector('.greeting-section').style.display = 'block';
-                document.querySelector('.calendar-section').style.display = 'block';
-                document.getElementById('rsvpSection').style.display = 'block';
-                document.getElementById('registrationContactSection').style.display = 'block';
-                document.querySelector('.closing-section').style.display = 'block';
-                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+                // После отмены приглашения проверяем и показываем правильную страницу
+                await checkAndShowPage();
                 
                 // Очищаем форму
                 document.getElementById('firstName').value = '';
@@ -619,6 +642,9 @@ if (cancelInvitationBtn) {
                 document.getElementById('side').value = '';
                 guests = [];
                 renderGuests();
+                
+                // Прокручиваем к форме регистрации
+                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
                 
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
                 
@@ -666,15 +692,8 @@ if (mainCancelInvitationBtn) {
             });
             
             if (response.ok) {
-                // Показываем регистрационную страницу снова
-                document.getElementById('mainPage').style.display = 'none';
-                document.querySelector('.hero-section').style.display = 'block';
-                document.querySelector('.greeting-section').style.display = 'block';
-                document.querySelector('.calendar-section').style.display = 'block';
-                document.getElementById('rsvpSection').style.display = 'block';
-                document.getElementById('registrationContactSection').style.display = 'block';
-                document.querySelector('.closing-section').style.display = 'block';
-                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+                // После отмены приглашения проверяем и показываем правильную страницу
+                await checkAndShowPage();
                 
                 // Очищаем форму
                 document.getElementById('firstName').value = '';
@@ -683,6 +702,9 @@ if (mainCancelInvitationBtn) {
                 document.getElementById('side').value = '';
                 guests = [];
                 renderGuests();
+                
+                // Прокручиваем к форме регистрации
+                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
                 
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
                 
