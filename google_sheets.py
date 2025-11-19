@@ -115,14 +115,36 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                 return True
             else:
                 # Гость не найден - ищем первую свободную строку (где столбец A пустой)
+                # Используем проверку ячеек напрямую, так как get_all_values() не возвращает полностью пустые строки
                 empty_row = None
+                
+                # Сначала проверяем строки из all_values (где есть хотя бы какие-то данные)
                 for row_idx, row in enumerate(all_values, start=1):
                     # Проверяем, пуст ли столбец A (имя)
                     if len(row) == 0 or (row[0] if row else "").strip() == "":
                         empty_row = row_idx
                         break
                 
-                # Если свободная строка не найдена, используем следующую после последней
+                # Если не нашли в существующих строках, проверяем ячейки напрямую
+                # Начинаем с первой строки после заголовка (строка 2, если заголовок в строке 1)
+                if empty_row is None:
+                    # Получаем все значения столбца A для проверки
+                    col_a_values = worksheet.col_values(1)  # Получаем все значения столбца A
+                    
+                    # Ищем первую пустую ячейку в столбце A
+                    # Начинаем с индекса 1 (строка 2), так как строка 1 обычно заголовок
+                    for idx in range(1, len(col_a_values) + 100):  # Проверяем до 100 строк
+                        try:
+                            cell_value = worksheet.cell(idx + 1, 1).value  # idx+1 потому что индексация с 1
+                            if not cell_value or str(cell_value).strip() == "":
+                                empty_row = idx + 1
+                                break
+                        except Exception:
+                            # Если ячейка не существует, значит это пустая строка
+                            empty_row = idx + 1
+                            break
+                
+                # Если все еще не нашли, используем следующую после последней заполненной
                 if empty_row is None:
                     empty_row = len(all_values) + 1
                 
@@ -146,10 +168,25 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
             try:
                 all_values = worksheet.get_all_values()
                 empty_row = None
+                
+                # Проверяем существующие строки
                 for row_idx, row in enumerate(all_values, start=1):
                     if len(row) == 0 or (row[0] if row else "").strip() == "":
                         empty_row = row_idx
                         break
+                
+                # Если не нашли, проверяем ячейки напрямую
+                if empty_row is None:
+                    col_a_values = worksheet.col_values(1)
+                    for idx in range(1, len(col_a_values) + 100):
+                        try:
+                            cell_value = worksheet.cell(idx + 1, 1).value
+                            if not cell_value or str(cell_value).strip() == "":
+                                empty_row = idx + 1
+                                break
+                        except Exception:
+                            empty_row = idx + 1
+                            break
                 
                 if empty_row is None:
                     empty_row = len(all_values) + 1
@@ -166,6 +203,8 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
                 return True
             except Exception as fallback_error:
                 logger.error(f"Ошибка при fallback добавлении: {fallback_error}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return False
             
     except Exception as e:

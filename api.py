@@ -158,6 +158,8 @@ def verify_telegram_webapp_data(init_data):
 
 async def register_guest(request):
     """Регистрация гостя"""
+    # Инициализируем guests_count в начале функции
+    guests_count = 0
     try:
         data = await request.json()
         user_id = data.get('userId')
@@ -236,7 +238,11 @@ async def register_guest(request):
             # Не блокируем ответ, так как это не критично
         
         # Получаем количество гостей (вне блока try-except, чтобы всегда была определена)
-        guests_count = await get_guests_count()
+        try:
+            guests_count = await get_guests_count()
+        except Exception as count_error:
+            logger.error(f"Ошибка получения количества гостей: {count_error}")
+            guests_count = 0  # Используем значение по умолчанию
         
         # Формируем уведомление для админов
         username_text = f" @{username}" if username else ""
