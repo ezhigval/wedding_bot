@@ -233,17 +233,28 @@ async def register_guest(request):
             logger.error(traceback.format_exc())
             # Не блокируем ответ, так как это не критично
         
-        guests_count = await get_guests_count()
-        
-        # Отправляем уведомление админам
-        username_text = f" @{username}" if username else ""
-        notification_text = (
-            f"✅ <b>Новая регистрация!</b>\n\n"
-            f"👤 {first_name} {last_name}{username_text}\n"
-            f"подтвердил(а) присутствие на свадьбе\n\n"
-            f"📊 Всего гостей: {guests_count}"
-        )
-        await notify_admins(notification_text)
+            guests_count = await get_guests_count()
+            
+            # Формируем уведомление для админов
+            username_text = f" @{username}" if username else ""
+            notification_text = (
+                f"✅ <b>Новая регистрация!</b>\n\n"
+                f"👤 <b>Основной гость:</b>\n"
+                f"{first_name} {last_name}{username_text}\n"
+            )
+            
+            # Добавляем информацию о дополнительных гостях
+            if guests_list and len(guests_list) > 1:
+                additional_guests = guests_list[1:]  # Пропускаем первого (основного)
+                notification_text += f"\n👥 <b>Дополнительные гости ({len(additional_guests)}):</b>\n"
+                for i, guest in enumerate(additional_guests, 1):
+                    guest_telegram = guest.get('telegram', '')
+                    telegram_text = f" @{guest_telegram}" if guest_telegram else ""
+                    notification_text += f"{i}. {guest.get('firstName', '')} {guest.get('lastName', '')}{telegram_text}\n"
+            
+            notification_text += f"\n📊 Всего гостей: {guests_count}"
+            
+            await notify_admins(notification_text)
         
         return web.json_response({
             'success': True,

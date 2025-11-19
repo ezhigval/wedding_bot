@@ -4,15 +4,6 @@
     box-sizing: border-box;
 }
 
-body {
-    font-family: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
-    background: #F8F8F8;
-    color: #2F2F2F;
-    line-height: 1.6;
-    position: relative;
-    overflow-x: hidden;
-}
-
 /* Анимация шелковой ткани на фоне */
 .silk-background {
     position: fixed;
@@ -20,24 +11,32 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: -1;
+    z-index: 0;
     background: 
-        linear-gradient(135deg, rgba(90, 124, 82, 0.03) 0%, rgba(74, 107, 66, 0.05) 100%),
+        linear-gradient(135deg, rgba(90, 124, 82, 0.08) 0%, rgba(74, 107, 66, 0.12) 50%, rgba(90, 124, 82, 0.08) 100%),
         repeating-linear-gradient(
             45deg,
             transparent,
-            transparent 2px,
-            rgba(255, 233, 173, 0.02) 2px,
-            rgba(255, 233, 173, 0.02) 4px
+            transparent 15px,
+            rgba(255, 233, 173, 0.05) 15px,
+            rgba(255, 233, 173, 0.05) 30px
         ),
         repeating-linear-gradient(
             -45deg,
             transparent,
-            transparent 3px,
-            rgba(90, 124, 82, 0.01) 3px,
-            rgba(90, 124, 82, 0.01) 6px
+            transparent 20px,
+            rgba(90, 124, 82, 0.03) 20px,
+            rgba(90, 124, 82, 0.03) 40px
+        ),
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 25px,
+            rgba(255, 233, 173, 0.02) 25px,
+            rgba(255, 233, 173, 0.02) 50px
         );
-    animation: silkFlow 25s ease-in-out infinite;
+    background-size: 100% 100%, 200px 200px, 300px 300px, 150px 150px;
+    animation: silkFlow 30s ease-in-out infinite;
     pointer-events: none;
     overflow: hidden;
 }
@@ -50,32 +49,83 @@ body {
     width: 200%;
     height: 200%;
     background: 
-        radial-gradient(circle at 30% 30%, rgba(255, 233, 173, 0.03) 0%, transparent 50%),
-        radial-gradient(circle at 70% 70%, rgba(90, 124, 82, 0.02) 0%, transparent 50%);
-    animation: silkShimmer 15s ease-in-out infinite;
+        radial-gradient(circle at 20% 30%, rgba(255, 233, 173, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(90, 124, 82, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(255, 233, 173, 0.08) 0%, transparent 60%);
+    animation: silkShimmer 20s ease-in-out infinite;
+}
+
+.silk-background::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 100px,
+            rgba(255, 255, 255, 0.02) 100px,
+            rgba(255, 255, 255, 0.02) 101px
+        );
+    animation: silkWave 25s linear infinite;
 }
 
 @keyframes silkFlow {
-    0%, 100% {
+    0% {
         transform: translateY(0) translateX(0) scale(1);
-        opacity: 0.4;
+        background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%;
     }
-    33% {
-        transform: translateY(-15px) translateX(10px) scale(1.01);
-        opacity: 0.6;
+    25% {
+        transform: translateY(-20px) translateX(15px) scale(1.02);
+        background-position: 10% 5%, 15% 10%, 20% 15%, 5% 8%;
     }
-    66% {
-        transform: translateY(10px) translateX(-5px) scale(0.99);
-        opacity: 0.5;
+    50% {
+        transform: translateY(15px) translateX(-10px) scale(0.98);
+        background-position: 20% 10%, 30% 20%, 40% 30%, 10% 15%;
+    }
+    75% {
+        transform: translateY(-10px) translateX(20px) scale(1.01);
+        background-position: 15% 8%, 25% 15%, 35% 25%, 8% 12%;
+    }
+    100% {
+        transform: translateY(0) translateX(0) scale(1);
+        background-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%;
     }
 }
 
 @keyframes silkShimmer {
-    0%, 100% {
-        transform: rotate(0deg) translate(0, 0);
+    0% {
+        transform: rotate(0deg) translate(0, 0) scale(1);
+        opacity: 0.6;
+    }
+    33% {
+        transform: rotate(120deg) translate(30px, -30px) scale(1.1);
+        opacity: 0.8;
+    }
+    66% {
+        transform: rotate(240deg) translate(-20px, 20px) scale(0.9);
+        opacity: 0.7;
+    }
+    100% {
+        transform: rotate(360deg) translate(0, 0) scale(1);
+        opacity: 0.6;
+    }
+}
+
+@keyframes silkWave {
+    0% {
+        transform: translateX(-100px);
+        opacity: 0.3;
     }
     50% {
-        transform: rotate(180deg) translate(20px, -20px);
+        opacity: 0.5;
+    }
+    100% {
+        transform: translateX(100vw);
+        opacity: 0.3;
     }
 }
 
@@ -86,6 +136,7 @@ body {
     position: relative;
     z-index: 1;
 }
+
 
 /* Hero Section */
 .hero-section {
@@ -136,11 +187,15 @@ body {
 
 /* Section Card */
 .section-card {
-    background: #F8F8F8;
+    background: rgba(248, 248, 248, 0.75);
+    backdrop-filter: blur(2px);
     padding: 40px 20px;
     margin: 20px 0;
-    border-top: 2px solid #5A7C52;
-    border-bottom: 2px solid #5A7C52;
+    border-top: 2px solid rgba(90, 124, 82, 0.6);
+    border-bottom: 2px solid rgba(90, 124, 82, 0.6);
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.1);
 }
 
 .section-title {
@@ -318,8 +373,10 @@ body {
     text-align: center;
     margin-top: 30px;
     padding: 20px;
-    background: #FFE9AD;
+    background: rgba(255, 233, 173, 0.85);
+    backdrop-filter: blur(3px);
     border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.15);
 }
 
 .calendar-date-full {
@@ -337,9 +394,11 @@ body {
 .guest-item {
     margin-bottom: 20px;
     padding: 20px;
-    background: #FFE9AD;
+    background: rgba(255, 233, 173, 0.8);
+    backdrop-filter: blur(3px);
     border-radius: 8px;
-    border: 2px solid #5A7C52;
+    border: 2px solid rgba(90, 124, 82, 0.7);
+    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.15);
 }
 
 .guest-item-header {
@@ -377,7 +436,7 @@ body {
     border-radius: 8px;
     font-size: 16px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
-    background: #F8F8F8;
+    background: rgba(248, 248, 248, 0.9);
     color: #4A6B42;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -619,16 +678,19 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 15px 20px;
-    background: #FFE9AD;
+    background: rgba(255, 233, 173, 0.8);
+    backdrop-filter: blur(3px);
     border-radius: 8px;
     text-decoration: none;
     color: #2F2F2F;
     transition: all 0.3s;
+    box-shadow: 0 2px 8px rgba(90, 124, 82, 0.1);
 }
 
 .contact-item:hover {
-    background: #F8F8F8;
+    background: rgba(248, 248, 248, 0.9);
     transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.2);
 }
 
 .contact-name {
@@ -674,6 +736,10 @@ body {
 .confirmation-card {
     text-align: center;
     padding: 60px 20px;
+    background: rgba(248, 248, 248, 0.85);
+    backdrop-filter: blur(3px);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(90, 124, 82, 0.2);
 }
 
 .success-icon {
@@ -707,11 +773,13 @@ body {
 .guests-count {
     margin-top: 30px;
     padding: 20px;
-    background: #FFE9AD;
+    background: rgba(255, 233, 173, 0.85);
+    backdrop-filter: blur(3px);
     border-radius: 10px;
     font-size: 18px;
     font-weight: bold;
     color: #4A6B42;
+    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.15);
 }
 
 /* Closing */

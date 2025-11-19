@@ -29,8 +29,7 @@ function addGuest() {
         id: guestId, 
         firstName: '', 
         lastName: '',
-        category: '',
-        side: ''
+        telegram: ''
     });
     renderGuests();
 }
@@ -177,22 +176,10 @@ function renderGuests() {
                            onchange="updateGuest(${guest.id}, 'lastName', this.value)">
                 </div>
                 <div class="form-group">
-                    <label>Родство</label>
-                    <select class="form-select" onchange="updateGuest(${guest.id}, 'category', this.value)">
-                        <option value="">Выберите...</option>
-                        <option value="Семья" ${guest.category === 'Семья' ? 'selected' : ''}>Семья</option>
-                        <option value="Друзья" ${guest.category === 'Друзья' ? 'selected' : ''}>Друзья</option>
-                        <option value="Родственники" ${guest.category === 'Родственники' ? 'selected' : ''}>Родственники</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Сторона</label>
-                    <select class="form-select" onchange="updateGuest(${guest.id}, 'side', this.value)">
-                        <option value="">Выберите...</option>
-                        <option value="Жених" ${guest.side === 'Жених' ? 'selected' : ''}>Жених</option>
-                        <option value="Невеста" ${guest.side === 'Невеста' ? 'selected' : ''}>Невеста</option>
-                        <option value="Общие" ${guest.side === 'Общие' ? 'selected' : ''}>Общие</option>
-                    </select>
+                    <label>Telegram (username)</label>
+                    <input type="text" placeholder="@username или username" value="${guest.telegram || ''}" 
+                           onchange="updateGuest(${guest.id}, 'telegram', this.value)">
+                    <small style="color: #666; font-size: 14px; margin-top: 5px; display: block;">Опционально</small>
                 </div>
             </div>
         `;
@@ -278,12 +265,11 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
     // Валидация дополнительных гостей
     const invalidGuests = guests.filter(g => 
         !g.firstName.trim() || g.firstName.trim().length < 2 ||
-        !g.lastName.trim() || g.lastName.trim().length < 2 ||
-        !g.category || !g.side
+        !g.lastName.trim() || g.lastName.trim().length < 2
     );
     
     if (invalidGuests.length > 0) {
-        tg.showAlert('Пожалуйста, заполните все данные для всех гостей (имя, фамилия, родство, сторона)');
+        tg.showAlert('Пожалуйста, заполните имя и фамилию для всех дополнительных гостей');
         return;
     }
     
@@ -299,13 +285,15 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
     }
     
     // Подготавливаем список всех гостей
+    // Для дополнительных гостей используем category и side основного гостя
     const allGuests = [
         { firstName, lastName, category, side },
         ...guests.map(g => ({ 
             firstName: g.firstName.trim(), 
             lastName: g.lastName.trim(),
-            category: g.category,
-            side: g.side
+            category: category,  // Используем category основного гостя
+            side: side,  // Используем side основного гостя
+            telegram: g.telegram ? g.telegram.trim().replace('@', '') : ''  // Telegram username (опционально)
         }))
     ];
     
