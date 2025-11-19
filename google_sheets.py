@@ -443,58 +443,108 @@ async def save_admin_to_sheets(username: str, user_id: int):
 def _save_admin_to_sheets_sync(username: str, user_id: int):
     """Синхронная функция для сохранения админа в Google Sheets"""
     try:
-        client = get_google_sheets_client()
-        if not client:
+        logger.info(f"Попытка сохранить админа в Google Sheets: username={username}, user_id={user_id}")
+        
+        # Проверяем credentials
+        if not GOOGLE_SHEETS_CREDENTIALS:
+            logger.error("GOOGLE_SHEETS_CREDENTIALS не установлен!")
             return False
         
+        client = get_google_sheets_client()
+        if not client:
+            logger.error("Не удалось создать клиент Google Sheets")
+            return False
+        
+        logger.info(f"Клиент Google Sheets создан успешно, открываем таблицу: {GOOGLE_SHEETS_ID}")
+        
         # Открываем таблицу
-        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            logger.info(f"Таблица открыта успешно: {spreadsheet.title}")
+        except Exception as e:
+            logger.error(f"Ошибка открытия таблицы по ID {GOOGLE_SHEETS_ID}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
         
         # Пытаемся открыть вкладку "Админ бота"
         try:
             worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+            logger.info(f"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' найдена")
         except Exception as e:
             logger.error(f"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}")
+            logger.info(f"Доступные вкладки: {[ws.title for ws in spreadsheet.worksheets()]}")
             return False
         
         username_lower = username.lower().replace('@', '')
         
         # Получаем все данные
-        all_values = worksheet.get_all_values()
+        try:
+            all_values = worksheet.get_all_values()
+            logger.info(f"Получено {len(all_values)} строк из вкладки 'Админ бота'")
+        except Exception as e:
+            logger.error(f"Ошибка чтения данных из вкладки: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
         
         # Пропускаем заголовок
         start_row = 0
         if all_values and len(all_values) > 0:
             first_row = all_values[0]
+            logger.info(f"Первая строка: {first_row}")
             if any(keyword in str(first_row[0]).lower() for keyword in ['username', 'админ', 'admin']):
                 start_row = 1
+                logger.info("Обнаружен заголовок, пропускаем первую строку")
         
         # Ищем существующую строку по username
         found_row = None
         for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
             if len(row) > 0:
                 existing_username = row[0].strip().replace('@', '').lower() if row[0] else ""
+                logger.debug(f"Строка {row_idx}: username='{existing_username}', ищем '{username_lower}'")
                 if existing_username == username_lower:
                     found_row = row_idx
+                    logger.info(f"Найдена существующая строка для @{username} в строке {found_row}")
                     break
         
         if found_row:
             # Обновляем user_id в столбце B
-            worksheet.update_cell(found_row, 2, str(user_id))  # Столбец B - user_id
-            logger.info(f"Админ @{username} обновлен в Google Sheets (строка {found_row}, user_id: {user_id})")
+            try:
+                worksheet.update_cell(found_row, 2, str(user_id))  # Столбец B - user_id
+                logger.info(f"✅ Админ @{username} обновлен в Google Sheets (строка {found_row}, user_id: {user_id})")
+                
+                # Проверяем, что обновление прошло успешно
+                updated_value = worksheet.cell(found_row, 2).value
+                logger.info(f"Проверка: значение в ячейке B{found_row} = '{updated_value}'")
+            except Exception as e:
+                logger.error(f"Ошибка обновления ячейки: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return False
         else:
             # Добавляем новую строку
             row_data = [
                 username_lower,  # Столбец A - username
                 str(user_id)     # Столбец B - user_id
             ]
-            worksheet.append_row(row_data)
-            logger.info(f"Админ @{username} добавлен в Google Sheets (user_id: {user_id})")
+            try:
+                worksheet.append_row(row_data)
+                logger.info(f"✅ Админ @{username} добавлен в Google Sheets (user_id: {user_id})")
+                
+                # Проверяем, что добавление прошло успешно
+                all_values_after = worksheet.get_all_values()
+                logger.info(f"После добавления: {len(all_values_after)} строк в таблице")
+            except Exception as e:
+                logger.error(f"Ошибка добавления строки: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return False
         
         return True
         
     except Exception as e:
-        logger.error(f"Ошибка сохранения админа в Google Sheets: {e}")
+        logger.error(f"Критическая ошибка сохранения админа в Google Sheets: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False

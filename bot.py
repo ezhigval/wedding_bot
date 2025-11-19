@@ -187,6 +187,7 @@ async def save_admin_user_id(username, user_id):
         result = await save_admin_to_sheets(username, user_id)
         if result:
             logger.info(f"Сохранен user_id для админа {username} в Google Sheets: {user_id}")
+            return True
         else:
             logger.warning(f"Не удалось сохранить админа {username} в Google Sheets, сохраняем в файл")
             # Fallback: сохраняем в файл
@@ -216,12 +217,15 @@ async def save_admin_user_id(username, user_id):
                     json.dump({'admins': admins}, f, ensure_ascii=False, indent=2)
                 
                 logger.info(f"Сохранен user_id для админа {username} в файл: {user_id}")
+                return True
             except Exception as file_error:
                 logger.error(f"Ошибка сохранения в файл: {file_error}")
+                return False
     except Exception as e:
         logger.error(f"Ошибка сохранения user_id админа: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        return False
 
 def get_admin_user_ids():
     """Получить список user_id всех админов"""
@@ -311,18 +315,61 @@ async def cmd_set_me_admins(message: Message):
             return
     
     # Сохраняем user_id админа
-    await save_admin_user_id(username_lower, message.from_user.id)
+    save_result = await save_admin_user_id(username_lower, message.from_user.id)
     
-    await message.answer(
-        "✅ <b>Вы успешно зарегистрированы как администратор!</b>\n\n"
-        f"Username: @{username}\n"
-        f"User ID: {message.from_user.id}\n\n"
-        "Теперь вы будете получать уведомления о регистрациях гостей.\n\n"
-        "Используйте /admin для доступа к панели управления.",
-        parse_mode="HTML"
-    )
-    
-    logger.info(f"Админ @{username} (user_id: {message.from_user.id}) зарегистрирован через /set_me_admins")
+    if save_result:
+        # Проверяем, что админ действительно сохранен
+        # Обновляем список админов в памяти
+        try:
+            admins_list_after = await get_admins_list()
+            admin_found = False
+            for admin in admins_list_after:
+                if admin.get('username') == username_lower and admin.get('user_id') == message.from_user.id:
+                    admin_found = True
+                    break
+            
+            if admin_found:
+                await message.answer(
+                    "✅ <b>Вы успешно зарегистрированы как администратор!</b>\n\n"
+                    f"Username: @{username}\n"
+                    f"User ID: {message.from_user.id}\n\n"
+                    "Теперь вы будете получать уведомления о регистрациях гостей.\n\n"
+                    "Используйте /admin для доступа к панели управления.",
+                    parse_mode="HTML"
+                )
+                logger.info(f"Админ @{username} (user_id: {message.from_user.id}) зарегистрирован через /set_me_admins")
+            else:
+                await message.answer(
+                    "⚠️ <b>Регистрация завершена, но требуется проверка</b>\n\n"
+                    f"Username: @{username}\n"
+                    f"User ID: {message.from_user.id}\n\n"
+                    "Данные сохранены, но проверка доступа может занять несколько секунд.\n"
+                    "Попробуйте использовать /admin через несколько секунд.\n\n"
+                    "Если доступ не появится, проверьте логи на сервере.",
+                    parse_mode="HTML"
+                )
+                logger.warning(f"Админ @{username} сохранен, но не найден при проверке")
+        except Exception as e:
+            logger.error(f"Ошибка проверки сохранения админа: {e}")
+            await message.answer(
+                "⚠️ <b>Регистрация завершена</b>\n\n"
+                f"Username: @{username}\n"
+                f"User ID: {message.from_user.id}\n\n"
+                "Попробуйте использовать /admin. Если доступ не появится, проверьте логи.",
+                parse_mode="HTML"
+            )
+    else:
+        await message.answer(
+            "❌ <b>Ошибка сохранения</b>\n\n"
+            f"Не удалось сохранить данные в Google Sheets.\n\n"
+            "Возможные причины:\n"
+            "• Не настроены credentials для Google Sheets\n"
+            "• Service account не имеет доступа к таблице\n"
+            "• Вкладка 'Админ бота' не существует\n\n"
+            "Проверьте логи на сервере для деталей.",
+            parse_mode="HTML"
+        )
+        logger.error(f"Не удалось сохранить админа @{username} в Google Sheets")
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
