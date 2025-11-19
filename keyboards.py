@@ -26,9 +26,19 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
         [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
+        [InlineKeyboardButton(text="🗑️ Удалить гостя", callback_data="admin_delete_guest")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+    ])
+    return keyboard
+
+def get_delete_guest_confirmation_keyboard(guest_user_id: int):
+    """Клавиатура для подтверждения удаления гостя из группы"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, удалить из беседы", callback_data=f"delete_guest_confirm_group_{guest_user_id}")],
+        [InlineKeyboardButton(text="❌ Нет, только из списка", callback_data=f"delete_guest_confirm_only_{guest_user_id}")],
+        [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_back")]
     ])
     return keyboard
 

@@ -11,10 +11,14 @@ from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID,
 import json
 import os
 from utils import format_wedding_date
-from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, get_group_management_keyboard
+from keyboards import (
+    get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, 
+    get_group_management_keyboard, get_delete_guest_confirmation_keyboard
+)
 from google_sheets import (
     get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
-    get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id
+    get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
+    delete_guest_from_sheets
 )
 
 # Настройка логирования
@@ -42,6 +46,10 @@ class GroupManagementStates(StatesGroup):
     waiting_message = State()
     waiting_add_member = State()
     waiting_remove_member = State()
+
+# Состояния для удаления гостя
+class DeleteGuestStates(StatesGroup):
+    waiting_guest_selection = State()
 
 async def get_user_display_name(user):
     """Получает имя пользователя из Telegram"""
@@ -560,6 +568,294 @@ async def admin_names(callback: CallbackQuery):
     )
     
     await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+@dp.callback_query(F.data == "admin_delete_guest")
+async def admin_delete_guest_start(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса удаления гостя"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Загружаем список гостей из Google Sheets
+    guests = await get_all_guests_from_sheets()
+    
+    if not guests:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "❌ <b>Список гостей пуст</b>\n\n"
+            "Нет зарегистрированных гостей для удаления.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Формируем список гостей с кнопками для выбора
+    guests_list = "🗑️ <b>Удаление гостя</b>\n\n"
+    guests_list += "Выберите гостя для удаления:\n\n"
+    
+    keyboard_buttons = []
+    for i, guest in enumerate(guests, 1):
+        first_name = guest.get('first_name', '')
+        last_name = guest.get('last_name', '')
+        user_id = guest.get('user_id', '')
+        username = guest.get('username', '')
+        username_text = f" (@{username})" if username else ""
+        
+        guests_list += f"{i}. {first_name} {last_name}{username_text}\n"
+        
+        # Создаем кнопку для каждого гостя
+        if user_id:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"🗑️ {first_name} {last_name}",
+                    callback_data=f"delete_guest_select_{user_id}"
+                )
+            ])
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_back")
+    ])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await callback.message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
+    
+    # Сохраняем список гостей в состояние
+    await state.update_data(guests=guests)
+    await state.set_state(DeleteGuestStates.waiting_guest_selection)
+
+@dp.callback_query(F.data.startswith("delete_guest_select_"))
+async def process_delete_guest_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора гостя для удаления"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Извлекаем user_id из callback_data
+    user_id_str = callback.data.replace("delete_guest_select_", "")
+    try:
+        guest_user_id = int(user_id_str)
+    except ValueError:
+        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
+        return
+    
+    # Получаем данные гостя
+    guests = await get_all_guests_from_sheets()
+    guest_info = None
+    for guest in guests:
+        if guest.get('user_id') == str(guest_user_id):
+            guest_info = guest
+            break
+    
+    if not guest_info:
+        await callback.answer("❌ Гость не найден", show_alert=True)
+        return
+    
+    first_name = guest_info.get('first_name', '')
+    last_name = guest_info.get('last_name', '')
+    
+    # Сохраняем выбранного гостя в состояние
+    await state.update_data(selected_guest_user_id=guest_user_id)
+    
+    # Показываем подтверждение с вопросом об удалении из группы
+    keyboard = get_delete_guest_confirmation_keyboard(guest_user_id)
+    
+    await callback.message.answer(
+        f"🗑️ <b>Удаление гостя</b>\n\n"
+        f"👤 <b>Гость:</b> {first_name} {last_name}\n"
+        f"🆔 User ID: <code>{guest_user_id}</code>\n\n"
+        f"Гость будет удален из списка гостей в Google Sheets.\n\n"
+        f"<b>Удалить также из беседы?</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await callback.answer()
+    await state.clear()
+
+@dp.callback_query(F.data.startswith("delete_guest_confirm_only_"))
+async def delete_guest_only_from_sheets(callback: CallbackQuery):
+    """Удаление гостя только из Google Sheets"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Извлекаем user_id из callback_data
+    user_id_str = callback.data.replace("delete_guest_confirm_only_", "")
+    try:
+        guest_user_id = int(user_id_str)
+    except ValueError:
+        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
+        return
+    
+    # Получаем данные гостя перед удалением
+    guests = await get_all_guests_from_sheets()
+    guest_info = None
+    for guest in guests:
+        if guest.get('user_id') == str(guest_user_id):
+            guest_info = guest
+            break
+    
+    if not guest_info:
+        await callback.answer("❌ Гость не найден", show_alert=True)
+        return
+    
+    first_name = guest_info.get('first_name', '')
+    last_name = guest_info.get('last_name', '')
+    
+    # Удаляем из Google Sheets
+    try:
+        result = await delete_guest_from_sheets(guest_user_id)
+        if result:
+            guests_count = await get_guests_count_from_sheets()
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ])
+            
+            await callback.message.answer(
+                f"✅ <b>Гость удален</b>\n\n"
+                f"👤 {first_name} {last_name}\n"
+                f"🗑️ Удален из списка гостей в Google Sheets\n\n"
+                f"📊 Всего гостей: {guests_count}",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            
+            # Уведомление админам
+            notification_text = (
+                f"🗑️ <b>Гость удален</b>\n\n"
+                f"👤 {first_name} {last_name}\n"
+                f"🆔 User ID: <code>{guest_user_id}</code>\n"
+                f"📋 Удален из списка гостей\n\n"
+                f"📊 Всего гостей: {guests_count}"
+            )
+            await notify_admins(notification_text)
+            
+            logger.info(f"Админ {callback.from_user.id} удалил гостя {first_name} {last_name} (user_id: {guest_user_id}) из Google Sheets")
+        else:
+            await callback.answer("❌ Ошибка при удалении гостя", show_alert=True)
+    except Exception as e:
+        logger.error(f"Ошибка удаления гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await callback.answer("❌ Ошибка при удалении гостя", show_alert=True)
+    
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("delete_guest_confirm_group_"))
+async def delete_guest_from_sheets_and_group(callback: CallbackQuery):
+    """Удаление гостя из Google Sheets и из группы"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Извлекаем user_id из callback_data
+    user_id_str = callback.data.replace("delete_guest_confirm_group_", "")
+    try:
+        guest_user_id = int(user_id_str)
+    except ValueError:
+        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
+        return
+    
+    # Получаем данные гостя перед удалением
+    guests = await get_all_guests_from_sheets()
+    guest_info = None
+    for guest in guests:
+        if guest.get('user_id') == str(guest_user_id):
+            guest_info = guest
+            break
+    
+    if not guest_info:
+        await callback.answer("❌ Гость не найден", show_alert=True)
+        return
+    
+    first_name = guest_info.get('first_name', '')
+    last_name = guest_info.get('last_name', '')
+    
+    # Удаляем из Google Sheets
+    sheets_result = False
+    group_result = False
+    
+    try:
+        sheets_result = await delete_guest_from_sheets(guest_user_id)
+    except Exception as e:
+        logger.error(f"Ошибка удаления из Google Sheets: {e}")
+    
+    # Удаляем из группы
+    if GROUP_ID:
+        try:
+            await bot.ban_chat_member(
+                chat_id=GROUP_ID,
+                user_id=guest_user_id
+            )
+            group_result = True
+            logger.info(f"Гость {first_name} {last_name} (user_id: {guest_user_id}) удален из группы {GROUP_ID}")
+        except Exception as e:
+            logger.error(f"Ошибка удаления из группы: {e}")
+            error_msg = str(e)
+            if "chat not found" in error_msg.lower():
+                logger.warning(f"Группа {GROUP_ID} не найдена или бот не является администратором")
+            elif "not enough rights" in error_msg.lower():
+                logger.warning(f"Недостаточно прав для удаления из группы")
+    else:
+        logger.warning("GROUP_ID не настроен, пропускаем удаление из группы")
+    
+    # Формируем ответ
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    if sheets_result:
+        guests_count = await get_guests_count_from_sheets()
+        
+        result_text = (
+            f"✅ <b>Гость удален</b>\n\n"
+            f"👤 {first_name} {last_name}\n"
+            f"🆔 User ID: <code>{guest_user_id}</code>\n\n"
+        )
+        
+        if group_result:
+            result_text += "✅ Удален из списка гостей\n✅ Удален из беседы\n\n"
+        elif GROUP_ID:
+            result_text += "✅ Удален из списка гостей\n⚠️ Не удалось удалить из беседы (проверьте права бота)\n\n"
+        else:
+            result_text += "✅ Удален из списка гостей\n⚠️ GROUP_ID не настроен\n\n"
+        
+        result_text += f"📊 Всего гостей: {guests_count}"
+        
+        await callback.message.answer(result_text, reply_markup=keyboard, parse_mode="HTML")
+        
+        # Уведомление админам
+        notification_text = (
+            f"🗑️ <b>Гость удален</b>\n\n"
+            f"👤 {first_name} {last_name}\n"
+            f"🆔 User ID: <code>{guest_user_id}</code}\n"
+        )
+        if group_result:
+            notification_text += "📋 Удален из списка гостей\n💬 Удален из беседы\n\n"
+        elif GROUP_ID:
+            notification_text += "📋 Удален из списка гостей\n⚠️ Не удалось удалить из беседы\n\n"
+        else:
+            notification_text += "📋 Удален из списка гостей\n\n"
+        
+        notification_text += f"📊 Всего гостей: {guests_count}"
+        await notify_admins(notification_text)
+        
+        logger.info(f"Админ {callback.from_user.id} удалил гостя {first_name} {last_name} (user_id: {guest_user_id})")
+    else:
+        await callback.message.answer(
+            f"❌ <b>Ошибка удаления</b>\n\n"
+            f"Не удалось удалить гостя из Google Sheets.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_send_invite")
