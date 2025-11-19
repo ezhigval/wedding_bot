@@ -141,8 +141,75 @@ async def main():
         # Это предотвращает конфликт с локальным запуском
         if os.getenv("PORT"):
             logger.info("🚀 Все сервисы запущены!")
+            logger.info("🤖 Подготовка к запуску бота (polling)...")
+            
+            # Проверяем и отменяем webhook, если он установлен
+            try:
+                webhook_info = await bot.get_webhook_info()
+                logger.info(f"📡 Информация о webhook: URL={webhook_info.url}, pending_updates={webhook_info.pending_update_count}")
+                
+                if webhook_info.url:
+                    logger.warning(f"⚠️ Обнаружен активный webhook: {webhook_info.url}")
+                    logger.info("🔄 Отменяю webhook для использования polling...")
+                    await bot.delete_webhook(drop_pending_updates=True)
+                    logger.info("✅ Webhook отменен")
+                else:
+                    logger.info("✅ Webhook не установлен, можно использовать polling")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при проверке webhook: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+            
+            # Дополнительная информация для диагностики
+            try:
+                bot_info = await bot.get_me()
+                logger.info(f"🤖 Информация о боте: @{bot_info.username} (ID: {bot_info.id})")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при получении информации о боте: {e}")
+            
+            logger.info(f"🌍 Окружение: PORT={os.getenv('PORT')}, RENDER={os.getenv('RENDER')}")
+            logger.info(f"🆔 Process ID: {os.getpid()}")
+            logger.info(f"🕐 Время запуска: {__import__('datetime').datetime.now().isoformat()}")
+            
+            # Настраиваем детальное логирование для aiogram
+            aiogram_logger = logging.getLogger('aiogram')
+            aiogram_logger.setLevel(logging.INFO)
+            
+            # Добавляем обработчик для конфликтов
+            def log_conflict_error(record):
+                if 'TelegramConflictError' in str(record.msg) or 'Conflict' in str(record.msg):
+                    logger.error(f"🚨 КОНФЛИКТ БОТОВ ОБНАРУЖЕН!")
+                    logger.error(f"   Сообщение: {record.msg}")
+                    logger.error(f"   Process ID: {os.getpid()}")
+                    logger.error(f"   Время: {__import__('datetime').datetime.now().isoformat()}")
+                    logger.error(f"   Возможные причины:")
+                    logger.error(f"   1. На Render запущено несколько экземпляров сервиса")
+                    logger.error(f"   2. Используется webhook вместо polling")
+                    logger.error(f"   3. Старый экземпляр все еще работает")
+                    logger.error(f"   Решение: Проверьте на Render, нет ли дублирующихся сервисов")
+                return True
+            
+            # Создаем фильтр для логирования конфликтов
+            class ConflictFilter(logging.Filter):
+                def filter(self, record):
+                    return log_conflict_error(record)
+            
+            conflict_filter = ConflictFilter()
+            aiogram_logger.addFilter(conflict_filter)
+            
             logger.info("🤖 Запуск бота (polling)...")
-            await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+            
+            try:
+                await dp.start_polling(
+                    bot, 
+                    allowed_updates=["message", "callback_query"],
+                    handle_as_tasks=False  # Обрабатываем последовательно
+                )
+            except Exception as e:
+                logger.error(f"❌ Критическая ошибка при запуске polling: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise
         else:
             logger.warning("⚠️ PORT не установлен - бот не запущен (вероятно локальный запуск)")
             logger.info("🌐 Только веб-сервер запущен")
