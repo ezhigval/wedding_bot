@@ -1,0 +1,11 @@
+BOT_TOKEN=8295772557:AAH_udSU1FyjYH-mekFDZht2Yuy0EKI7s5g
+WEBAPP_URL=https://wedding-bot-r0y0.onrender.com
+WEDDING_DATE=2026-06-06
+GROOM_NAME=Валентин
+BRIDE_NAME=Мария
+WEDDING_ADDRESS=Санкт-Петербург
+GROOM_TELEGRAM=ezhigval
+BRIDE_TELEGRAM=mrfilmpro
+ADMINS=@ezhigval, @mrfilmpro
+GOOGLE_SHEETS_ID=15-S90u4kI97Kp1NRNhyyA_cuFriUwWAgmGEa80zZ5EI
+

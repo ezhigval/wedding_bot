@@ -28,7 +28,7 @@ body {
     height: 400px;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, #738A6E 0%, #546A50 100%);
+    background: linear-gradient(135deg, #5A7C52 0%, #4A6B42 100%);
 }
 
 .photo-hero img {
@@ -60,7 +60,7 @@ body {
 
 .wedding-date-hero {
     font-size: 20px;
-    color: #DBD0C4;
+    color: #FFE9AD;
     font-weight: 300;
 }
 
@@ -69,14 +69,14 @@ body {
     background: #F8F8F8;
     padding: 40px 20px;
     margin: 20px 0;
-    border-top: 2px solid #8EA58C;
-    border-bottom: 2px solid #8EA58C;
+    border-top: 2px solid #5A7C52;
+    border-bottom: 2px solid #5A7C52;
 }
 
 .section-title {
     font-size: 24px;
     text-align: center;
-    color: #738A6E;
+    color: #5A7C52;
     margin-bottom: 30px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -96,7 +96,7 @@ body {
 .heartbeat-line-small {
     width: 2px;
     height: 40px;
-    background: #8EA58C;
+    background: #5A7C52;
     margin: 10px auto;
     position: relative;
 }
@@ -107,7 +107,7 @@ body {
     position: absolute;
     width: 8px;
     height: 8px;
-    background: #8EA58C;
+    background: #5A7C52;
     border-radius: 50%;
     left: 50%;
     transform: translateX(-50%);
@@ -156,7 +156,7 @@ body {
     position: relative;
     width: 60px;
     height: 70px;
-    background: #DBD0C4;
+    background: #FFE9AD;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -172,8 +172,8 @@ body {
     justify-content: center;
     font-size: 36px;
     font-weight: bold;
-    color: #738A6E;
-    background: #DBD0C4;
+    color: #5A7C52;
+    background: #FFE9AD;
     overflow: hidden;
 }
 
@@ -231,7 +231,7 @@ body {
 .clock-separator {
     font-size: 32px;
     font-weight: bold;
-    color: #738A6E;
+    color: #5A7C52;
     margin: 0 4px;
     line-height: 70px;
 }
@@ -240,14 +240,14 @@ body {
     text-align: center;
     margin-top: 30px;
     padding: 20px;
-    background: #DBD0C4;
+    background: #FFE9AD;
     border-radius: 10px;
 }
 
 .calendar-date-full {
     font-size: 20px;
     font-weight: bold;
-    color: #546A50;
+    color: #4A6B42;
     text-transform: uppercase;
 }
 
@@ -261,7 +261,7 @@ body {
     gap: 10px;
     margin-bottom: 15px;
     padding: 15px;
-    background: #DBD0C4;
+    background: #FFE9AD;
     border-radius: 8px;
     align-items: center;
 }
@@ -291,19 +291,19 @@ body {
 .btn-add-guest {
     width: 100%;
     padding: 12px;
-    background: #DBD0C4;
-    border: 2px dashed #8EA58C;
+    background: #FFE9AD;
+    border: 2px dashed #5A7C52;
     border-radius: 5px;
     font-size: 16px;
-    color: #546A50;
+    color: #4A6B42;
     cursor: pointer;
     transition: all 0.3s;
 }
 
 .btn-add-guest:hover {
     background: #F8F8F8;
-    border-color: #738A6E;
-    color: #738A6E;
+    border-color: #5A7C52;
+    color: #5A7C52;
 }
 
 .btn-add-guest:disabled {
@@ -345,7 +345,7 @@ body {
 .form-group input[type="number"]:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #8EA58C;
+    border-color: #5A7C52;
 }
 
 .form-group input[type="text"] + input[type="text"] {
@@ -378,7 +378,7 @@ body {
 
 .radio-label:hover,
 .checkbox-label:hover {
-    border-color: #8EA58C;
+    border-color: #5A7C52;
     background: #F8F8F8;
 }
 
@@ -410,14 +410,14 @@ body {
 }
 
 .btn-confirm {
-    background: #738A6E;
+    background: #5A7C52;
     color: white;
 }
 
 .btn-confirm:hover {
-    background: #546A50;
+    background: #4A6B42;
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(115, 138, 110, 0.3);
+        box-shadow: 0 4px 10px rgba(90, 124, 82, 0.3);
 }
 
 /* Contact Section */
@@ -433,7 +433,7 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 15px 20px;
-    background: #DBD0C4;
+    background: #FFE9AD;
     border-radius: 8px;
     text-decoration: none;
     color: #2F2F2F;
@@ -448,7 +448,7 @@ body {
 .contact-name {
     font-size: 18px;
     font-weight: bold;
-    color: #738A6E;
+    color: #5A7C52;
 }
 
 .contact-telegram {
@@ -479,7 +479,7 @@ body {
 
 .confirmation-title {
     font-size: 28px;
-    color: #738A6E;
+    color: #5A7C52;
     margin-bottom: 20px;
 }
 
@@ -493,11 +493,11 @@ body {
 .guests-count {
     margin-top: 30px;
     padding: 20px;
-    background: #DBD0C4;
+    background: #FFE9AD;
     border-radius: 10px;
     font-size: 18px;
     font-weight: bold;
-    color: #546A50;
+    color: #4A6B42;
 }
 
 /* Closing */
@@ -512,7 +512,7 @@ body {
 .couple-names-final {
     font-size: 28px;
     text-align: center;
-    color: #738A6E;
+    color: #5A7C52;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 2px;
