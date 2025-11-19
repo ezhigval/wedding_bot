@@ -17,6 +17,24 @@ let CONFIG = {
 let guests = [];
 let maxGuests = 9;
 
+// Добавление гостя
+function addGuest() {
+    if (guests.length >= maxGuests) {
+        tg.showAlert(`Можно добавить максимум ${maxGuests} гостей`);
+        return;
+    }
+    
+    const guestId = Date.now();
+    guests.push({ 
+        id: guestId, 
+        firstName: '', 
+        lastName: '',
+        category: '',
+        side: ''
+    });
+    renderGuests();
+}
+
 // Загружаем конфигурацию
 async function loadConfig() {
     try {
@@ -130,17 +148,6 @@ function formatDate(dateString) {
     return `${day}.${month}.${year}`;
 }
 
-// Добавление гостя
-function addGuest() {
-    if (guests.length >= maxGuests) {
-        tg.showAlert(`Можно добавить максимум ${maxGuests} гостей`);
-        return;
-    }
-    
-    const guestId = Date.now();
-    guests.push({ id: guestId, firstName: '', lastName: '' });
-    renderGuests();
-}
 
 // Удаление гостя
 function removeGuest(guestId) {
@@ -157,11 +164,37 @@ function renderGuests() {
         const guestItem = document.createElement('div');
         guestItem.className = 'guest-item';
         guestItem.innerHTML = `
-            <input type="text" placeholder="Имя" value="${guest.firstName}" 
-                   onchange="updateGuest(${guest.id}, 'firstName', this.value)">
-            <input type="text" placeholder="Фамилия" value="${guest.lastName}" 
-                   onchange="updateGuest(${guest.id}, 'lastName', this.value)">
-            <button type="button" class="btn-remove" onclick="removeGuest(${guest.id})">Удалить</button>
+            <div class="guest-item-header">
+                <h4 class="guest-item-title">Дополнительный гость</h4>
+                <button type="button" class="btn-remove" onclick="removeGuest(${guest.id})">Удалить</button>
+            </div>
+            <div class="guest-item-fields">
+                <div class="form-group">
+                    <label>Имя, Фамилия</label>
+                    <input type="text" placeholder="Имя" value="${guest.firstName}" 
+                           onchange="updateGuest(${guest.id}, 'firstName', this.value)">
+                    <input type="text" placeholder="Фамилия" value="${guest.lastName}" 
+                           onchange="updateGuest(${guest.id}, 'lastName', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>Родство</label>
+                    <select class="form-select" onchange="updateGuest(${guest.id}, 'category', this.value)">
+                        <option value="">Выберите...</option>
+                        <option value="Семья" ${guest.category === 'Семья' ? 'selected' : ''}>Семья</option>
+                        <option value="Друзья" ${guest.category === 'Друзья' ? 'selected' : ''}>Друзья</option>
+                        <option value="Родственники" ${guest.category === 'Родственники' ? 'selected' : ''}>Родственники</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Сторона</label>
+                    <select class="form-select" onchange="updateGuest(${guest.id}, 'side', this.value)">
+                        <option value="">Выберите...</option>
+                        <option value="Жених" ${guest.side === 'Жених' ? 'selected' : ''}>Жених</option>
+                        <option value="Невеста" ${guest.side === 'Невеста' ? 'selected' : ''}>Невеста</option>
+                        <option value="Общие" ${guest.side === 'Общие' ? 'selected' : ''}>Общие</option>
+                    </select>
+                </div>
+            </div>
         `;
         guestsList.appendChild(guestItem);
     });
@@ -229,14 +262,24 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
         return;
     }
     
+    // Получаем данные основного гостя
+    const category = document.getElementById('category').value;
+    const side = document.getElementById('side').value;
+    
+    if (!category || !side) {
+        tg.showAlert('Пожалуйста, выберите Родство и Сторону для основного гостя');
+        return;
+    }
+    
     // Валидация дополнительных гостей
     const invalidGuests = guests.filter(g => 
         !g.firstName.trim() || g.firstName.trim().length < 2 ||
-        !g.lastName.trim() || g.lastName.trim().length < 2
+        !g.lastName.trim() || g.lastName.trim().length < 2 ||
+        !g.category || !g.side
     );
     
     if (invalidGuests.length > 0) {
-        tg.showAlert('Пожалуйста, заполните данные всех гостей');
+        tg.showAlert('Пожалуйста, заполните все данные для всех гостей (имя, фамилия, родство, сторона)');
         return;
     }
     
@@ -253,8 +296,13 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
     
     // Подготавливаем список всех гостей
     const allGuests = [
-        { firstName, lastName },
-        ...guests.map(g => ({ firstName: g.firstName.trim(), lastName: g.lastName.trim() }))
+        { firstName, lastName, category, side },
+        ...guests.map(g => ({ 
+            firstName: g.firstName.trim(), 
+            lastName: g.lastName.trim(),
+            category: g.category,
+            side: g.side
+        }))
     ];
     
     // Отправляем данные на сервер

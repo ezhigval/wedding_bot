@@ -138,11 +138,18 @@ body {
 /* Countdown Clock */
 .countdown-clock {
     display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.clock-row {
+    display: flex;
     justify-content: center;
     align-items: center;
     gap: 8px;
-    margin: 30px 0;
-    flex-wrap: wrap;
 }
 
 .clock-item {
@@ -257,21 +264,54 @@ body {
 }
 
 .guest-item {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-    padding: 15px;
+    margin-bottom: 20px;
+    padding: 20px;
     background: #FFE9AD;
     border-radius: 8px;
-    align-items: center;
+    border: 2px solid #5A7C52;
 }
 
-.guest-item input {
-    flex: 1;
+.guest-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #5A7C52;
+}
+
+.guest-item-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #5A7C52;
+    margin: 0;
+}
+
+.guest-item-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.guest-item .form-group {
+    margin-bottom: 0;
+}
+
+.guest-item input,
+.guest-item select {
+    width: 100%;
     padding: 10px;
     border: 2px solid #ddd;
     border-radius: 5px;
     font-size: 16px;
+    font-family: inherit;
+    margin-top: 5px;
+}
+
+.guest-item input:focus,
+.guest-item select:focus {
+    outline: none;
+    border-color: #5A7C52;
 }
 
 .guest-item .btn-remove {
@@ -343,7 +383,25 @@ body {
 
 .form-group input[type="text"]:focus,
 .form-group input[type="number"]:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #5A7C52;
+}
+
+.form-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.form-select:focus {
     outline: none;
     border-color: #5A7C52;
 }
@@ -522,6 +580,10 @@ body {
 /* Responsive */
 @media (max-width: 480px) {
     .countdown-clock {
+        gap: 10px;
+    }
+    
+    .clock-row {
         gap: 4px;
     }
     

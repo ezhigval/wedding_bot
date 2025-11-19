@@ -16,7 +16,7 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME
+from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -70,7 +70,7 @@ async def add_guest_to_sheets(first_name: str, last_name: str, age: Optional[int
 
 def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int] = None, 
                               category: Optional[str] = None, side: Optional[str] = None):
-    """Синхронная функция для добавления гостя в Google Sheets"""
+    """Синхронная функция для добавления/обновления гостя в Google Sheets"""
     try:
         client = get_google_sheets_client()
         if not client:
@@ -80,24 +80,188 @@ def _add_guest_to_sheets_sync(first_name: str, last_name: str, age: Optional[int
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
         worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
         
-        # Подготавливаем данные
-        row_data = [
-            f"{first_name} {last_name}",  # Столбец A - Имя и Фамилия
-            str(age) if age else "",       # Столбец B - Возраст
-            "ДА",                          # Столбец C - Подтверждение (чекбокс)
-            category if category else "", # Столбец D - Категория
-            side if side else ""           # Столбец E - Сторона
-        ]
+        # Формируем полное имя для поиска
+        full_name = f"{first_name} {last_name}".strip()
         
-        # Добавляем строку
-        worksheet.append_row(row_data)
-        
-        logger.info(f"Гость {first_name} {last_name} добавлен в Google Sheets")
-        return True
+        # Получаем все данные из столбца A (имена)
+        try:
+            all_values = worksheet.get_all_values()
+            
+            # Ищем существующую строку по имени и фамилии (столбец A)
+            found_row = None
+            for row_idx, row in enumerate(all_values, start=1):
+                if len(row) > 0:
+                    # Сравниваем имя в столбце A (без учета регистра и пробелов)
+                    existing_name = row[0].strip() if row[0] else ""
+                    if existing_name.lower() == full_name.lower():
+                        found_row = row_idx
+                        break
+            
+            if found_row:
+                # Гость уже существует - обновляем столбцы C, D, E
+                # Столбец C = индекс 3 (подтверждение)
+                # Столбец D = индекс 4 (Родство/Категория)
+                # Столбец E = индекс 5 (Сторона)
+                worksheet.update_cell(found_row, 3, "ДА")  # Столбец C - Подтверждение
+                
+                # Обновляем Родство (столбец D) если передано
+                if category:
+                    worksheet.update_cell(found_row, 4, category)  # Столбец D - Родство
+                
+                # Обновляем Сторону (столбец E) если передано
+                if side:
+                    worksheet.update_cell(found_row, 5, side)  # Столбец E - Сторона
+                
+                logger.info(f"Гость {full_name} найден в строке {found_row}, обновлено подтверждение на 'ДА' и данные (родство: {category}, сторона: {side})")
+                return True
+            else:
+                # Гость не найден - добавляем новую строку
+                row_data = [
+                    full_name,              # Столбец A - Имя и Фамилия
+                    str(age) if age else "", # Столбец B - Возраст
+                    "ДА",                   # Столбец C - Подтверждение (чекбокс)
+                    category if category else "", # Столбец D - Категория
+                    side if side else ""    # Столбец E - Сторона
+                ]
+                
+                worksheet.append_row(row_data)
+                logger.info(f"Гость {full_name} добавлен в Google Sheets (новая строка)")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Ошибка при поиске/добавлении гостя в Google Sheets: {e}")
+            # Если поиск не удался, пробуем просто добавить
+            row_data = [
+                full_name,              # Столбец A - Имя и Фамилия
+                str(age) if age else "", # Столбец B - Возраст
+                "ДА",                   # Столбец C - Подтверждение (чекбокс)
+                category if category else "", # Столбец D - Категория
+                side if side else ""    # Столбец E - Сторона
+            ]
+            worksheet.append_row(row_data)
+            logger.info(f"Гость {full_name} добавлен в Google Sheets (fallback)")
+            return True
         
     except Exception as e:
         logger.error(f"Ошибка добавления гостя в Google Sheets: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+def normalize_telegram_id(telegram_id: str) -> str:
+    """
+    Нормализует телеграм ID к единому формату (без @, без t.me/)
+    
+    Args:
+        telegram_id: Может быть в формате:
+            - t.me/username
+            - @username
+            - username
+    
+    Returns:
+        Нормализованный username (без @ и без t.me/)
+    """
+    if not telegram_id:
+        return ""
+    
+    telegram_id = telegram_id.strip()
+    
+    # Убираем t.me/
+    if telegram_id.startswith("t.me/"):
+        telegram_id = telegram_id[5:]
+    elif telegram_id.startswith("https://t.me/"):
+        telegram_id = telegram_id[13:]
+    elif telegram_id.startswith("http://t.me/"):
+        telegram_id = telegram_id[12:]
+    
+    # Убираем @
+    if telegram_id.startswith("@"):
+        telegram_id = telegram_id[1:]
+    
+    return telegram_id
+
+async def get_invitations_list() -> List[Dict[str, str]]:
+    """
+    Получить список приглашений из Google Sheets (вкладка "Пригласительные")
+    
+    Returns:
+        Список словарей с ключами 'name' и 'telegram_id'
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        import asyncio
+        
+        # Запускаем синхронный код в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_invitations_list_sync)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения списка приглашений из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+def _get_invitations_list_sync() -> List[Dict[str, str]]:
+    """Синхронная функция для получения списка приглашений из Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        # Открываем таблицу
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Пытаемся открыть вкладку "Пригласительные"
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_INVITATIONS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Вкладка '{GOOGLE_SHEETS_INVITATIONS_SHEET_NAME}' не найдена: {e}")
+            return []
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Пропускаем заголовок (первую строку, если есть)
+        # Столбец A - имя, столбец B - телеграм ID
+        invitations = []
+        start_row = 0
+        
+        # Проверяем, есть ли заголовок
+        if all_values and len(all_values) > 0:
+            first_row = all_values[0]
+            # Если первая строка похожа на заголовок (содержит "имя" или "телеграм"), пропускаем
+            if any(keyword in str(first_row[0]).lower() for keyword in ['имя', 'name', 'гость']):
+                start_row = 1
+        
+        # Обрабатываем данные
+        for row in all_values[start_row:]:
+            if len(row) >= 2:
+                name = row[0].strip() if row[0] else ""
+                telegram_id = row[1].strip() if row[1] else ""
+                
+                # Пропускаем пустые строки
+                if not name and not telegram_id:
+                    continue
+                
+                # Нормализуем телеграм ID
+                normalized_id = normalize_telegram_id(telegram_id)
+                
+                if name and normalized_id:
+                    invitations.append({
+                        'name': name,
+                        'telegram_id': normalized_id
+                    })
+        
+        logger.info(f"Получено {len(invitations)} приглашений из Google Sheets")
+        return invitations
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения списка приглашений из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
 

@@ -42,44 +42,49 @@
             <div class="section-card">
                 <h2 class="section-title">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
                 <div class="countdown-clock" id="countdownClock">
-                    <div class="clock-item">
-                        <div class="clock-flip">
-                            <div class="clock-flip-top" id="monthsTop">0</div>
-                            <div class="clock-flip-bottom" id="monthsBottom">0</div>
+                    <!-- Первый ряд: месяцы и дни -->
+                    <div class="clock-row">
+                        <div class="clock-item">
+                            <div class="clock-flip">
+                                <div class="clock-flip-top" id="monthsTop">0</div>
+                                <div class="clock-flip-bottom" id="monthsBottom">0</div>
+                            </div>
+                            <div class="clock-label">месяцев</div>
                         </div>
-                        <div class="clock-label">месяцев</div>
+                        <div class="clock-separator">:</div>
+                        <div class="clock-item">
+                            <div class="clock-flip">
+                                <div class="clock-flip-top" id="daysTop">0</div>
+                                <div class="clock-flip-bottom" id="daysBottom">0</div>
+                            </div>
+                            <div class="clock-label">дней</div>
+                        </div>
                     </div>
-                    <div class="clock-separator">:</div>
-                    <div class="clock-item">
-                        <div class="clock-flip">
-                            <div class="clock-flip-top" id="daysTop">0</div>
-                            <div class="clock-flip-bottom" id="daysBottom">0</div>
+                    <!-- Второй ряд: часы, минуты, секунды -->
+                    <div class="clock-row">
+                        <div class="clock-item">
+                            <div class="clock-flip">
+                                <div class="clock-flip-top" id="hoursTop">0</div>
+                                <div class="clock-flip-bottom" id="hoursBottom">0</div>
+                            </div>
+                            <div class="clock-label">часов</div>
                         </div>
-                        <div class="clock-label">дней</div>
-                    </div>
-                    <div class="clock-separator">:</div>
-                    <div class="clock-item">
-                        <div class="clock-flip">
-                            <div class="clock-flip-top" id="hoursTop">0</div>
-                            <div class="clock-flip-bottom" id="hoursBottom">0</div>
+                        <div class="clock-separator">:</div>
+                        <div class="clock-item">
+                            <div class="clock-flip">
+                                <div class="clock-flip-top" id="minutesTop">0</div>
+                                <div class="clock-flip-bottom" id="minutesBottom">0</div>
+                            </div>
+                            <div class="clock-label">минут</div>
                         </div>
-                        <div class="clock-label">часов</div>
-                    </div>
-                    <div class="clock-separator">:</div>
-                    <div class="clock-item">
-                        <div class="clock-flip">
-                            <div class="clock-flip-top" id="minutesTop">0</div>
-                            <div class="clock-flip-bottom" id="minutesBottom">0</div>
+                        <div class="clock-separator">:</div>
+                        <div class="clock-item">
+                            <div class="clock-flip">
+                                <div class="clock-flip-top" id="secondsTop">0</div>
+                                <div class="clock-flip-bottom" id="secondsBottom">0</div>
+                            </div>
+                            <div class="clock-label">секунд</div>
                         </div>
-                        <div class="clock-label">минут</div>
-                    </div>
-                    <div class="clock-separator">:</div>
-                    <div class="clock-item">
-                        <div class="clock-flip">
-                            <div class="clock-flip-top" id="secondsTop">0</div>
-                            <div class="clock-flip-bottom" id="secondsBottom">0</div>
-                        </div>
-                        <div class="clock-label">секунд</div>
                     </div>
                 </div>
                 <div class="calendar-preview">
@@ -102,6 +107,22 @@
                         <label for="firstName">Имя, Фамилия</label>
                         <input type="text" id="firstName" required minlength="2" placeholder="Имя">
                         <input type="text" id="lastName" required minlength="2" placeholder="Фамилия">
+                        
+                        <label for="category">Родство</label>
+                        <select id="category" required class="form-select">
+                            <option value="">Выберите...</option>
+                            <option value="Семья">Семья</option>
+                            <option value="Друзья">Друзья</option>
+                            <option value="Родственники">Родственники</option>
+                        </select>
+                        
+                        <label for="side">Сторона</label>
+                        <select id="side" required class="form-select">
+                            <option value="">Выберите...</option>
+                            <option value="Жених">Жених</option>
+                            <option value="Невеста">Невеста</option>
+                            <option value="Общие">Общие</option>
+                        </select>
                     </div>
                     
                     <div class="guests-list" id="guestsList"></div>

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery, FSInputFile
+from aiogram.types import Message, CallbackQuery, FSInputFile, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -16,7 +16,8 @@ from database import (
     get_name_by_username, add_name_mapping, get_all_name_mappings, delete_name_mapping,
     init_default_mappings, delete_guest
 )
-from keyboards import get_invitation_keyboard, get_admin_keyboard
+from keyboards import get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard
+from google_sheets import get_invitations_list, normalize_telegram_id
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,10 @@ class RegistrationStates(StatesGroup):
     waiting_first_name = State()
     waiting_last_name = State()
     confirming = State()
+
+# Состояния для рассылки приглашений
+class InvitationStates(StatesGroup):
+    waiting_guest_selection = State()
 
 async def get_user_display_name(user):
     """Получает имя пользователя из таблицы соответствия или из Telegram"""
@@ -470,6 +475,139 @@ async def admin_names(callback: CallbackQuery):
         await callback.message.answer(text, parse_mode="HTML")
     
     await callback.answer()
+
+@dp.callback_query(F.data == "admin_send_invite")
+async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
+    """Начать рассылку приглашений"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Загружаем список приглашений из Google Sheets
+    invitations = await get_invitations_list()
+    
+    if not invitations:
+        await callback.message.answer(
+            "❌ <b>Список приглашений пуст</b>\n\n"
+            "Проверьте вкладку 'Пригласительные' в Google Sheets.\n"
+            "Убедитесь, что:\n"
+            "• Столбец A содержит имена гостей\n"
+            "• Столбец B содержит телеграм ID (формат: @username, t.me/username или просто username)",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Формируем список гостей
+    guests_list = "📋 <b>Список гостей для приглашения:</b>\n\n"
+    for i, inv in enumerate(invitations, 1):
+        guests_list += f"{i}. {inv['name']} - @{inv['telegram_id']}\n"
+    
+    guests_list += "\n" + "=" * 40 + "\n\n"
+    guests_list += (
+        "💬 <b>Введите данные гостя для отправки приглашения:</b>\n\n"
+        "Формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
+        "Пример:\n"
+        "<code>Иван Иванов - @ivan_ivanov</code>\n\n"
+        "Или просто скопируйте строку из списка выше."
+    )
+    
+    await callback.message.answer(guests_list, parse_mode="HTML")
+    
+    # Устанавливаем состояние ожидания ввода
+    await state.set_state(InvitationStates.waiting_guest_selection)
+
+@dp.message(InvitationStates.waiting_guest_selection)
+async def process_guest_selection(message: Message, state: FSMContext):
+    """Обработка выбора гостя для отправки приглашения"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        await state.clear()
+        return
+    
+    text = message.text.strip()
+    
+    # Парсим формат "Имя Фамилия - @telegram_id" или "Имя Фамилия - telegram_id"
+    # Также поддерживаем просто "Имя Фамилия - @telegram_id" из списка
+    parts = text.split(" - ", 1)
+    
+    if len(parts) != 2:
+        await message.answer(
+            "❌ <b>Неверный формат!</b>\n\n"
+            "Используйте формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
+            "Пример:\n"
+            "<code>Иван Иванов - @ivan_ivanov</code>",
+            parse_mode="HTML"
+        )
+        return
+    
+    guest_name = parts[0].strip()
+    telegram_id_raw = parts[1].strip()
+    
+    if not guest_name or not telegram_id_raw:
+        await message.answer(
+            "❌ <b>Неверный формат!</b>\n\n"
+            "Имя и телеграм ID не могут быть пустыми.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Нормализуем телеграм ID
+    telegram_id = normalize_telegram_id(telegram_id_raw)
+    
+    if not telegram_id:
+        await message.answer(
+            "❌ <b>Неверный формат телеграм ID!</b>\n\n"
+            "Поддерживаемые форматы:\n"
+            "• @username\n"
+            "• t.me/username\n"
+            "• username",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Создаем текст приглашения
+    invitation_text = (
+        f"Дорогой(ая) {guest_name}, с большой радостью сообщаю - мы, {GROOM_NAME} и {BRIDE_NAME}, "
+        f"женимся и приглашаем тебя на наш прекрасный праздник."
+    )
+    
+    # Создаем клавиатуру с кнопкой для отправки
+    keyboard, _ = get_send_invitation_keyboard(guest_name, telegram_id)
+    
+    # Отправляем сообщение с текстом и кнопкой
+    await message.answer(
+        f"💌 <b>Приглашение для {guest_name}</b>\n\n"
+        f"{invitation_text}\n\n"
+        f"📱 Телеграм: @{telegram_id}\n\n"
+        f"Нажмите кнопку ниже, чтобы открыть диалог с этим человеком:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    # Также отправляем готовый текст для копирования с кнопкой для бота
+    # Создаем кнопку для открытия бота
+    bot_invite_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💒 Открыть приглашение",
+            web_app=WebAppInfo(url=WEBAPP_URL)
+        )]
+    ])
+    
+    await message.answer(
+        f"📋 <b>Готовый текст для отправки гостю:</b>\n\n"
+        f"<code>{invitation_text}</code>\n\n"
+        f"После открытия диалога:\n"
+        f"1. Скопируйте текст выше\n"
+        f"2. Отправьте сообщение гостю\n"
+        f"3. Добавьте кнопку 'Открыть приглашение' (используйте кнопку ниже как пример)",
+        reply_markup=bot_invite_keyboard,
+        parse_mode="HTML"
+    )
+    
+    # Сбрасываем состояние
+    await state.clear()
 
 @dp.callback_query(F.data == "admin_reset_me")
 async def admin_reset_me(callback: CallbackQuery):

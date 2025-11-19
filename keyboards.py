@@ -25,7 +25,34 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="🔄 Обновить Mini App", callback_data="admin_reload")],
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
         [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")],
+        [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")]
     ])
     return keyboard
+
+def get_send_invitation_keyboard(guest_name: str, telegram_id: str):
+    """Клавиатура для отправки приглашения конкретному гостю"""
+    # Создаем текст приглашения
+    invitation_text = (
+        f"Дорогой(ая) {guest_name}, с большой радостью сообщаю - мы, {GROOM_NAME} и {BRIDE_NAME}, "
+        f"женимся и приглашаем тебя на наш прекрасный праздник."
+    )
+    
+    # URL для открытия диалога с готовым текстом
+    # Используем tg://msg?to=username&text=текст для создания сообщения
+    # Если это не работает, используем tg://resolve?domain=username
+    import urllib.parse
+    encoded_text = urllib.parse.quote(invitation_text)
+    deep_link = f"tg://msg?to={telegram_id}&text={encoded_text}"
+    
+    # Альтернативный вариант - просто открыть профиль
+    # deep_link = f"tg://resolve?domain={telegram_id}"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💒 Открыть диалог",
+            url=deep_link
+        )]
+    ])
+    return keyboard, invitation_text
 
