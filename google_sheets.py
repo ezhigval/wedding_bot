@@ -384,14 +384,24 @@ def _get_invitations_list_sync() -> List[Dict[str, str]]:
                 if not name and not telegram_id:
                     continue
                 
+                # Пропускаем записи, где есть имя, но нет телеграм username
+                if name and not telegram_id:
+                    logger.debug(f"Пропущена запись '{name}' - нет телеграм username")
+                    continue
+                
                 # Нормализуем телеграм ID
                 normalized_id = normalize_telegram_id(telegram_id)
                 
+                # Добавляем только если есть и имя, и нормализованный телеграм ID
                 if name and normalized_id:
                     invitations.append({
                         'name': name,
                         'telegram_id': normalized_id
                     })
+                elif name and not normalized_id:
+                    # Если имя есть, но нормализация не удалась (неверный формат)
+                    logger.debug(f"Пропущена запись '{name}' - неверный формат телеграм ID: '{telegram_id}'")
+                    continue
         
         logger.info(f"Получено {len(invitations)} приглашений из Google Sheets")
         return invitations

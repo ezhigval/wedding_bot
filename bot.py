@@ -13,7 +13,8 @@ import os
 from utils import format_wedding_date
 from keyboards import (
     get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, 
-    get_group_management_keyboard, get_delete_guest_confirmation_keyboard
+    get_group_management_keyboard, get_delete_guest_confirmation_keyboard,
+    get_guests_selection_keyboard, get_invitation_dialog_keyboard
 )
 from google_sheets import (
     get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
@@ -880,94 +881,66 @@ async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
             "Проверьте вкладку 'Пригласительные' в Google Sheets.\n"
             "Убедитесь, что:\n"
             "• Столбец A содержит имена гостей\n"
-            "• Столбец B содержит телеграм ID (формат: @username, t.me/username или просто username)",
+            "• Столбец B содержит телеграм ID (формат: @username, t.me/username или просто username)\n\n"
+            "⚠️ <i>Записи без телеграм username автоматически пропускаются.</i>",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
         return
     
-    # Формируем список гостей
-    guests_list = "📋 <b>Список гостей для приглашения:</b>\n\n"
-    for i, inv in enumerate(invitations, 1):
-        guests_list += f"{i}. {inv['name']} - @{inv['telegram_id']}\n"
+    # Сохраняем список приглашений в state для использования в callback
+    await state.update_data(invitations=invitations)
     
-    guests_list += "\n" + "=" * 40 + "\n\n"
-    guests_list += (
-        "💬 <b>Введите данные гостя для отправки приглашения:</b>\n\n"
-        "Формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
-        "Пример:\n"
-        "<code>Иван Иванов - @ivan_ivanov</code>\n\n"
-        "Или просто скопируйте строку из списка выше."
-    )
+    # Формируем сообщение со списком гостей
+    guests_list = f"📋 <b>Выберите гостя для отправки приглашения:</b>\n\n"
+    guests_list += f"Всего гостей: <b>{len(invitations)}</b>\n\n"
+    guests_list += "Нажмите на кнопку с именем гостя, чтобы открыть диалог с заготовленным текстом приглашения."
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
+    # Создаем клавиатуру с кнопками для каждого гостя
+    keyboard = get_guests_selection_keyboard(invitations)
     
     await callback.message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
-    
-    # Устанавливаем состояние ожидания ввода
-    await state.set_state(InvitationStates.waiting_guest_selection)
 
-@dp.message(InvitationStates.waiting_guest_selection)
-async def process_guest_selection(message: Message, state: FSMContext):
-    """Обработка выбора гостя для отправки приглашения"""
-    if not is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет доступа к этой команде.")
-        await state.clear()
+@dp.callback_query(F.data.startswith("invite_guest_"))
+async def process_guest_selection_callback(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора гостя для отправки приглашения через callback"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
-    text = message.text.strip()
+    await callback.answer()
     
-    # Парсим формат "Имя Фамилия - @telegram_id" или "Имя Фамилия - telegram_id"
-    # Также поддерживаем просто "Имя Фамилия - @telegram_id" из списка
-    parts = text.split(" - ", 1)
-    
-    if len(parts) != 2:
-        await message.answer(
-            "❌ <b>Неверный формат!</b>\n\n"
-            "Используйте формат: <b>Имя Фамилия - @telegram_id</b>\n\n"
-            "Пример:\n"
-            "<code>Иван Иванов - @ivan_ivanov</code>",
-            parse_mode="HTML"
-        )
+    # Получаем индекс гостя из callback_data
+    try:
+        guest_index = int(callback.data.split("_")[-1])
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка: неверный формат данных.")
         return
     
-    guest_name = parts[0].strip()
-    telegram_id_raw = parts[1].strip()
+    # Получаем список приглашений из state
+    data = await state.get_data()
+    invitations = data.get('invitations', [])
     
-    if not guest_name or not telegram_id_raw:
-        await message.answer(
-            "❌ <b>Неверный формат!</b>\n\n"
-            "Имя и телеграм ID не могут быть пустыми.",
-            parse_mode="HTML"
-        )
+    if not invitations or guest_index >= len(invitations):
+        await callback.message.answer("❌ Ошибка: гость не найден. Попробуйте выбрать снова.")
         return
     
-    # Нормализуем телеграм ID
-    telegram_id = normalize_telegram_id(telegram_id_raw)
+    # Получаем данные выбранного гостя
+    guest = invitations[guest_index]
+    guest_name = guest['name']
+    telegram_id = guest['telegram_id']
     
-    if not telegram_id:
-        await message.answer(
-            "❌ <b>Неверный формат телеграм ID!</b>\n\n"
-            "Поддерживаемые форматы:\n"
-            "• @username\n"
-            "• t.me/username\n"
-            "• username",
-            parse_mode="HTML"
-        )
-        return
-    
-    # Создаем текст приглашения
+    # Создаем текст приглашения согласно требованиям
     invitation_text = (
-        f"Дорогой(ая) {guest_name}, с большой радостью сообщаю - мы, {GROOM_NAME} и {BRIDE_NAME}, "
-        f"женимся и приглашаем тебя на наш прекрасный праздник."
+        f"Дорогой(ая) {guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся и хотим разделить "
+        f"этот знаменательный день с родными и близкими, прикрепляем ниже открытку - просим подтвердить, "
+        f"хотя бы предварительно, свое присутствие"
     )
     
-    # Создаем клавиатуру с кнопкой для отправки
-    keyboard, _ = get_send_invitation_keyboard(guest_name, telegram_id)
+    # Создаем клавиатуру с кнопкой для открытия диалога с предзаполненным текстом
+    keyboard = get_invitation_dialog_keyboard(telegram_id, invitation_text)
     
-    # Создаем клавиатуру с кнопкой для отправки приглашения
+    # Создаем клавиатуру с кнопкой Mini App для гостя
     bot_invite_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="💒 Открыть приглашение",
@@ -975,30 +948,28 @@ async def process_guest_selection(message: Message, state: FSMContext):
         )]
     ])
     
-    # Отправляем сообщение с текстом приглашения и кнопками
-    await message.answer(
+    # Отправляем сообщение с текстом приглашения
+    await callback.message.answer(
         f"💌 <b>Приглашение для {guest_name}</b>\n\n"
-        f"📋 <b>Готовый текст:</b>\n"
+        f"📋 <b>Готовый текст для отправки:</b>\n\n"
         f"<code>{invitation_text}</code>\n\n"
         f"📱 Телеграм: @{telegram_id}\n\n"
         f"<b>Инструкция:</b>\n"
-        f"1. Нажмите '💬 Открыть диалог' - откроется диалог с @{telegram_id}\n"
-        f"2. Скопируйте текст выше и отправьте гостю\n"
-        f"3. Добавьте кнопку '💒 Открыть приглашение' (используйте кнопку ниже)",
+        f"1. Нажмите '💬 Открыть диалог' ниже - откроется диалог с @{telegram_id}\n"
+        f"2. В поле ввода уже будет заготовлен текст приглашения (скопируйте его)\n"
+        f"3. Отправьте сообщение гостю\n"
+        f"4. Добавьте кнопку '💒 Открыть приглашение' (используйте кнопку ниже)",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
     
-    # Отправляем отдельное сообщение с кнопкой для примера
-    await message.answer(
-        f"📋 <b>Пример кнопки для гостя:</b>\n\n"
+    # Отправляем отдельное сообщение с кнопкой Mini App для примера
+    await callback.message.answer(
+        f"📋 <b>Кнопка для гостя:</b>\n\n"
         f"Используйте эту кнопку в сообщении гостю:",
         reply_markup=bot_invite_keyboard,
         parse_mode="HTML"
     )
-    
-    # Сбрасываем состояние
-    await state.clear()
 
 @dp.callback_query(F.data == "admin_reset_me")
 async def admin_reset_me(callback: CallbackQuery):

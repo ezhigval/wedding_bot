@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME
+from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE
+from datetime import datetime
 
 def get_invitation_keyboard():
     """Клавиатура для приглашения с Mini App"""
@@ -53,28 +54,64 @@ def get_group_management_keyboard():
     ])
     return keyboard
 
-def get_send_invitation_keyboard(guest_name: str, telegram_id: str):
-    """Клавиатура для отправки приглашения конкретному гостю"""
-    # Создаем текст приглашения
-    invitation_text = (
-        f"Дорогой(ая) {guest_name}, с большой радостью сообщаю - мы, {GROOM_NAME} и {BRIDE_NAME}, "
-        f"женимся и приглашаем тебя на наш прекрасный праздник."
-    )
+def get_guests_selection_keyboard(invitations: list):
+    """Клавиатура с кнопками для выбора гостя из списка приглашений"""
+    keyboard_buttons = []
     
-    # URL для открытия диалога с пользователем
-    # Telegram не поддерживает прямой deep link с текстом для конкретного пользователя
-    # Используем tg://resolve?domain=username для открытия профиля
-    deep_link = f"tg://resolve?domain={telegram_id}"
+    # Создаем кнопки для каждого гостя (максимум 2 кнопки в ряд)
+    for i in range(0, len(invitations), 2):
+        row = []
+        # Первая кнопка в ряду
+        inv = invitations[i]
+        row.append(InlineKeyboardButton(
+            text=f"👤 {inv['name']}",
+            callback_data=f"invite_guest_{i}"
+        ))
+        # Вторая кнопка в ряду (если есть)
+        if i + 1 < len(invitations):
+            inv2 = invitations[i + 1]
+            row.append(InlineKeyboardButton(
+                text=f"👤 {inv2['name']}",
+                callback_data=f"invite_guest_{i + 1}"
+            ))
+        keyboard_buttons.append(row)
+    
+    # Кнопка возврата
+    keyboard_buttons.append([InlineKeyboardButton(
+        text="⬅️ Вернуться",
+        callback_data="admin_back"
+    )])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+def get_invitation_dialog_keyboard(telegram_id: str, invitation_text: str = ""):
+    """Клавиатура для открытия диалога с гостем"""
+    # URL для открытия диалога с предзаполненным текстом
+    # Используем tg://msg?to=username&text=... для предзаполнения текста
+    # Если текст слишком длинный, используем более короткую версию
+    if invitation_text:
+        # Кодируем текст для URL
+        from urllib.parse import quote
+        encoded_text = quote(invitation_text)
+        # Ограничиваем длину текста (Telegram имеет ограничения)
+        if len(encoded_text) > 2000:
+            # Используем короткую версию
+            short_text = f"Дорогой(ая), мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение ниже 💒"
+            encoded_text = quote(short_text)
+        deep_link = f"tg://msg?to={telegram_id}&text={encoded_text}"
+    else:
+        # Fallback: просто открываем диалог
+        deep_link = f"tg://resolve?domain={telegram_id}"
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="💬 Открыть диалог",
+            text="💬 Открыть диалог с текстом",
             url=deep_link
         )],
         [InlineKeyboardButton(
-            text="⬅️ Вернуться",
+            text="⬅️ Вернуться к списку",
             callback_data="admin_send_invite"
         )]
     ])
-    return keyboard, invitation_text
+    return keyboard
 
