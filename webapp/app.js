@@ -119,20 +119,24 @@ function updateCountdown() {
 function setClockValue(type, value) {
     const topEl = document.getElementById(`${type}Top`);
     const bottomEl = document.getElementById(`${type}Bottom`);
+    const paddedValue = String(value).padStart(2, '0');
     
     if (previousValues[type] !== null && previousValues[type] !== value) {
-        // Анимация перелистывания
+        // Анимация перелистывания - нижняя часть показывает новое значение
+        bottomEl.textContent = paddedValue;
+        
+        // Запускаем анимацию
         topEl.classList.add('flip');
         bottomEl.classList.add('flip');
         
         setTimeout(() => {
-            topEl.textContent = String(value).padStart(2, '0');
-            bottomEl.textContent = String(value).padStart(2, '0');
+            // После анимации верхняя часть получает новое значение
+            topEl.textContent = paddedValue;
             topEl.classList.remove('flip');
             bottomEl.classList.remove('flip');
         }, 300);
     } else {
-        const paddedValue = String(value).padStart(2, '0');
+        // Первая установка - обе части показывают одно значение
         topEl.textContent = paddedValue;
         bottomEl.textContent = paddedValue;
     }

@@ -166,6 +166,7 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center top;
     opacity: 0.9;
 }
 
@@ -180,7 +181,7 @@ body {
 }
 
 .couple-names {
-    font-size: 32px;
+    font-size: 36px;
     font-weight: 700;
     color: white;
     margin-bottom: 10px;
@@ -190,7 +191,7 @@ body {
 }
 
 .wedding-date-hero {
-    font-size: 20px;
+    font-size: 24px;
     color: #FFE9AD;
     font-weight: 300;
 }
@@ -209,7 +210,7 @@ body {
 }
 
 .section-title {
-    font-size: 24px;
+    font-size: 28px;
     text-align: center;
     color: #5A7C52;
     margin-bottom: 30px;
@@ -264,7 +265,7 @@ body {
 
 /* Greeting */
 .greeting-text {
-    font-size: 16px;
+    font-size: 20px;
     text-align: center;
     color: #2F2F2F;
     line-height: 1.8;
@@ -303,6 +304,7 @@ body {
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    perspective: 200px;
 }
 
 .clock-flip-top,
@@ -313,23 +315,27 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 36px;
+    font-size: 40px;
     font-weight: bold;
     color: #5A7C52;
     background: #FFE9AD;
     overflow: hidden;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
 }
 
 .clock-flip-top {
     top: 0;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
     border-radius: 8px 8px 0 0;
+    transform-origin: bottom;
 }
 
 .clock-flip-bottom {
     bottom: 0;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid rgba(0,0,0,0.1);
     border-radius: 0 0 8px 8px;
+    transform-origin: top;
 }
 
 .clock-flip-top.flip {
@@ -346,26 +352,34 @@ body {
     }
     50% {
         transform: rotateX(-90deg);
+        opacity: 0;
+    }
+    51% {
+        opacity: 0;
     }
     100% {
         transform: rotateX(0deg);
+        opacity: 1;
     }
 }
 
 @keyframes flipBottom {
     0% {
-        transform: rotateX(0deg);
+        transform: rotateX(90deg);
+        opacity: 0;
     }
     50% {
-        transform: rotateX(90deg);
+        transform: rotateX(0deg);
+        opacity: 1;
     }
     100% {
         transform: rotateX(0deg);
+        opacity: 1;
     }
 }
 
 .clock-label {
-    font-size: 11px;
+    font-size: 15px;
     color: #666;
     text-transform: uppercase;
     margin-top: 4px;
@@ -390,7 +404,7 @@ body {
 }
 
 .calendar-date-full {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #4A6B42;
     text-transform: uppercase;
@@ -421,7 +435,7 @@ body {
 }
 
 .guest-item-title {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: bold;
     color: #5A7C52;
     margin: 0;
@@ -444,7 +458,7 @@ body {
     padding-right: 40px;
     border: 2px solid #5A7C52;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 20px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
     background: rgba(248, 248, 248, 0.9);
     color: #4A6B42;
@@ -504,7 +518,7 @@ body {
     background: #FFE9AD;
     border: 2px dashed #5A7C52;
     border-radius: 5px;
-    font-size: 16px;
+    font-size: 20px;
     color: #4A6B42;
     cursor: pointer;
     transition: all 0.3s;
@@ -536,7 +550,7 @@ body {
     margin-bottom: 10px;
     font-weight: bold;
     color: #2F2F2F;
-    font-size: 16px;
+    font-size: 20px;
 }
 
 .form-group input[type="text"],
@@ -546,7 +560,7 @@ body {
     padding: 12px 15px;
     border: 2px solid #ddd;
     border-radius: 5px;
-    font-size: 16px;
+    font-size: 20px;
     font-family: inherit;
     transition: border-color 0.3s;
 }
@@ -564,7 +578,7 @@ body {
     padding: 14px 18px;
     border: 2px solid #5A7C52;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 20px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
     background: #FFE9AD;
     color: #4A6B42;
