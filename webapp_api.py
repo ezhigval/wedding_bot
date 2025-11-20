@@ -147,7 +147,7 @@ def get_guests():
 def get_config():
     """Получить конфигурацию для Mini App"""
     return jsonify({
-        'weddingDate': os.getenv("WEDDING_DATE", "2026-06-06"),
+        'weddingDate': os.getenv("WEDDING_DATE", "2026-06-05"),
         'groomName': os.getenv("GROOM_NAME", "Валентин"),
         'brideName': os.getenv("BRIDE_NAME", "Мария")
     })
