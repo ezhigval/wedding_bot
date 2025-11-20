@@ -912,3 +912,63 @@ def _cancel_guest_registration_by_user_id_sync(user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+async def delete_guest_from_sheets(user_id: int) -> bool:
+    """
+    Полностью удалить гостя из Google Sheets по user_id (удалить строку)
+    
+    Args:
+        user_id: Telegram user_id
+        
+    Returns:
+        True если операция успешна
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _delete_guest_from_sheets_sync, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка удаления гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _delete_guest_from_sheets_sync(user_id: int) -> bool:
+    """Синхронная функция для полного удаления гостя из Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Ищем строку с user_id в столбце F (индекс 5)
+        found_row = None
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 5:  # Проверяем, что есть столбец F
+                user_id_cell = row[5].strip() if row[5] else ""
+                if user_id_cell == str(user_id):
+                    found_row = row_idx
+                    break
+        
+        if found_row:
+            # Удаляем строку
+            worksheet.delete_rows(found_row)
+            logger.info(f"Гость с user_id {user_id} удален из Google Sheets (строка {found_row})")
+            return True
+        else:
+            logger.warning(f"Гость с user_id {user_id} не найден в Google Sheets")
+            return False
+    except Exception as e:
+        logger.error(f"Ошибка удаления гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
