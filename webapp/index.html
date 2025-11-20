@@ -20,7 +20,7 @@
                 <img src="welcome_photo.jpeg" alt="Валентин и Мария" id="weddingPhoto" onerror="this.style.display='none'">
                 <div class="photo-overlay">
                     <div class="couple-names" id="coupleNames">Валентин и Мария</div>
-                    <div class="wedding-date-hero" id="weddingDateHero">06.06.2026</div>
+                    <div class="wedding-date-hero" id="weddingDateHero">05.06.2026</div>
                 </div>
             </div>
         </section>
@@ -101,13 +101,26 @@
         <!-- Форма подтверждения -->
         <section class="rsvp-section" id="rsvpSection">
             <div class="section-card scroll-reveal">
-                <h2 class="section-title scroll-reveal-item">ПРИСУТСТВИЕ</h2>
-                <p class="rsvp-text scroll-reveal-item">
-                    Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
-                    Заполните форму ниже:
-                </p>
+                <!-- Сообщение об ошибке (если гость был удален) -->
+                <div id="errorMessage" class="error-message" style="display: none;">
+                    <p>⚠️ Кажется произошла ошибка, заполните анкету еще раз.</p>
+                </div>
                 
-                <form id="guestForm" class="rsvp-form">
+                <!-- Сообщение об успешной регистрации -->
+                <div id="successMessage" class="success-message" style="display: none;">
+                    <h2 class="section-title">Спасибо!</h2>
+                    <p>Мы ждем вас на нашей свадьбе! 💕</p>
+                </div>
+                
+                <!-- Форма регистрации -->
+                <div id="registrationForm">
+                    <h2 class="section-title scroll-reveal-item">ПРИСУТСТВИЕ</h2>
+                    <p class="rsvp-text scroll-reveal-item">
+                        Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
+                        Заполните форму ниже:
+                    </p>
+                    
+                    <form id="guestForm" class="rsvp-form">
                     <div class="form-group" id="mainGuestGroup">
                         <label for="firstName">Имя, Фамилия</label>
                         <input type="text" id="firstName" required minlength="2" placeholder="Имя">
@@ -139,7 +152,8 @@
                     <div class="form-buttons">
                         <button type="submit" class="btn-confirm">Подтвердить</button>
                     </div>
-                </form>
+                    </form>
+                </div>
             </div>
         </section>
 
@@ -151,7 +165,7 @@
                     <img src="welcome_photo.jpeg" alt="Валентин и Мария" id="mainWeddingPhoto" onerror="this.style.display='none'">
                     <div class="photo-overlay">
                         <div class="couple-names scroll-reveal-item" id="mainCoupleNames">Валентин и Мария</div>
-                        <div class="wedding-date-hero scroll-reveal-item" id="mainWeddingDate">06 июня 2026</div>
+                        <div class="wedding-date-hero scroll-reveal-item" id="mainWeddingDate">05 июня 2026</div>
                     </div>
                 </div>
             </section>

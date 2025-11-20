@@ -5,7 +5,7 @@ tg.expand();
 
     // Загружаем конфигурацию с сервера
     let CONFIG = {
-        weddingDate: '2026-06-06',
+        weddingDate: '2026-06-05',
         groomName: 'Валентин',
         brideName: 'Мария',
         groomTelegram: 'ezhigval',
@@ -211,12 +211,47 @@ async function checkRegistration() {
         if (response.ok) {
             const data = await response.json();
             return data.registered || false;
+        } else if (response.status === 404) {
+            // Гость не найден (возможно, был удален из таблицы)
+            return false;
         }
     } catch (error) {
         console.error('Error checking registration:', error);
+        // При ошибке считаем, что гость не найден
+        return false;
     }
     
     return false;
+}
+
+// Функция для показа сообщения об успешной регистрации
+function showSuccessMessage() {
+    const successMessage = document.getElementById('successMessage');
+    const registrationForm = document.getElementById('registrationForm');
+    const errorMessage = document.getElementById('errorMessage');
+    
+    if (successMessage) {
+        successMessage.style.display = 'block';
+    }
+    if (registrationForm) {
+        registrationForm.style.display = 'none';
+    }
+    if (errorMessage) {
+        errorMessage.style.display = 'none';
+    }
+}
+
+// Функция для скрытия сообщения об успехе (если нужно будет снова показать форму)
+function hideSuccessMessage() {
+    const successMessage = document.getElementById('successMessage');
+    const registrationForm = document.getElementById('registrationForm');
+    
+    if (successMessage) {
+        successMessage.style.display = 'none';
+    }
+    if (registrationForm) {
+        registrationForm.style.display = 'block';
+    }
 }
 
 // Загрузка данных для основной страницы
@@ -448,24 +483,12 @@ setInterval(updateCountdown, 1000); // Обновляем каждую секу�
 
 // Функция для проверки регистрации и отображения правильной страницы
 async function checkAndShowPage() {
-    const registered = await checkRegistration();
-    
-    if (registered) {
-        // Гость зарегистрирован - показываем основную страницу
-        document.querySelector('.hero-section').style.display = 'none';
-        document.querySelector('.greeting-section').style.display = 'none';
-        document.querySelector('.calendar-section').style.display = 'none';
-        document.getElementById('rsvpSection').style.display = 'none';
-        document.getElementById('registrationContactSection').style.display = 'none';
-        document.querySelector('.closing-section').style.display = 'none';
+    try {
+        const user = tg.initDataUnsafe?.user;
+        const userId = user?.id;
         
-        // Показываем основную страницу
-        document.getElementById('mainPage').style.display = 'block';
-        
-        // Загружаем данные для основной страницы
-        loadMainPageData();
-    } else {
-        // Гость не зарегистрирован или отменил приглашение - показываем страницу регистрации
+        // ВРЕМЕННО: Всегда показываем страницу регистрации
+        // Основная страница закрыта для всех
         document.querySelector('.hero-section').style.display = 'block';
         document.querySelector('.greeting-section').style.display = 'block';
         document.querySelector('.calendar-section').style.display = 'block';
@@ -475,7 +498,64 @@ async function checkAndShowPage() {
         
         // Скрываем основную страницу
         document.getElementById('mainPage').style.display = 'none';
+        
+        if (userId) {
+            // Проверяем, был ли пользователь ранее зарегистрирован (из localStorage)
+            const wasRegistered = localStorage.getItem(`registered_${userId}`) === 'true';
+            
+            // Проверяем текущий статус регистрации
+            const registered = await checkRegistration();
+            
+            // Если пользователь был зарегистрирован, но теперь не найден - показываем ошибку
+            if (wasRegistered && !registered) {
+                showErrorMessage();
+            } else {
+                hideErrorMessage();
+            }
+        } else {
+            hideErrorMessage();
+        }
+    } catch (error) {
+        console.error('Error checking registration:', error);
+        // При ошибке показываем страницу регистрации
+        showRegistrationPage();
     }
+}
+
+// Функция для показа сообщения об ошибке
+function showErrorMessage() {
+    const errorMessage = document.getElementById('errorMessage');
+    const registrationForm = document.getElementById('registrationForm');
+    const successMessage = document.getElementById('successMessage');
+    
+    if (errorMessage) {
+        errorMessage.style.display = 'block';
+    }
+    if (registrationForm) {
+        registrationForm.style.display = 'block';
+    }
+    if (successMessage) {
+        successMessage.style.display = 'none';
+    }
+}
+
+// Функция для скрытия сообщения об ошибке
+function hideErrorMessage() {
+    const errorMessage = document.getElementById('errorMessage');
+    if (errorMessage) {
+        errorMessage.style.display = 'none';
+    }
+}
+
+// Функция для показа страницы регистрации
+function showRegistrationPage() {
+    document.querySelector('.hero-section').style.display = 'block';
+    document.querySelector('.greeting-section').style.display = 'block';
+    document.querySelector('.calendar-section').style.display = 'block';
+    document.getElementById('rsvpSection').style.display = 'block';
+    document.getElementById('registrationContactSection').style.display = 'block';
+    document.querySelector('.closing-section').style.display = 'block';
+    document.getElementById('mainPage').style.display = 'none';
 }
 
 // Проверка регистрации при загрузке страницы
@@ -486,6 +566,7 @@ checkAndShowPage();
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
         // Страница стала видимой - проверяем регистрацию снова
+        // Если гость был удален из таблицы, покажем ошибку
         checkAndShowPage();
     }
 });
@@ -570,11 +651,22 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
         
             if (response.ok) {
                 const data = await response.json();
-                // После успешной регистрации проверяем и показываем правильную страницу
-                await checkAndShowPage();
                 
-                // Прокручиваем вверх
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                // Сохраняем информацию о регистрации в localStorage
+                const user = tg.initDataUnsafe?.user;
+                const userId = user?.id;
+                if (userId) {
+                    localStorage.setItem(`registered_${userId}`, 'true');
+                }
+                
+                // Показываем сообщение об успешной регистрации
+                showSuccessMessage();
+                
+                // Скрываем сообщение об ошибке, если оно было показано
+                hideErrorMessage();
+                
+                // Прокручиваем к сообщению
+                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
                 
                 // Вибрация
                 if (tg.HapticFeedback) {
@@ -632,8 +724,19 @@ if (cancelInvitationBtn) {
         });
         
             if (response.ok) {
-                // После отмены приглашения проверяем и показываем правильную страницу
+                // Удаляем информацию о регистрации из localStorage
+                const user = tg.initDataUnsafe?.user;
+                const userId = user?.id;
+                if (userId) {
+                    localStorage.removeItem(`registered_${userId}`);
+                }
+                
+                // После отмены приглашения показываем страницу регистрации
                 await checkAndShowPage();
+                
+                // Скрываем сообщения об успехе/ошибке и показываем форму
+                hideSuccessMessage();
+                hideErrorMessage();
                 
                 // Очищаем форму
                 document.getElementById('firstName').value = '';
@@ -692,8 +795,19 @@ if (mainCancelInvitationBtn) {
             });
             
             if (response.ok) {
-                // После отмены приглашения проверяем и показываем правильную страницу
+                // Удаляем информацию о регистрации из localStorage
+                const user = tg.initDataUnsafe?.user;
+                const userId = user?.id;
+                if (userId) {
+                    localStorage.removeItem(`registered_${userId}`);
+                }
+                
+                // После отмены приглашения показываем страницу регистрации
                 await checkAndShowPage();
+                
+                // Скрываем сообщения об успехе/ошибке и показываем форму
+                hideSuccessMessage();
+                hideErrorMessage();
                 
                 // Очищаем форму
                 document.getElementById('firstName').value = '';

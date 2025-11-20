@@ -1458,3 +1458,40 @@ body {
         font-size: 16px;
     }
 }
+
+/* Сообщения об успехе и ошибке */
+.success-message {
+    text-align: center;
+    padding: 40px 20px;
+    background: rgba(90, 124, 82, 0.1);
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.success-message h2 {
+    color: #5A7C52;
+    font-size: 32px;
+    margin-bottom: 15px;
+    font-family: 'Playfair Display', 'Georgia', serif;
+}
+
+.success-message p {
+    color: #2F2F2F;
+    font-size: 18px;
+    line-height: 1.8;
+}
+
+.error-message {
+    text-align: center;
+    padding: 20px;
+    background: rgba(255, 87, 87, 0.1);
+    border: 2px solid rgba(255, 87, 87, 0.3);
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.error-message p {
+    color: #d32f2f;
+    font-size: 16px;
+    font-weight: 500;
+}
