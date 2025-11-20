@@ -11,6 +11,19 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Анимация конверта -->
+    <div id="envelopeAnimation" class="envelope-container">
+        <div class="envelope">
+            <div class="envelope-back"></div>
+            <div class="envelope-front">
+                <div class="envelope-flap"></div>
+            </div>
+            <div class="envelope-content">
+                <div class="envelope-pattern"></div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Фон с анимацией шелковой ткани -->
     <div class="silk-background"></div>
     <div class="app-container">
@@ -47,51 +60,9 @@
         <section class="calendar-section">
             <div class="section-card scroll-reveal">
                 <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
+                <!-- Внешний таймер MegaTimer -->
                 <div class="countdown-clock" id="countdownClock">
-                    <!-- Первый ряд: месяцы и дни -->
-                    <div class="clock-row">
-                        <div class="clock-item">
-                            <div class="clock-flip">
-                                <div class="clock-flip-top" id="monthsTop">0</div>
-                                <div class="clock-flip-bottom" id="monthsBottom">0</div>
-                            </div>
-                            <div class="clock-label">месяцев</div>
-                        </div>
-                        <div class="clock-separator">:</div>
-                        <div class="clock-item">
-                            <div class="clock-flip">
-                                <div class="clock-flip-top" id="daysTop">0</div>
-                                <div class="clock-flip-bottom" id="daysBottom">0</div>
-                            </div>
-                            <div class="clock-label">дней</div>
-                        </div>
-                    </div>
-                    <!-- Второй ряд: часы, минуты, секунды -->
-                    <div class="clock-row">
-                        <div class="clock-item">
-                            <div class="clock-flip">
-                                <div class="clock-flip-top" id="hoursTop">0</div>
-                                <div class="clock-flip-bottom" id="hoursBottom">0</div>
-                            </div>
-                            <div class="clock-label">часов</div>
-                        </div>
-                        <div class="clock-separator">:</div>
-                        <div class="clock-item">
-                            <div class="clock-flip">
-                                <div class="clock-flip-top" id="minutesTop">0</div>
-                                <div class="clock-flip-bottom" id="minutesBottom">0</div>
-                            </div>
-                            <div class="clock-label">минут</div>
-                        </div>
-                        <div class="clock-separator">:</div>
-                        <div class="clock-item">
-                            <div class="clock-flip">
-                                <div class="clock-flip-top" id="secondsTop">0</div>
-                                <div class="clock-flip-bottom" id="secondsBottom">0</div>
-                            </div>
-                            <div class="clock-label">секунд</div>
-                        </div>
-                    </div>
+                    <script src="//megatimer.ru/get/6dc646ded445f1d457301d6d08264e13.js"></script>
                 </div>
                 <div class="calendar-preview">
                     <div class="calendar-date-full" id="calendarDateFull">Июнь 05 2026</div>

@@ -14,6 +14,171 @@ body {
     min-height: 100vh;
 }
 
+/* Контейнер конверта */
+.envelope-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10000;
+    /* Белый фон, чтобы зеленые бордеры конверта максимально читались */
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+    transition: opacity 0.5s ease-out;
+    pointer-events: all;
+}
+
+.envelope-container.hidden {
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+    transition: opacity 0.3s ease-out;
+}
+
+/* Конверт */
+.envelope {
+    position: relative;
+    width: min(320px, 80vw);
+    height: min(420px, 75vh);
+    perspective: 1200px;
+    transform-style: preserve-3d;
+    /* Внешний контур рисует .envelope-back, поэтому здесь бордера нет,
+       чтобы не было двойных зелёных полос и расхождения размеров */
+}
+
+/* Задняя часть конверта - светлая с жирной границей (основа конверта) */
+.envelope-back {
+    position: absolute;
+    inset: 0;
+    background: #F8F8F8;
+    /* Рамку вокруг письма оставляем только у самого письма (.envelope-content),
+       поэтому здесь бордер убираем, чтобы зелёная полоса не \"обрумывала\" лишнее пространство сверху */
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+    z-index: 1;
+}
+
+/* Передняя часть конверта - нижняя половина */
+.envelope-front {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 55%;
+    background: #FFE9AD;
+    border-radius: 0 0 16px 16px;
+    border: 8px solid #5A7C52;
+    border-top: none;
+    z-index: 3;
+}
+
+/* Клапан конверта - треугольник сверху */
+.envelope-flap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    background: transparent;
+    /* Треугольник вершиной вниз, основание (гипотенуза) по верхнему краю — по нему вращаем */
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    transform-origin: center top; /* шарнир по гипотенузе */
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    z-index: 4;
+    transform: rotateX(0deg);
+}
+
+/* Внутренний коричневый треугольник с зелёным контуром */
+.envelope-flap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #C8A067;                 /* мягкий коричневый клапан */
+    clip-path: inherit;
+    border: 4px solid #5A7C52;           /* зелёный контур */
+    box-sizing: border-box;
+}
+
+/* Внутренний лист (приглашение) */
+.envelope-content {
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    transform: translateX(-50%) translateY(40%);
+    width: 78%;
+    height: 60%;
+    background: #FDFBF5;
+    border-radius: 12px;
+    border: 4px solid #5A7C52;           /* зелёная рамка листа */
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    z-index: 5; /* лист всегда выше клапана, когда появляется */
+    opacity: 0;
+}
+
+/* Старт анимации конверта */
+.envelope-container.start .envelope-flap {
+    animation: flapOpenSmooth 2.5s ease-in-out forwards;
+}
+
+.envelope-container.start .envelope-content {
+    animation: letterReveal 2s ease-out 2s forwards;
+}
+
+@keyframes flapOpenSmooth {
+    0% {
+        transform: rotateX(0deg);
+    }
+    30% {
+        transform: rotateX(-45deg);
+    }
+    60% {
+        transform: rotateX(-110deg);
+    }
+    100% {
+        transform: rotateX(-145deg);
+    }
+}
+
+@keyframes letterReveal {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40%);
+    }
+    40% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(5%);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0%);
+    }
+}
+
+/* Убираем паттерны - оставляем чистый минимализм */
+.envelope-pattern {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    position: relative;
+}
+
+/* Адаптивность для конверта - на мобильных устройствах тоже на весь экран */
+@media (max-width: 480px) {
+    .envelope {
+        width: 100vw;
+        height: 100vh;
+    }
+    
+    .envelope-pattern::before {
+        font-size: clamp(50px, 15vw, 80px);
+    }
+}
+
 /* Анимация шелковой ткани на фоне */
 .silk-background {
     position: fixed;
@@ -22,6 +187,8 @@ body {
     width: 100%;
     height: 100%;
     z-index: 0;
+    opacity: 0;
+    transition: opacity 0.5s ease-in;
     background: 
         linear-gradient(135deg, rgba(90, 124, 82, 0.08) 0%, rgba(74, 107, 66, 0.12) 50%, rgba(90, 124, 82, 0.08) 100%),
         repeating-linear-gradient(
@@ -145,6 +312,12 @@ body {
     background: transparent;
     position: relative;
     z-index: 1;
+    opacity: 0;
+    transition: opacity 0.5s ease-in;
+}
+
+.app-container.visible {
+    opacity: 1;
 }
 
 
@@ -279,104 +452,10 @@ body {
     justify-content: center;
     align-items: center;
     gap: 15px;
-    margin: 30px 0;
+    margin: 40px 0 30px; /* чуть больше отступ сверху от заголовка */
 }
 
-.clock-row {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-}
-
-.clock-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-}
-
-.clock-flip {
-    position: relative;
-    width: 60px;
-    height: 70px;
-    background: #FFE9AD;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    perspective: 200px;
-}
-
-.clock-flip-top,
-.clock-flip-bottom {
-    position: absolute;
-    width: 100%;
-    height: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 40px;
-    font-weight: bold;
-    color: #5A7C52;
-    background: #FFE9AD;
-    overflow: hidden;
-    backface-visibility: hidden;
-    transform-style: preserve-3d;
-}
-
-.clock-flip-top {
-    top: 0;
-    border-bottom: 1px solid rgba(0,0,0,0.1);
-    border-radius: 8px 8px 0 0;
-    transform-origin: bottom;
-}
-
-.clock-flip-bottom {
-    bottom: 0;
-    border-top: 1px solid rgba(0,0,0,0.1);
-    border-radius: 0 0 8px 8px;
-    transform-origin: top;
-}
-
-.clock-flip-top.flip {
-    animation: flipTop 0.6s ease-in-out;
-}
-
-.clock-flip-bottom.flip {
-    animation: flipBottom 0.6s ease-in-out;
-}
-
-@keyframes flipTop {
-    0% {
-        transform: rotateX(0deg);
-    }
-    50% {
-        transform: rotateX(-90deg);
-        opacity: 0;
-    }
-    51% {
-        opacity: 0;
-    }
-    100% {
-        transform: rotateX(0deg);
-        opacity: 1;
-    }
-}
-
-@keyframes flipBottom {
-    0% {
-        transform: rotateX(90deg);
-        opacity: 0;
-    }
-    50% {
-        transform: rotateX(0deg);
-        opacity: 1;
-    }
-    100% {
-        transform: rotateX(0deg);
-        opacity: 1;
-    }
-}
+/* старый локальный флип-таймер удалён, сейчас используется внешний MegaTimer */
 
 .clock-label {
     font-size: 15px;
@@ -1509,3 +1588,4 @@ body {
     font-size: 16px;
     font-weight: 500;
 }
+

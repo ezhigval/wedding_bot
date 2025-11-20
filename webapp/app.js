@@ -3,6 +3,42 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
+// Анимация открытия конверта
+function initEnvelopeAnimation() {
+    const envelopeContainer = document.getElementById('envelopeAnimation');
+    const appContainer = document.querySelector('.app-container');
+    const silkBackground = document.querySelector('.silk-background');
+    
+    if (!envelopeContainer) {
+        // Если по какой-то причине конверта нет, просто показываем содержимое
+        if (appContainer) appContainer.classList.add('visible');
+        if (silkBackground) silkBackground.style.opacity = '1';
+        initScrollReveal();
+        return;
+    }
+
+    // Стартуем анимацию конверта
+    setTimeout(() => {
+        envelopeContainer.classList.add('start');
+    }, 300);
+
+    // После завершения анимации конверта плавно показываем основное содержимое
+    const totalDuration = 4500; // даём письму время полностью выехать и немного повисеть
+    setTimeout(() => {
+        envelopeContainer.classList.add('hidden');
+        if (appContainer) appContainer.classList.add('visible');
+        if (silkBackground) silkBackground.style.opacity = '1';
+        initScrollReveal();
+    }, totalDuration);
+}
+
+// Запускаем анимацию конверта при загрузке DOM
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEnvelopeAnimation);
+} else {
+    initEnvelopeAnimation();
+}
+
     // Загружаем конфигурацию с сервера
     let CONFIG = {
         weddingDate: '2026-06-05',
@@ -78,70 +114,6 @@ function updateContacts() {
     } else {
         document.getElementById('brideContact').style.display = 'none';
     }
-}
-
-// Обратный отсчет с анимацией перелистывания
-let previousValues = {
-    months: null,
-    days: null,
-    hours: null,
-    minutes: null,
-    seconds: null
-};
-
-function updateCountdown() {
-    const weddingDate = new Date(CONFIG.weddingDate);
-    const now = new Date();
-    const diff = weddingDate - now;
-    
-    if (diff <= 0) {
-        setClockValue('months', 0);
-        setClockValue('days', 0);
-        setClockValue('hours', 0);
-        setClockValue('minutes', 0);
-        setClockValue('seconds', 0);
-        return;
-    }
-    
-    const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
-    const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30)) / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    
-    setClockValue('months', months);
-    setClockValue('days', days);
-    setClockValue('hours', hours);
-    setClockValue('minutes', minutes);
-    setClockValue('seconds', seconds);
-}
-
-function setClockValue(type, value) {
-    const topEl = document.getElementById(`${type}Top`);
-    const bottomEl = document.getElementById(`${type}Bottom`);
-    const paddedValue = String(value).padStart(2, '0');
-    
-    if (previousValues[type] !== null && previousValues[type] !== value) {
-        // Анимация перелистывания - нижняя часть показывает новое значение
-        bottomEl.textContent = paddedValue;
-        
-        // Запускаем анимацию
-        topEl.classList.add('flip');
-        bottomEl.classList.add('flip');
-        
-        setTimeout(() => {
-            // После анимации верхняя часть получает новое значение
-            topEl.textContent = paddedValue;
-            topEl.classList.remove('flip');
-            bottomEl.classList.remove('flip');
-        }, 300);
-    } else {
-        // Первая установка - обе части показывают одно значение
-        topEl.textContent = paddedValue;
-        bottomEl.textContent = paddedValue;
-    }
-    
-    previousValues[type] = value;
 }
 
 function formatDate(dateString) {
@@ -482,8 +454,6 @@ function updateMainContacts() {
 
 // Инициализация
 loadConfig();
-updateCountdown();
-setInterval(updateCountdown, 1000); // Обновляем каждую секунду
 
 // Функция для проверки регистрации и отображения правильной страницы
 async function checkAndShowPage() {
