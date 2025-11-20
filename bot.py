@@ -836,7 +836,7 @@ async def delete_guest_from_sheets_and_group(callback: CallbackQuery):
         notification_text = (
             f"🗑️ <b>Гость удален</b>\n\n"
             f"👤 {first_name} {last_name}\n"
-            f"🆔 User ID: <code>{guest_user_id}</code}\n"
+            f"🆔 User ID: <code>{guest_user_id}</code>\n"
         )
         if group_result:
             notification_text += "📋 Удален из списка гостей\n💬 Удален из беседы\n\n"
