@@ -12,7 +12,7 @@ import json
 import os
 from utils import format_wedding_date
 from keyboards import (
-    get_invitation_keyboard, get_admin_keyboard, get_send_invitation_keyboard, 
+    get_invitation_keyboard, get_admin_keyboard, 
     get_group_management_keyboard, get_delete_guest_confirmation_keyboard,
     get_guests_selection_keyboard, get_invitation_dialog_keyboard
 )
