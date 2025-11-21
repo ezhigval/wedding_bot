@@ -19,7 +19,7 @@ from keyboards import (
 from google_sheets import (
     get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    delete_guest_from_sheets
+    delete_guest_from_sheets, update_invitation_user_id
 )
 
 # Настройка логирования
@@ -97,6 +97,24 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Получаем имя из таблицы соответствия или Telegram
     display_name = await get_user_display_name(message.from_user)
+    user_id = message.from_user.id
+    
+    # Пытаемся обновить user_id в таблице приглашений, если пользователь там есть
+    # Проверяем по полному имени (first_name + last_name)
+    full_name = display_name
+    if message.from_user.first_name and message.from_user.last_name:
+        full_name = f"{message.from_user.first_name} {message.from_user.last_name}"
+    elif message.from_user.first_name:
+        full_name = message.from_user.first_name
+    
+    # Пытаемся обновить user_id в таблице приглашений
+    try:
+        updated = await update_invitation_user_id(full_name, user_id)
+        if updated:
+            logger.info(f"Обновлен user_id для {full_name} в таблице приглашений: {user_id}")
+    except Exception as e:
+        logger.warning(f"Не удалось обновить user_id в таблице приглашений: {e}")
+        # Не блокируем выполнение, если обновление не удалось
     
     # Отправляем приветственное сообщение с фото
     try:
@@ -438,6 +456,24 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Получаем имя из таблицы соответствия или Telegram
     display_name = await get_user_display_name(message.from_user)
+    user_id = message.from_user.id
+    
+    # Пытаемся обновить user_id в таблице приглашений, если пользователь там есть
+    # Проверяем по полному имени (first_name + last_name)
+    full_name = display_name
+    if message.from_user.first_name and message.from_user.last_name:
+        full_name = f"{message.from_user.first_name} {message.from_user.last_name}"
+    elif message.from_user.first_name:
+        full_name = message.from_user.first_name
+    
+    # Пытаемся обновить user_id в таблице приглашений
+    try:
+        updated = await update_invitation_user_id(full_name, user_id)
+        if updated:
+            logger.info(f"Обновлен user_id для {full_name} в таблице приглашений: {user_id}")
+    except Exception as e:
+        logger.warning(f"Не удалось обновить user_id в таблице приглашений: {e}")
+        # Не блокируем выполнение, если обновление не удалось
     
     # Отправляем приветственное сообщение с фото
     try:
@@ -957,6 +993,7 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     guest = invitations[guest_index]
     guest_name = guest['name']
     telegram_id = guest['telegram_id']
+    guest_user_id_from_table = guest.get('user_id')  # User ID из столбца C
     
     # Проверяем, является ли telegram_id номером телефона
     is_phone = is_phone_number(telegram_id) if telegram_id else False
@@ -976,79 +1013,135 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         )]
     ])
     
-    # Пытаемся найти user_id гостя в списке зарегистрированных гостей
-    registered_guests = await get_all_guests_from_sheets()
+    # Пытаемся найти user_id гостя
     guest_user_id = None
+    guest_username = None
     
-    # Ищем по имени (сравниваем полное имя)
-    for reg_guest in registered_guests:
-        reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
-        if reg_full_name.lower() == guest_name.lower():
-            guest_user_id = reg_guest.get('user_id')
-            if guest_user_id:
-                try:
-                    guest_user_id = int(guest_user_id)
-                except (ValueError, TypeError):
-                    guest_user_id = None
-            break
+    # Сначала проверяем, есть ли user_id в столбце C таблицы приглашений
+    if guest_user_id_from_table:
+        try:
+            guest_user_id = int(guest_user_id_from_table)
+            logger.info(f"Найден user_id для {guest_name} в таблице приглашений: {guest_user_id}")
+        except (ValueError, TypeError):
+            guest_user_id = None
     
-    # Создаем клавиатуру с опциями
-    action_keyboard_buttons = []
+    # Если user_id не найден в таблице приглашений, ищем в списке зарегистрированных гостей
+    if not guest_user_id:
+        registered_guests = await get_all_guests_from_sheets()
+        
+        # Ищем по имени (сравниваем полное имя)
+        for reg_guest in registered_guests:
+            reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
+            if reg_full_name.lower() == guest_name.lower():
+                guest_user_id = reg_guest.get('user_id')
+                guest_username = reg_guest.get('username', '')
+                if guest_user_id:
+                    try:
+                        guest_user_id = int(guest_user_id)
+                    except (ValueError, TypeError):
+                        guest_user_id = None
+                break
+        
+        # Если нашли user_id и указан номер телефона - обновляем таблицу
+        if guest_user_id and is_phone and guest_username:
+            # Обновляем таблицу: заменяем номер телефона на username и сохраняем user_id
+            try:
+                updated = await update_invitation_user_id(guest_name, guest_user_id, guest_username)
+                if updated:
+                    logger.info(f"Обновлена таблица приглашений для {guest_name}: номер {telegram_id} заменен на @{guest_username}, user_id={guest_user_id}")
+                    # Обновляем telegram_id для отображения
+                    telegram_id = guest_username
+                    is_phone = False
+            except Exception as e:
+                logger.error(f"Ошибка обновления таблицы приглашений: {e}")
+        elif guest_user_id and is_phone:
+            # Если нашли user_id, но нет username - просто сохраняем user_id
+            try:
+                updated = await update_invitation_user_id(guest_name, guest_user_id)
+                if updated:
+                    logger.info(f"Обновлен user_id для {guest_name} в таблице приглашений: {guest_user_id}")
+            except Exception as e:
+                logger.error(f"Ошибка обновления user_id в таблице приглашений: {e}")
     
-    # Если нашли user_id, добавляем кнопку автоматической отправки
-    if guest_user_id:
-        action_keyboard_buttons.append([
-            InlineKeyboardButton(
-                text="✅ Отправить автоматически",
-                callback_data=f"send_invite_auto_{guest_index}"
-            )
-        ])
+    # Сохраняем данные в state
+    await state.update_data(
+        current_guest_index=guest_index,
+        current_guest_name=guest_name,
+        current_guest_telegram_id=telegram_id,
+        current_guest_user_id=guest_user_id,
+        current_invitation_text=invitation_text
+    )
     
-    action_keyboard_buttons.append([
-        InlineKeyboardButton(
-            text="📤 Получить для пересылки",
-            callback_data=f"send_invite_forward_{guest_index}"
-        )
-    ])
-    action_keyboard_buttons.append([
-        InlineKeyboardButton(
-            text="⬅️ Вернуться к списку",
-            callback_data="admin_send_invite"
-        )
-    ])
-    
-    action_keyboard = InlineKeyboardMarkup(inline_keyboard=action_keyboard_buttons)
-    
-    # Отправляем информацию о госте
-    info_text = f"💌 <b>Приглашение для {guest_name}</b>\n\n"
+    # Отправляем готовое сообщение админу для пересылки
+    # Это сообщение админ может переслать гостю от своего имени
+    info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
     
     if is_phone:
-        # Если это номер телефона
         info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
-        info_text += "⚠️ <b>Указан номер телефона вместо username</b>\n\n"
-        info_text += "💡 <b>Варианты отправки:</b>\n"
-        if guest_user_id:
-            info_text += "1. ✅ Автоматическая отправка (если гость уже зарегистрирован)\n"
-            info_text += "2. 📤 Пересылка сообщения (если нужно отправить вручную)\n"
-            info_text += "3. 📲 Отправить через WhatsApp/другие мессенджеры\n"
-        else:
-            info_text += "1. 📤 Получить готовое сообщение для пересылки\n"
-            info_text += "2. 📲 Отправить через WhatsApp/другие мессенджеры\n"
-            info_text += "3. 📧 Отправить по SMS или другим способом\n\n"
-            info_text += "💡 <i>Гость может написать боту /start, чтобы получить приглашение автоматически</i>"
+        info_text += "💡 <b>Инструкция:</b>\n"
+        info_text += "1. Нажмите и удерживайте сообщение ниже\n"
+        info_text += "2. Выберите 'Переслать'\n"
+        info_text += "3. Найдите контакт по номеру телефона\n"
+        info_text += "4. Отправьте\n\n"
+        info_text += "⚠️ <i>Для номеров телефонов нужно пересылать вручную</i>"
     else:
-        # Обычный username - показываем с @ если его нет
+        # Для username создаем deep link для быстрого открытия диалога
+        from urllib.parse import quote
         display_telegram = telegram_id if telegram_id else 'не указан'
         if display_telegram != 'не указан' and not display_telegram.startswith("@"):
             display_telegram = f"@{display_telegram}"
-        info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n"
-        if guest_user_id:
-            info_text += f"🆔 <b>User ID:</b> <code>{guest_user_id}</code> (найден в списке гостей)\n\n"
-            info_text += "✅ Можно отправить автоматически!"
-        else:
-            info_text += "\n⚠️ User ID не найден. Используйте пересылку сообщения."
+        
+        info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n\n"
+        info_text += "💡 <b>Инструкция:</b>\n"
+        info_text += "1. Нажмите кнопку ниже, чтобы открыть диалог с предзаполненным текстом\n"
+        info_text += "2. Или перешлите готовое сообщение ниже\n"
+        info_text += "3. Добавьте кнопку приглашения (она уже в сообщении)\n"
+        info_text += "4. Отправьте\n\n"
+        info_text += "✅ <i>Кнопка приглашения уже включена в сообщение!</i>"
+        
+        # Создаем deep link для быстрого открытия диалога
+        encoded_text = quote(invitation_text)
+        if len(encoded_text) > 2000:
+            # Используем короткую версию для deep link
+            short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение ниже 💒"
+            encoded_text = quote(short_text)
+        
+        username_clean = telegram_id.lstrip('@')
+        deep_link = f"tg://msg?to={username_clean}&text={encoded_text}"
+        
+        # Добавляем кнопку для открытия диалога
+        quick_open_button = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💬 Быстро открыть диалог",
+                url=deep_link
+            )],
+            [InlineKeyboardButton(
+                text="⬅️ Вернуться к списку",
+                callback_data="admin_send_invite"
+            )]
+        ])
+        
+        await callback.message.answer(info_text, reply_markup=quick_open_button, parse_mode="HTML")
     
-    await callback.message.answer(info_text, reply_markup=action_keyboard, parse_mode="HTML")
+    # Отправляем само сообщение с приглашением и кнопкой для пересылки
+    await callback.message.answer(
+        invitation_text,
+        reply_markup=bot_invite_keyboard
+    )
+    
+    # Кнопка для возврата
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⬅️ Вернуться к списку гостей",
+            callback_data="admin_send_invite"
+        )]
+    ])
+    
+    await callback.message.answer(
+        "💡 <i>Просто перешлите сообщение выше гостю - кнопка приглашения уже включена!</i>",
+        reply_markup=back_keyboard,
+        parse_mode="HTML"
+    )
     
     # Сохраняем данные гостя в state для использования в других callback
     await state.update_data(
