@@ -548,10 +548,14 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                 start_row = 1
         
         # Обрабатываем данные
+        # Столбец A - username, столбец B - user_id, столбец D - api_id, столбец E - api_hash, столбец F - phone
         for row in all_values[start_row:]:
             if len(row) >= 1:
                 username = row[0].strip() if row[0] else ""
                 user_id = row[1].strip() if len(row) >= 2 and row[1] else None
+                api_id = row[3].strip() if len(row) >= 4 and row[3] else None  # Столбец D
+                api_hash = row[4].strip() if len(row) >= 5 and row[4] else None  # Столбец E
+                phone = row[5].strip() if len(row) >= 6 and row[5] else None  # Столбец F
                 
                 # Пропускаем пустые строки
                 if not username:
@@ -569,6 +573,14 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                 # Если есть user_id, добавляем его
                 if user_id and user_id.isdigit():
                     admin_data['user_id'] = int(user_id)
+                
+                # Добавляем данные Telegram Client API
+                if api_id:
+                    admin_data['api_id'] = api_id
+                if api_hash:
+                    admin_data['api_hash'] = api_hash
+                if phone:
+                    admin_data['phone'] = phone
                 
                 admins.append(admin_data)
         

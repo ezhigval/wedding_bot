@@ -21,7 +21,7 @@ from google_sheets import (
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
     delete_guest_from_sheets, update_invitation_user_id
 )
-from telegram_client import init_telegram_client, get_username_by_phone
+from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -924,6 +924,169 @@ async def delete_guest_from_sheets_and_group(callback: CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query(F.data == "admin_update_phones")
+async def admin_update_phones(callback: CallbackQuery):
+    """Массовое обновление номеров телефонов на username"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Загружаем список приглашений
+    invitations = await get_invitations_list()
+    
+    if not invitations:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "❌ <b>Список приглашений пуст</b>\n\n"
+            "Проверьте вкладку 'Пригласительные' в Google Sheets.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Ищем приглашения с номерами телефонов
+    phone_invitations = []
+    for inv in invitations:
+        telegram_id = inv.get('telegram_id', '')
+        if telegram_id and is_phone_number(telegram_id):
+            phone_invitations.append(inv)
+    
+    if not phone_invitations:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "✅ <b>Нет номеров телефонов для обновления</b>\n\n"
+            "Все приглашения уже содержат username или не имеют контактов.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Начинаем обновление
+    status_msg = await callback.message.answer(
+        f"🔄 <b>Начинаю обновление...</b>\n\n"
+        f"Найдено приглашений с номерами телефонов: <b>{len(phone_invitations)}</b>\n\n"
+        f"⏳ Обрабатываю...",
+        parse_mode="HTML"
+    )
+    
+    # Получаем данные Telegram Client для текущего админа
+    admin_user_id = callback.from_user.id
+    admins_list = await get_admins_list()
+    admin_data = None
+    
+    for admin in admins_list:
+        if admin.get('user_id') == admin_user_id:
+            admin_data = admin
+            break
+    
+    if not admin_data or not admin_data.get('api_id') or not admin_data.get('api_hash') or not admin_data.get('phone'):
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await status_msg.edit_text(
+            "⚠️ <b>Telegram Client API не настроен</b>\n\n"
+            "Для массового обновления нужно добавить в Google Sheets (вкладка 'Админ бота'):\n"
+            "• API_ID (столбец D)\n"
+            "• API_HASH (столбец E)\n"
+            "• PHONE (столбец F)\n\n"
+            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Получаем или инициализируем клиент для этого админа
+    client = await get_or_init_client(
+        admin_user_id,
+        admin_data['api_id'],
+        admin_data['api_hash'],
+        admin_data['phone']
+    )
+    
+    if not client:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await status_msg.edit_text(
+            "⚠️ <b>Telegram Client не авторизован</b>\n\n"
+            "Для массового обновления нужно авторизовать ваш Telegram аккаунт.\n\n"
+            "При первом запуске потребуется код подтверждения.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    updated_count = 0
+    not_found_count = 0
+    error_count = 0
+    
+    # Обрабатываем каждое приглашение
+    for i, inv in enumerate(phone_invitations, 1):
+        guest_name = inv.get('name', '')
+        phone_number = inv.get('telegram_id', '')
+        
+        try:
+            # Ищем username по номеру телефона используя клиент текущего админа
+            username = await get_username_by_phone(phone_number, admin_user_id, client)
+            
+            if username:
+                # Обновляем таблицу
+                updated = await update_invitation_user_id(guest_name, None, username)
+                if updated:
+                    updated_count += 1
+                    logger.info(f"Обновлено: {guest_name} - {phone_number} → @{username}")
+                else:
+                    error_count += 1
+            else:
+                not_found_count += 1
+                logger.warning(f"Username не найден для {guest_name} ({phone_number})")
+            
+            # Обновляем статус каждые 5 приглашений
+            if i % 5 == 0 or i == len(phone_invitations):
+                await status_msg.edit_text(
+                    f"🔄 <b>Обновление номеров телефонов</b>\n\n"
+                    f"Обработано: <b>{i}/{len(phone_invitations)}</b>\n"
+                    f"✅ Обновлено: <b>{updated_count}</b>\n"
+                    f"❌ Не найдено: <b>{not_found_count}</b>\n"
+                    f"⚠️ Ошибки: <b>{error_count}</b>\n\n"
+                    f"⏳ Продолжаю...",
+                    parse_mode="HTML"
+                )
+            
+            # Небольшая задержка, чтобы не перегружать API
+            await asyncio.sleep(1)
+            
+        except Exception as e:
+            error_count += 1
+            logger.error(f"Ошибка обновления для {guest_name}: {e}")
+    
+    # Финальный результат
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    result_text = (
+        f"✅ <b>Обновление завершено!</b>\n\n"
+        f"📊 <b>Результаты:</b>\n"
+        f"✅ Обновлено: <b>{updated_count}</b>\n"
+        f"❌ Не найдено: <b>{not_found_count}</b>\n"
+        f"⚠️ Ошибки: <b>{error_count}</b>\n"
+        f"📋 Всего обработано: <b>{len(phone_invitations)}</b>\n\n"
+    )
+    
+    if updated_count > 0:
+        result_text += "✅ Номера телефонов успешно заменены на username в таблице!"
+    elif not_found_count > 0:
+        result_text += "⚠️ Username не найдены для некоторых номеров. Возможно, эти пользователи не в ваших контактах."
+    
+    await status_msg.edit_text(result_text, reply_markup=keyboard, parse_mode="HTML")
+
 @dp.callback_query(F.data == "admin_send_invite")
 async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
     """Начать рассылку приглашений"""
@@ -1040,15 +1203,57 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
                     found_user_id = reg_guest.get('user_id')
                     break
         
-        # Если не нашли в списке гостей - ищем через Telegram Client API
+        # Если не нашли в списке гостей - ищем через Telegram Client API текущего админа
         if not found_username:
-            await callback.message.answer("🔍 Ищу username по номеру телефона через Telegram...")
-            try:
-                found_username = await get_username_by_phone(telegram_id)
-                if found_username:
-                    logger.info(f"Найден username для {guest_name} по номеру {telegram_id}: @{found_username}")
-            except Exception as e:
-                logger.error(f"Ошибка поиска username по номеру телефона: {e}")
+            # Получаем данные Telegram Client для текущего админа
+            admin_user_id = callback.from_user.id
+            admins_list = await get_admins_list()
+            admin_data = None
+            
+            for admin in admins_list:
+                if admin.get('user_id') == admin_user_id:
+                    admin_data = admin
+                    break
+            
+            if admin_data and admin_data.get('api_id') and admin_data.get('api_hash') and admin_data.get('phone'):
+                await callback.message.answer("🔍 Ищу username по номеру телефона через ваш Telegram аккаунт...")
+                try:
+                    # Получаем или инициализируем клиент для этого админа
+                    client = await get_or_init_client(
+                        admin_user_id,
+                        admin_data['api_id'],
+                        admin_data['api_hash'],
+                        admin_data['phone']
+                    )
+                    
+                    if client:
+                        found_username = await get_username_by_phone(telegram_id, admin_user_id, client)
+                        if found_username:
+                            logger.info(f"Найден username для {guest_name} по номеру {telegram_id}: @{found_username}")
+                    else:
+                        await callback.message.answer(
+                            "⚠️ <b>Telegram Client не авторизован</b>\n\n"
+                            "Для поиска username по номеру телефона нужно авторизовать ваш Telegram аккаунт.\n\n"
+                            "Проверьте, что в Google Sheets указаны:\n"
+                            "• API_ID (столбец D)\n"
+                            "• API_HASH (столбец E)\n"
+                            "• PHONE (столбец F)\n\n"
+                            "При первом запуске потребуется код подтверждения.",
+                            parse_mode="HTML"
+                        )
+                except Exception as e:
+                    logger.error(f"Ошибка поиска username по номеру телефона: {e}")
+                    await callback.message.answer(f"❌ Ошибка поиска username: {str(e)}")
+            else:
+                await callback.message.answer(
+                    "⚠️ <b>Telegram Client API не настроен</b>\n\n"
+                    "Для поиска username по номеру телефона нужно добавить в Google Sheets (вкладка 'Админ бота'):\n"
+                    "• API_ID (столбец D)\n"
+                    "• API_HASH (столбец E)\n"
+                    "• PHONE (столбец F)\n\n"
+                    "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
+                    parse_mode="HTML"
+                )
         
         # Если нашли username - обновляем таблицу
         if found_username:
@@ -1798,20 +2003,10 @@ async def init_bot():
         logger.error(f"❌ Ошибка при создании бота: {e}")
         return None
     
-    # Инициализируем Telegram Client для поиска username по номеру телефона
-    if TELEGRAM_API_ID and TELEGRAM_API_HASH and TELEGRAM_PHONE:
-        try:
-            client = await init_telegram_client(TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE)
-            if client:
-                logger.info("✅ Telegram Client инициализирован для поиска username по номеру телефона")
-            else:
-                logger.warning("⚠️ Telegram Client не инициализирован. Поиск username по номеру телефона будет недоступен.")
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось инициализировать Telegram Client: {e}")
-            logger.warning("Поиск username по номеру телефона будет недоступен.")
-    else:
-        logger.info("ℹ️ Telegram Client API не настроен (TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE)")
-        logger.info("Поиск username по номеру телефона будет недоступен.")
+    # Telegram Client API теперь инициализируется индивидуально для каждого админа
+    # Данные берутся из Google Sheets (столбцы D, E, F вкладки "Админ бота")
+    logger.info("ℹ️ Telegram Client API будет инициализироваться индивидуально для каждого админа")
+    logger.info("Добавьте в Google Sheets (вкладка 'Админ бота'): API_ID (D), API_HASH (E), PHONE (F)")
     
     # База данных больше не используется - все данные в Google Sheets
     logger.info("✅ Бот использует Google Sheets как единственный источник данных")
