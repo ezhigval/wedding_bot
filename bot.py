@@ -1014,6 +1014,22 @@ async def check_qr_auth_callback(callback: CallbackQuery, state: FSMContext):
         ])
         await callback.message.answer(msg, reply_markup=keyboard)
         await state.clear()
+    elif msg == "2FA_PASSWORD_REQUIRED":
+        # Требуется пароль 2FA после QR-кода
+        await state.set_state(TelegramClientAuthStates.waiting_password)
+        await state.update_data(admin_user_id=admin_user_id)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "🔐 <b>Требуется пароль двухфакторной аутентификации</b>\n\n"
+            "QR-код успешно отсканирован, но требуется ввести пароль 2FA.\n\n"
+            "Введите пароль 2FA:\n\n"
+            "<code>/auth_password [пароль]</code>\n\n"
+            "Пример: <code>/auth_password mypassword123</code>",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Проверить снова", callback_data="check_qr_auth")],

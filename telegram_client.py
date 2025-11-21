@@ -416,8 +416,16 @@ async def check_qr_authorization(admin_user_id: int) -> Tuple[bool, str]:
                 return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
             else:
                 return False, "Авторизация не завершена. Отсканируйте QR-код в Telegram на телефоне."
+        except SessionPasswordNeededError:
+            # Требуется пароль 2FA после QR-кода
+            logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
+            return False, "2FA_PASSWORD_REQUIRED"  # Специальный код для запроса пароля
         except Exception as wait_error:
             # Если еще не отсканирован
+            error_msg = str(wait_error).lower()
+            if "password" in error_msg or "2fa" in error_msg:
+                logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
+                return False, "2FA_PASSWORD_REQUIRED"
             return False, "QR-код еще не отсканирован. Отсканируйте QR-код в Telegram на телефоне."
     except Exception as e:
         logger.error(f"Ошибка проверки QR-код авторизации для админа {admin_user_id}: {e}")
