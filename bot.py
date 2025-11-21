@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST, GROUP_LINK, GROUP_ID
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST, GROUP_LINK, GROUP_ID, TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE
 import json
 import os
 from utils import format_wedding_date
@@ -21,6 +21,7 @@ from google_sheets import (
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
     delete_guest_from_sheets, update_invitation_user_id
 )
+from telegram_client import init_telegram_client, get_username_by_phone
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -1025,6 +1026,58 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         except (ValueError, TypeError):
             guest_user_id = None
     
+    # Если указан номер телефона - пытаемся найти username
+    if is_phone:
+        found_username = None
+        
+        # Сначала ищем в списке зарегистрированных гостей
+        registered_guests = await get_all_guests_from_sheets()
+        for reg_guest in registered_guests:
+            reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
+            if reg_full_name.lower() == guest_name.lower():
+                found_username = reg_guest.get('username', '')
+                if found_username:
+                    found_user_id = reg_guest.get('user_id')
+                    break
+        
+        # Если не нашли в списке гостей - ищем через Telegram Client API
+        if not found_username:
+            await callback.message.answer("🔍 Ищу username по номеру телефона через Telegram...")
+            try:
+                found_username = await get_username_by_phone(telegram_id)
+                if found_username:
+                    logger.info(f"Найден username для {guest_name} по номеру {telegram_id}: @{found_username}")
+            except Exception as e:
+                logger.error(f"Ошибка поиска username по номеру телефона: {e}")
+        
+        # Если нашли username - обновляем таблицу
+        if found_username:
+            try:
+                found_user_id = None
+                # Ищем user_id в списке зарегистрированных гостей
+                for reg_guest in registered_guests:
+                    reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
+                    if reg_full_name.lower() == guest_name.lower():
+                        found_user_id = reg_guest.get('user_id')
+                        if found_user_id:
+                            try:
+                                found_user_id = int(found_user_id)
+                            except (ValueError, TypeError):
+                                found_user_id = None
+                        break
+                
+                updated = await update_invitation_user_id(guest_name, found_user_id, found_username)
+                if updated:
+                    logger.info(f"Обновлена таблица приглашений для {guest_name}: номер {telegram_id} заменен на @{found_username}")
+                    # Обновляем данные для дальнейшей обработки
+                    telegram_id = found_username
+                    is_phone = False
+                    guest_username = found_username
+                    if found_user_id:
+                        guest_user_id = found_user_id
+            except Exception as e:
+                logger.error(f"Ошибка обновления таблицы приглашений: {e}")
+    
     # Если user_id не найден в таблице приглашений, ищем в списке зарегистрированных гостей
     if not guest_user_id:
         registered_guests = await get_all_guests_from_sheets()
@@ -1033,35 +1086,16 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         for reg_guest in registered_guests:
             reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
             if reg_full_name.lower() == guest_name.lower():
-                guest_user_id = reg_guest.get('user_id')
-                guest_username = reg_guest.get('username', '')
-                if guest_user_id:
-                    try:
-                        guest_user_id = int(guest_user_id)
-                    except (ValueError, TypeError):
-                        guest_user_id = None
+                if not guest_user_id:  # Если еще не нашли
+                    guest_user_id = reg_guest.get('user_id')
+                    if not guest_username:  # Если еще не нашли username
+                        guest_username = reg_guest.get('username', '')
+                    if guest_user_id:
+                        try:
+                            guest_user_id = int(guest_user_id)
+                        except (ValueError, TypeError):
+                            guest_user_id = None
                 break
-        
-        # Если нашли user_id и указан номер телефона - обновляем таблицу
-        if guest_user_id and is_phone and guest_username:
-            # Обновляем таблицу: заменяем номер телефона на username и сохраняем user_id
-            try:
-                updated = await update_invitation_user_id(guest_name, guest_user_id, guest_username)
-                if updated:
-                    logger.info(f"Обновлена таблица приглашений для {guest_name}: номер {telegram_id} заменен на @{guest_username}, user_id={guest_user_id}")
-                    # Обновляем telegram_id для отображения
-                    telegram_id = guest_username
-                    is_phone = False
-            except Exception as e:
-                logger.error(f"Ошибка обновления таблицы приглашений: {e}")
-        elif guest_user_id and is_phone:
-            # Если нашли user_id, но нет username - просто сохраняем user_id
-            try:
-                updated = await update_invitation_user_id(guest_name, guest_user_id)
-                if updated:
-                    logger.info(f"Обновлен user_id для {guest_name} в таблице приглашений: {guest_user_id}")
-            except Exception as e:
-                logger.error(f"Ошибка обновления user_id в таблице приглашений: {e}")
     
     # Сохраняем данные в state
     await state.update_data(
@@ -1763,6 +1797,21 @@ async def init_bot():
     except Exception as e:
         logger.error(f"❌ Ошибка при создании бота: {e}")
         return None
+    
+    # Инициализируем Telegram Client для поиска username по номеру телефона
+    if TELEGRAM_API_ID and TELEGRAM_API_HASH and TELEGRAM_PHONE:
+        try:
+            client = await init_telegram_client(TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE)
+            if client:
+                logger.info("✅ Telegram Client инициализирован для поиска username по номеру телефона")
+            else:
+                logger.warning("⚠️ Telegram Client не инициализирован. Поиск username по номеру телефона будет недоступен.")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось инициализировать Telegram Client: {e}")
+            logger.warning("Поиск username по номеру телефона будет недоступен.")
+    else:
+        logger.info("ℹ️ Telegram Client API не настроен (TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE)")
+        logger.info("Поиск username по номеру телефона будет недоступен.")
     
     # База данных больше не используется - все данные в Google Sheets
     logger.info("✅ Бот использует Google Sheets как единственный источник данных")
