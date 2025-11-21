@@ -1,3 +1,70 @@
+/* ============================================
+   CSS ПЕРЕМЕННЫЕ ДЛЯ ЦВЕТОВ
+   ============================================ */
+:root {
+    /* Основные цвета палитры */
+    --color-primary: #5A7C52;              /* Основной зеленый */
+    --color-primary-dark: #4A6B42;        /* Темно-зеленый */
+    --color-cream: #FFE9AD;               /* Кремовый */
+    --color-cream-light: #FDFBF5;         /* Светло-кремовый */
+    --color-sand: #DBD0C4;                /* Песочный */
+    --color-brown: #C8A067;              /* Коричневый (конверт) */
+    
+    /* Фоны */
+    --color-bg-main: #F8F8F8;             /* Основной фон */
+    --color-bg-white: #FFFFFF;            /* Белый */
+    --color-bg-light: rgba(248, 248, 248, 0.9);  /* Светлый фон с прозрачностью */
+    --color-bg-card: rgba(255, 255, 255, 0.9);    /* Фон карточек */
+    
+    /* Текст */
+    --color-text-main: #2F2F2F;           /* Основной текст */
+    --color-text-secondary: #666;         /* Вторичный текст */
+    --color-text-light: #ddd;             /* Светлый текст */
+    --color-text-dark: #1a1a1a;          /* Темный текст */
+    
+    /* Акценты */
+    --color-accent: #5A7C52;              /* Акцентный цвет */
+    --color-accent-dark: #4A6B42;        /* Темный акцент */
+    
+    /* Кнопки и действия */
+    --color-btn-primary: #FFE9AD;         /* Фон кнопки */
+    --color-btn-primary-text: #4A6B42;   /* Текст кнопки */
+    --color-btn-secondary: #F8F8F8;      /* Фон вторичной кнопки */
+    --color-btn-danger: #dc3545;          /* Опасная кнопка */
+    --color-btn-danger-dark: #c82333;    /* Темная опасная кнопка */
+    --color-btn-danger-text: #d32f2f;    /* Текст опасной кнопки */
+    
+    /* Границы */
+    --color-border: #5A7C52;              /* Основная граница */
+    --color-border-light: #ddd;           /* Светлая граница */
+    --color-border-danger: rgba(255, 87, 87, 0.3);  /* Граница ошибки */
+    
+    /* Тени и эффекты */
+    --color-shadow-green: rgba(90, 124, 82, 0.1);   /* Зеленая тень */
+    --color-shadow-green-medium: rgba(90, 124, 82, 0.15);  /* Средняя зеленая тень */
+    --color-shadow-green-dark: rgba(90, 124, 82, 0.2);     /* Темная зеленая тень */
+    --color-shadow-green-strong: rgba(90, 124, 82, 0.3);     /* Сильная зеленая тень */
+    --color-shadow-green-strongest: rgba(90, 124, 82, 0.4); /* Очень сильная зеленая тень */
+    --color-shadow-black: rgba(0, 0, 0, 0.15);      /* Черная тень */
+    --color-shadow-black-medium: rgba(0, 0, 0, 0.25);      /* Средняя черная тень */
+    --color-shadow-danger: rgba(220, 53, 69, 0.3);  /* Тень ошибки */
+    
+    /* Прозрачные наложения */
+    --color-overlay-cream: rgba(255, 233, 173, 0.05);      /* Кремовое наложение */
+    --color-overlay-cream-medium: rgba(255, 233, 173, 0.08); /* Среднее кремовое */
+    --color-overlay-cream-strong: rgba(255, 233, 173, 0.15); /* Сильное кремовое */
+    --color-overlay-cream-card: rgba(255, 233, 173, 0.85);  /* Кремовая карточка */
+    --color-overlay-green-light: rgba(90, 124, 82, 0.03);   /* Светлое зеленое */
+    --color-overlay-green-medium: rgba(90, 124, 82, 0.08);  /* Среднее зеленое */
+    --color-overlay-green-strong: rgba(90, 124, 82, 0.12);  /* Сильное зеленое */
+    --color-overlay-green-border: rgba(90, 124, 82, 0.3);   /* Зеленая граница */
+    --color-overlay-green-border-medium: rgba(90, 124, 82, 0.6);  /* Средняя зеленая граница */
+    --color-overlay-green-border-strong: rgba(90, 124, 82, 0.7);  /* Сильная зеленая граница */
+    --color-overlay-black: rgba(0, 0, 0, 0.4);              /* Черное наложение */
+    --color-overlay-white: rgba(255, 255, 255, 0.02);       /* Белое наложение */
+    --color-overlay-danger: rgba(255, 87, 87, 0.1);         /* Наложение ошибки */
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -6,176 +73,351 @@
 
 body {
     font-family: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
-    background: #F8F8F8;
-    color: #2F2F2F;
-    line-height: 1.6;
+    background: var(--color-bg-main);
+    color: var(--color-text-main);
+    line-height: 1.12;
     position: relative;
     overflow-x: hidden;
     min-height: 100vh;
 }
 
-/* Контейнер конверта */
-.envelope-container {
+/* Анимация загрузки с обручальным кольцом (Lottie) */
+.ring-loader {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     z-index: 10000;
-    /* Белый фон, чтобы зеленые бордеры конверта максимально читались */
-    background: #FFFFFF;
+    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 1;
-    transition: opacity 0.5s ease-out;
+    transition: opacity 0.8s ease-out;
     pointer-events: all;
 }
 
-.envelope-container.hidden {
+.ring-loader.hidden {
     opacity: 0;
     pointer-events: none;
     z-index: -1;
-    transition: opacity 0.3s ease-out;
 }
 
-/* Конверт */
-.envelope {
+.lottie-container {
+    width: 300px;
+    height: 300px;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lottie-container svg,
+.lottie-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.ring-3d-container {
     position: relative;
-    width: min(320px, 80vw);
-    height: min(420px, 75vh);
-    perspective: 1200px;
+    width: 100px;
+    height: 100px;
     transform-style: preserve-3d;
-    /* Внешний контур рисует .envelope-back, поэтому здесь бордера нет,
-       чтобы не было двойных зелёных полос и расхождения размеров */
+    animation: ringContainerAnimation 3s ease-in-out forwards;
 }
 
-/* Задняя часть конверта - светлая с жирной границей (основа конверта) */
-.envelope-back {
-    position: absolute;
-    inset: 0;
-    background: #F8F8F8;
-    /* Рамку вокруг письма оставляем только у самого письма (.envelope-content),
-       поэтому здесь бордер убираем, чтобы зелёная полоса не \"обрумывала\" лишнее пространство сверху */
-    border: none;
-    border-radius: 16px;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
-    z-index: 1;
-}
-
-/* Передняя часть конверта - нижняя половина */
-.envelope-front {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 100%;
-    height: 55%;
-    background: #FFE9AD;
-    border-radius: 0 0 16px 16px;
-    border: 8px solid #5A7C52;
-    border-top: none;
-    z-index: 3;
-}
-
-/* Клапан конверта - треугольник сверху */
-.envelope-flap {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 50%;
-    background: transparent;
-    /* Треугольник вершиной вниз, основание (гипотенуза) по верхнему краю — по нему вращаем */
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-    transform-origin: center top; /* шарнир по гипотенузе */
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-    z-index: 4;
-    transform: rotateX(0deg);
-}
-
-/* Внутренний коричневый треугольник с зелёным контуром */
-.envelope-flap::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: #C8A067;                 /* мягкий коричневый клапан */
-    clip-path: inherit;
-    border: 4px solid #5A7C52;           /* зелёный контур */
-    box-sizing: border-box;
-}
-
-/* Внутренний лист (приглашение) */
-.envelope-content {
-    position: absolute;
-    left: 50%;
-    bottom: 8%;
-    transform: translateX(-50%) translateY(40%);
-    width: 78%;
-    height: 60%;
-    background: #FDFBF5;
-    border-radius: 12px;
-    border: 4px solid #5A7C52;           /* зелёная рамка листа */
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-    z-index: 5; /* лист всегда выше клапана, когда появляется */
-    opacity: 0;
-}
-
-/* Старт анимации конверта */
-.envelope-container.start .envelope-flap {
-    animation: flapOpenSmooth 2.5s ease-in-out forwards;
-}
-
-.envelope-container.start .envelope-content {
-    animation: letterReveal 2s ease-out 2s forwards;
-}
-
-@keyframes flapOpenSmooth {
-    0% {
-        transform: rotateX(0deg);
-    }
-    30% {
-        transform: rotateX(-45deg);
-    }
-    60% {
-        transform: rotateX(-110deg);
-    }
-    100% {
-        transform: rotateX(-145deg);
-    }
-}
-
-@keyframes letterReveal {
-    0% {
-        opacity: 0;
-        transform: translateX(-50%) translateY(40%);
-    }
-    40% {
-        opacity: 1;
-        transform: translateX(-50%) translateY(5%);
-    }
-    100% {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0%);
-    }
-}
-
-/* Убираем паттерны - оставляем чистый минимализм */
-.envelope-pattern {
+.ring-3d {
+    position: relative;
     width: 100%;
     height: 100%;
-    background: transparent;
-    position: relative;
+    transform-style: preserve-3d;
 }
 
-/* Адаптивность для конверта - на мобильных устройствах тоже на весь экран */
+/* 3D Тор (кольцо) - создаем из нескольких частей */
+.ring-outer,
+.ring-inner,
+.ring-top,
+.ring-bottom {
+    position: absolute;
+    border-radius: 50%;
+    transform-style: preserve-3d;
+}
+
+.ring-outer {
+    width: 80px;
+    height: 80px;
+    border: 10px solid var(--color-primary);
+    top: 50%;
+    left: 50%;
+    margin-top: -40px;
+    margin-left: -40px;
+    box-shadow: 
+        inset 0 0 20px rgba(90, 124, 82, 0.3),
+        0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.ring-inner {
+    width: 60px;
+    height: 60px;
+    border: 8px solid rgba(90, 124, 82, 0.4);
+    top: 50%;
+    left: 50%;
+    margin-top: -30px;
+    margin-left: -30px;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.3);
+}
+
+.ring-top {
+    width: 80px;
+    height: 20px;
+    background: linear-gradient(to bottom, rgba(90, 124, 82, 0.9), rgba(90, 124, 82, 0.6));
+    top: 50%;
+    left: 50%;
+    margin-top: -40px;
+    margin-left: -40px;
+    border-radius: 40px 40px 0 0;
+    transform: rotateX(90deg) translateZ(10px);
+}
+
+.ring-bottom {
+    width: 80px;
+    height: 20px;
+    background: linear-gradient(to top, rgba(90, 124, 82, 0.9), rgba(90, 124, 82, 0.6));
+    top: 50%;
+    left: 50%;
+    margin-top: 20px;
+    margin-left: -40px;
+    border-radius: 0 0 40px 40px;
+    transform: rotateX(-90deg) translateZ(10px);
+}
+
+/* 3D Бриллиант с гранями */
+.diamond-3d {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin-top: -10px;
+    margin-left: -10px;
+    transform-style: preserve-3d;
+    opacity: 0;
+    animation: diamond3DAnimation 3s ease-in-out forwards;
+}
+
+.diamond-facet {
+    position: absolute;
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.95) 0%,
+        rgba(230, 245, 255, 0.9) 25%,
+        rgba(200, 230, 255, 0.85) 50%,
+        rgba(180, 220, 255, 0.8) 75%,
+        rgba(255, 255, 255, 0.95) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 
+        0 0 10px rgba(255, 255, 255, 0.8),
+        inset 0 0 10px rgba(255, 255, 255, 0.6);
+}
+
+.facet-top {
+    width: 20px;
+    height: 20px;
+    transform: rotateX(45deg) rotateY(45deg) translateZ(10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-front {
+    width: 20px;
+    height: 20px;
+    transform: rotateY(0deg) translateZ(10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-back {
+    width: 20px;
+    height: 20px;
+    transform: rotateY(180deg) translateZ(10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-left {
+    width: 20px;
+    height: 20px;
+    transform: rotateY(-90deg) translateZ(10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-right {
+    width: 20px;
+    height: 20px;
+    transform: rotateY(90deg) translateZ(10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-bottom {
+    width: 20px;
+    height: 20px;
+    transform: rotateX(-45deg) rotateY(45deg) translateZ(-10px);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    background: linear-gradient(135deg, 
+        rgba(150, 200, 255, 0.7) 0%,
+        rgba(100, 150, 255, 0.6) 50%,
+        rgba(150, 200, 255, 0.7) 100%);
+}
+
+@keyframes ringContainerAnimation {
+    /* 0-1.2s (0-40%): Катится сбоку к центру */
+    0% {
+        transform: translateX(-400px) rotateY(0deg) rotateZ(0deg);
+    }
+    40% {
+        transform: translateX(0) rotateY(720deg) rotateZ(0deg);
+    }
+    /* 1.2-1.8s (40-60%): Падает как тор (вращаясь в 3D) */
+    60% {
+        transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+    }
+    /* 1.8-2.2s (60-73%): Лежит (небольшое покачивание) */
+    66% {
+        transform: translateX(-5px) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+    }
+    70% {
+        transform: translateX(5px) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+    }
+    73% {
+        transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+    }
+    /* 2.2-2.6s (73-87%): Остается на месте, бриллиант сверкает */
+    87% {
+        transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+    }
+    /* 2.6-3s (87-100%): Начинает растворяться */
+    100% {
+        transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        opacity: 0;
+    }
+}
+
+@keyframes diamond3DAnimation {
+    /* Бриллиант появляется и сверкает в конце */
+    0%, 73% {
+        opacity: 0;
+        transform: scale(0) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+    }
+    75% {
+        opacity: 1;
+        transform: scale(1) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
+    }
+    80% {
+        opacity: 1;
+        transform: scale(1.5) rotateX(180deg) rotateY(180deg) rotateZ(90deg);
+        filter: brightness(1.5) drop-shadow(0 0 20px rgba(255, 255, 255, 1));
+    }
+    85% {
+        opacity: 1;
+        transform: scale(1.2) rotateX(360deg) rotateY(360deg) rotateZ(180deg);
+        filter: brightness(1.2) drop-shadow(0 0 15px rgba(200, 230, 255, 0.8));
+    }
+    90% {
+        opacity: 1;
+        transform: scale(1.4) rotateX(540deg) rotateY(540deg) rotateZ(270deg);
+        filter: brightness(1.8) drop-shadow(0 0 25px rgba(255, 255, 255, 1));
+    }
+    95% {
+        opacity: 1;
+        transform: scale(1.1) rotateX(720deg) rotateY(720deg) rotateZ(360deg);
+        filter: brightness(1.3);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.8) rotateX(720deg) rotateY(720deg) rotateZ(360deg);
+    }
+}
+
+/* Адаптивность для 3D кольца */
 @media (max-width: 480px) {
-    .envelope {
-        width: 100vw;
-        height: 100vh;
+    .ring-3d-container {
+        width: 70px;
+        height: 70px;
     }
     
-    .envelope-pattern::before {
-        font-size: clamp(50px, 15vw, 80px);
+    .ring-outer {
+        width: 60px;
+        height: 60px;
+        border-width: 8px;
+        margin-top: -30px;
+        margin-left: -30px;
+    }
+    
+    .ring-inner {
+        width: 44px;
+        height: 44px;
+        border-width: 6px;
+        margin-top: -22px;
+        margin-left: -22px;
+    }
+    
+    .ring-top {
+        width: 60px;
+        height: 15px;
+        margin-top: -30px;
+        margin-left: -30px;
+        border-radius: 30px 30px 0 0;
+    }
+    
+    .ring-bottom {
+        width: 60px;
+        height: 15px;
+        margin-top: 15px;
+        margin-left: -30px;
+        border-radius: 0 0 30px 30px;
+    }
+    
+    .diamond-3d {
+        width: 14px;
+        height: 14px;
+        margin-top: -7px;
+        margin-left: -7px;
+    }
+    
+    .diamond-facet {
+        width: 14px;
+        height: 14px;
+    }
+    
+    @keyframes ringContainerAnimation {
+        /* 0-1.2s (0-40%): Катится сбоку к центру */
+        0% {
+            transform: translateX(-300px) rotateY(0deg) rotateZ(0deg);
+        }
+        40% {
+            transform: translateX(0) rotateY(720deg) rotateZ(0deg);
+        }
+        /* 1.2-1.8s (40-60%): Падает как тор (вращаясь в 3D) */
+        60% {
+            transform: translateX(0) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        }
+        /* 1.8-2.2s (60-73%): Лежит (небольшое покачивание) */
+        66% {
+            transform: translateX(-3px) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        }
+        70% {
+            transform: translateX(3px) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        }
+        73% {
+            transform: translateX(0) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        }
+        /* 2.2-2.6s (73-87%): Остается на месте, бриллиант сверкает */
+        87% {
+            transform: translateX(0) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+        }
+        /* 2.6-3s (87-100%): Начинает растворяться */
+        100% {
+            transform: translateX(0) translateY(150px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
+            opacity: 0;
+        }
     }
 }
 
@@ -190,20 +432,20 @@ body {
     opacity: 0;
     transition: opacity 0.5s ease-in;
     background: 
-        linear-gradient(135deg, rgba(90, 124, 82, 0.08) 0%, rgba(74, 107, 66, 0.12) 50%, rgba(90, 124, 82, 0.08) 100%),
+        linear-gradient(135deg, var(--color-overlay-green-medium) 0%, rgba(74, 107, 66, 0.12) 50%, var(--color-overlay-green-medium) 100%),
         repeating-linear-gradient(
             45deg,
             transparent,
             transparent 15px,
-            rgba(255, 233, 173, 0.05) 15px,
-            rgba(255, 233, 173, 0.05) 30px
+            var(--color-overlay-cream) 15px,
+            var(--color-overlay-cream) 30px
         ),
         repeating-linear-gradient(
             -45deg,
             transparent,
             transparent 20px,
-            rgba(90, 124, 82, 0.03) 20px,
-            rgba(90, 124, 82, 0.03) 40px
+            var(--color-overlay-green-light) 20px,
+            var(--color-overlay-green-light) 40px
         ),
         repeating-linear-gradient(
             0deg,
@@ -226,9 +468,9 @@ body {
     width: 200%;
     height: 200%;
     background: 
-        radial-gradient(circle at 20% 30%, rgba(255, 233, 173, 0.15) 0%, transparent 40%),
-        radial-gradient(circle at 80% 70%, rgba(90, 124, 82, 0.12) 0%, transparent 40%),
-        radial-gradient(circle at 50% 50%, rgba(255, 233, 173, 0.08) 0%, transparent 60%);
+        radial-gradient(circle at 20% 30%, var(--color-overlay-cream-strong) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, var(--color-overlay-green-strong) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, var(--color-overlay-cream-medium) 0%, transparent 60%);
     animation: silkShimmer 20s ease-in-out infinite;
 }
 
@@ -244,8 +486,8 @@ body {
             90deg,
             transparent,
             transparent 100px,
-            rgba(255, 255, 255, 0.02) 100px,
-            rgba(255, 255, 255, 0.02) 101px
+            var(--color-overlay-white) 100px,
+            var(--color-overlay-white) 101px
         );
     animation: silkWave 25s linear infinite;
 }
@@ -331,16 +573,54 @@ body {
     width: 100%;
     height: 400px;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: url('welcome_photo.jpeg');
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
+    padding: 40px 20px;
     overflow: hidden;
-    background: linear-gradient(135deg, #5A7C52 0%, #4A6B42 100%);
+}
+
+.photo-hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('welcome_photo.jpeg');
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
+    filter: blur(8px);
+    transform: scale(1.1);
+    z-index: 0;
+}
+
+.photo-hero::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--color-overlay-black);
+    z-index: 1;
 }
 
 .photo-hero img {
-    width: 100%;
-    height: 100%;
+    width: 300px;
+    height: 300px;
     object-fit: cover;
     object-position: center top;
-    opacity: 0.9;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 2;
 }
 
 .photo-overlay {
@@ -348,9 +628,10 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
-    padding: 40px 20px 30px;
+    background: transparent;
+    padding: 20px 20px 30px;
     text-align: center;
+    z-index: 2;
 }
 
 .couple-names {
@@ -361,31 +642,33 @@ body {
     text-transform: uppercase;
     letter-spacing: 2px;
     font-family: 'Playfair Display', 'Georgia', serif;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .wedding-date-hero {
     font-size: 24px;
-    color: #FFE9AD;
+    color: var(--color-cream);
     font-weight: 300;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 /* Section Card */
 .section-card {
-    background: rgba(248, 248, 248, 0.75);
+    background: var(--color-bg-light);
     backdrop-filter: blur(2px);
     padding: 40px 20px;
     margin: 20px 0;
-    border-top: 2px solid rgba(90, 124, 82, 0.6);
-    border-bottom: 2px solid rgba(90, 124, 82, 0.6);
+    border-top: 2px solid var(--color-overlay-green-border-medium);
+    border-bottom: 2px solid var(--color-overlay-green-border-medium);
     position: relative;
     z-index: 1;
-    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 4px 15px var(--color-shadow-green);
 }
 
 .section-title {
     font-size: 28px;
     text-align: center;
-    color: #5A7C52;
+    color: var(--color-primary);
     margin-bottom: 30px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -406,7 +689,7 @@ body {
 .heartbeat-line-small {
     width: 2px;
     height: 40px;
-    background: #5A7C52;
+    background: var(--color-primary);
     margin: 10px auto;
     position: relative;
 }
@@ -417,7 +700,7 @@ body {
     position: absolute;
     width: 8px;
     height: 8px;
-    background: #5A7C52;
+    background: var(--color-primary);
     border-radius: 50%;
     left: 50%;
     transform: translateX(-50%);
@@ -440,8 +723,8 @@ body {
 .greeting-text {
     font-size: 20px;
     text-align: center;
-    color: #2F2F2F;
-    line-height: 1.8;
+    color: var(--color-text-main);
+    line-height: 1.26;
     margin-bottom: 20px;
 }
 
@@ -452,14 +735,15 @@ body {
     justify-content: center;
     align-items: center;
     gap: 15px;
-    margin: 40px 0 30px; /* чуть больше отступ сверху от заголовка */
+    margin: 40px 0 50px; /* чуть больше отступ сверху от заголовка, увеличен снизу */
+    padding-bottom: 20px; /* дополнительный отступ для предотвращения наложения */
 }
 
 /* старый локальный флип-таймер удалён, сейчас используется внешний MegaTimer */
 
 .clock-label {
     font-size: 15px;
-    color: #666;
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     margin-top: 4px;
 }
@@ -467,25 +751,25 @@ body {
 .clock-separator {
     font-size: 32px;
     font-weight: bold;
-    color: #5A7C52;
+    color: var(--color-primary);
     margin: 0 4px;
-    line-height: 70px;
+    line-height: 49px;
 }
 
 .calendar-preview {
     text-align: center;
-    margin-top: 30px;
+    margin-top: 40px; /* увеличен отступ сверху для предотвращения наложения */
     padding: 20px;
-    background: rgba(255, 233, 173, 0.85);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.15);
+    box-shadow: 0 4px 15px var(--color-shadow-green-medium);
 }
 
 .calendar-date-full {
     font-size: 24px;
     font-weight: bold;
-    color: #4A6B42;
+    color: var(--color-primary-dark);
     text-transform: uppercase;
 }
 
@@ -497,11 +781,11 @@ body {
 .guest-item {
     margin-bottom: 20px;
     padding: 20px;
-    background: rgba(255, 233, 173, 0.8);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 8px;
-    border: 2px solid rgba(90, 124, 82, 0.7);
-    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.15);
+    border: 2px solid var(--color-overlay-green-border-strong);
+    box-shadow: 0 4px 12px var(--color-shadow-green-medium);
 }
 
 .guest-item-header {
@@ -510,13 +794,13 @@ body {
     align-items: center;
     margin-bottom: 15px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #5A7C52;
+    border-bottom: 1px solid var(--color-primary);
 }
 
 .guest-item-title {
     font-size: 20px;
     font-weight: bold;
-    color: #5A7C52;
+    color: var(--color-primary);
     margin: 0;
 }
 
@@ -535,12 +819,12 @@ body {
     width: 100%;
     padding: 12px 15px;
     padding-right: 40px;
-    border: 2px solid #5A7C52;
+    border: 2px solid var(--color-primary);
     border-radius: 8px;
     font-size: 20px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
-    background: rgba(248, 248, 248, 0.9);
-    color: #4A6B42;
+    background: var(--color-bg-light);
+    color: var(--color-primary-dark);
     cursor: pointer;
     transition: all 0.3s ease;
     appearance: none;
@@ -551,35 +835,35 @@ body {
     background-position: right 15px center;
     background-size: 12px;
     font-weight: 500;
-    box-shadow: 0 2px 4px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 2px 4px var(--color-shadow-green);
     margin-top: 5px;
 }
 
 .guest-item select:hover {
-    background-color: #FFE9AD;
-    border-color: #4A6B42;
-    box-shadow: 0 4px 8px rgba(90, 124, 82, 0.15);
+    background-color: var(--color-cream);
+    border-color: var(--color-primary-dark);
+    box-shadow: 0 4px 8px var(--color-shadow-green-medium);
     transform: translateY(-1px);
 }
 
 .guest-item input:focus,
 .guest-item select:focus {
     outline: none;
-    border-color: #4A6B42;
-    background-color: #FFE9AD;
-    box-shadow: 0 0 0 3px rgba(90, 124, 82, 0.2);
+    border-color: var(--color-primary-dark);
+    background-color: var(--color-cream);
+    box-shadow: 0 0 0 3px var(--color-shadow-green-dark);
 }
 
 .guest-item select option {
-    background: #FFE9AD;
-    color: #4A6B42;
+    background: var(--color-cream);
+    color: var(--color-primary-dark);
     padding: 10px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
 
 .guest-item .btn-remove {
     padding: 8px 15px;
-    background: #dc3545;
+    background: var(--color-btn-danger);
     color: white;
     border: none;
     border-radius: 5px;
@@ -588,25 +872,25 @@ body {
 }
 
 .guest-item .btn-remove:hover {
-    background: #c82333;
+    background: var(--color-btn-danger-dark);
 }
 
 .btn-add-guest {
     width: 100%;
     padding: 12px;
-    background: #FFE9AD;
-    border: 2px dashed #5A7C52;
+    background: var(--color-cream);
+    border: 2px dashed var(--color-primary);
     border-radius: 5px;
     font-size: 20px;
-    color: #4A6B42;
+    color: var(--color-primary-dark);
     cursor: pointer;
     transition: all 0.3s;
 }
 
 .btn-add-guest:hover {
-    background: #F8F8F8;
-    border-color: #5A7C52;
-    color: #5A7C52;
+    background: var(--color-bg-main);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 
 .btn-add-guest:disabled {
@@ -628,7 +912,7 @@ body {
     display: block;
     margin-bottom: 10px;
     font-weight: bold;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     font-size: 20px;
 }
 
@@ -637,7 +921,7 @@ body {
 .form-group textarea {
     width: 100%;
     padding: 12px 15px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border-light);
     border-radius: 5px;
     font-size: 20px;
     font-family: inherit;
@@ -649,18 +933,18 @@ body {
 .form-group textarea:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #5A7C52;
+    border-color: var(--color-primary);
 }
 
 .form-select {
     width: 100%;
     padding: 14px 18px;
-    border: 2px solid #5A7C52;
+    border: 2px solid var(--color-primary);
     border-radius: 8px;
     font-size: 20px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
-    background: #FFE9AD;
-    color: #4A6B42;
+    background: var(--color-cream);
+    color: var(--color-primary-dark);
     cursor: pointer;
     transition: all 0.3s ease;
     appearance: none;
@@ -672,26 +956,26 @@ body {
     background-size: 12px;
     padding-right: 40px;
     font-weight: 500;
-    box-shadow: 0 2px 4px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 2px 4px var(--color-shadow-green);
 }
 
 .form-select:hover {
-    background-color: #F8F8F8;
-    border-color: #4A6B42;
-    box-shadow: 0 4px 8px rgba(90, 124, 82, 0.15);
+    background-color: var(--color-bg-main);
+    border-color: var(--color-primary-dark);
+    box-shadow: 0 4px 8px var(--color-shadow-green-medium);
     transform: translateY(-1px);
 }
 
 .form-select:focus {
     outline: none;
-    border-color: #4A6B42;
-    background-color: #F8F8F8;
-    box-shadow: 0 0 0 3px rgba(90, 124, 82, 0.2);
+    border-color: var(--color-primary-dark);
+    background-color: var(--color-bg-main);
+    box-shadow: 0 0 0 3px var(--color-shadow-green-dark);
 }
 
 .form-select option {
-    background: #FFE9AD;
-    color: #4A6B42;
+    background: var(--color-cream);
+    color: var(--color-primary-dark);
     padding: 10px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
@@ -719,15 +1003,15 @@ body {
     gap: 10px;
     cursor: pointer;
     padding: 10px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border-light);
     border-radius: 5px;
     transition: all 0.3s;
 }
 
 .radio-label:hover,
 .checkbox-label:hover {
-    border-color: #5A7C52;
-    background: #F8F8F8;
+    border-color: var(--color-primary);
+    background: var(--color-bg-main);
 }
 
 .radio-label input[type="radio"],
@@ -758,14 +1042,14 @@ body {
 }
 
 .btn-confirm {
-    background: #5A7C52;
+    background: var(--color-primary);
     color: white;
 }
 
 .btn-confirm:hover {
-    background: #4A6B42;
+    background: var(--color-primary-dark);
     transform: translateY(-2px);
-        box-shadow: 0 4px 10px rgba(90, 124, 82, 0.3);
+        box-shadow: 0 4px 10px var(--color-shadow-green-strong);
 }
 
 /* Contact Section */
@@ -781,47 +1065,47 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 15px 20px;
-    background: rgba(255, 233, 173, 0.8);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 8px;
     text-decoration: none;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     transition: all 0.3s;
-    box-shadow: 0 2px 8px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 2px 8px var(--color-shadow-green);
 }
 
 .contact-item:hover {
-    background: rgba(248, 248, 248, 0.9);
+    background: var(--color-bg-light);
     transform: translateX(5px);
-    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.2);
+    box-shadow: 0 4px 12px var(--color-shadow-green-dark);
 }
 
 .contact-name {
     font-size: 18px;
     font-weight: bold;
-    color: #5A7C52;
+    color: var(--color-primary);
 }
 
 .contact-telegram {
     font-size: 16px;
-    color: #666;
+    color: var(--color-text-secondary);
 }
 
 /* Cancel Section */
 .cancel-section {
     margin-top: 30px;
     padding-top: 30px;
-    border-top: 1px solid #5A7C52;
+    border-top: 1px solid var(--color-primary);
     text-align: center;
 }
 
 .btn-cancel {
     padding: 12px 30px;
     background: transparent;
-    border: 2px solid #dc3545;
+    border: 2px solid var(--color-btn-danger);
     border-radius: 5px;
     font-size: 16px;
-    color: #dc3545;
+    color: var(--color-btn-danger);
     cursor: pointer;
     transition: all 0.3s;
     font-family: inherit;
@@ -829,20 +1113,20 @@ body {
 }
 
 .btn-cancel:hover {
-    background: #dc3545;
+    background: var(--color-btn-danger);
     color: white;
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);
+    box-shadow: 0 4px 10px var(--color-shadow-danger);
 }
 
 /* Confirmation */
 .confirmation-card {
     text-align: center;
     padding: 60px 20px;
-    background: rgba(248, 248, 248, 0.85);
+    background: var(--color-bg-light);
     backdrop-filter: blur(3px);
     border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(90, 124, 82, 0.2);
+    box-shadow: 0 4px 20px var(--color-shadow-green-dark);
 }
 
 .success-icon {
@@ -862,34 +1146,34 @@ body {
 
 .confirmation-title {
     font-size: 28px;
-    color: #5A7C52;
+    color: var(--color-primary);
     margin-bottom: 20px;
 }
 
 .confirmation-text {
     font-size: 16px;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     margin-bottom: 15px;
-    line-height: 1.8;
+    line-height: 1.26;
 }
 
 .guests-count {
     margin-top: 30px;
     padding: 20px;
-    background: rgba(255, 233, 173, 0.85);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 10px;
     font-size: 18px;
     font-weight: bold;
-    color: #4A6B42;
-    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.15);
+    color: var(--color-primary-dark);
+    box-shadow: 0 4px 12px var(--color-shadow-green-medium);
 }
 
 /* Closing */
 .closing-text {
     font-size: 20px;
     text-align: center;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     margin-bottom: 20px;
     font-style: italic;
 }
@@ -897,7 +1181,7 @@ body {
 .couple-names-final {
     font-size: 28px;
     text-align: center;
-    color: #5A7C52;
+    color: var(--color-primary);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -957,7 +1241,7 @@ body {
     
     .clock-separator {
         font-size: 24px;
-        line-height: 60px;
+        line-height: 42px;
     }
     
     .clock-label {
@@ -993,15 +1277,15 @@ body {
     gap: 10px;
     cursor: pointer;
     padding: 10px;
-    border: 2px solid #ddd;
+    border: 2px solid var(--color-border-light);
     border-radius: 5px;
     transition: all 0.3s;
 }
 
 .radio-label:hover,
 .checkbox-label:hover {
-    border-color: #5A7C52;
-    background: #F8F8F8;
+    border-color: var(--color-primary);
+    background: var(--color-bg-main);
 }
 
 .radio-label input[type="radio"],
@@ -1032,14 +1316,14 @@ body {
 }
 
 .btn-confirm {
-    background: #5A7C52;
+    background: var(--color-primary);
     color: white;
 }
 
 .btn-confirm:hover {
-    background: #4A6B42;
+    background: var(--color-primary-dark);
     transform: translateY(-2px);
-        box-shadow: 0 4px 10px rgba(90, 124, 82, 0.3);
+        box-shadow: 0 4px 10px var(--color-shadow-green-strong);
 }
 
 /* Contact Section */
@@ -1055,47 +1339,47 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 15px 20px;
-    background: rgba(255, 233, 173, 0.8);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 8px;
     text-decoration: none;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     transition: all 0.3s;
-    box-shadow: 0 2px 8px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 2px 8px var(--color-shadow-green);
 }
 
 .contact-item:hover {
-    background: rgba(248, 248, 248, 0.9);
+    background: var(--color-bg-light);
     transform: translateX(5px);
-    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.2);
+    box-shadow: 0 4px 12px var(--color-shadow-green-dark);
 }
 
 .contact-name {
     font-size: 18px;
     font-weight: bold;
-    color: #5A7C52;
+    color: var(--color-primary);
 }
 
 .contact-telegram {
     font-size: 16px;
-    color: #666;
+    color: var(--color-text-secondary);
 }
 
 /* Cancel Section */
 .cancel-section {
     margin-top: 30px;
     padding-top: 30px;
-    border-top: 1px solid #5A7C52;
+    border-top: 1px solid var(--color-primary);
     text-align: center;
 }
 
 .btn-cancel {
     padding: 12px 30px;
     background: transparent;
-    border: 2px solid #dc3545;
+    border: 2px solid var(--color-btn-danger);
     border-radius: 5px;
     font-size: 16px;
-    color: #dc3545;
+    color: var(--color-btn-danger);
     cursor: pointer;
     transition: all 0.3s;
     font-family: inherit;
@@ -1103,20 +1387,20 @@ body {
 }
 
 .btn-cancel:hover {
-    background: #dc3545;
+    background: var(--color-btn-danger);
     color: white;
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);
+    box-shadow: 0 4px 10px var(--color-shadow-danger);
 }
 
 /* Confirmation */
 .confirmation-card {
     text-align: center;
     padding: 60px 20px;
-    background: rgba(248, 248, 248, 0.85);
+    background: var(--color-bg-light);
     backdrop-filter: blur(3px);
     border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(90, 124, 82, 0.2);
+    box-shadow: 0 4px 20px var(--color-shadow-green-dark);
 }
 
 .success-icon {
@@ -1136,34 +1420,34 @@ body {
 
 .confirmation-title {
     font-size: 28px;
-    color: #5A7C52;
+    color: var(--color-primary);
     margin-bottom: 20px;
 }
 
 .confirmation-text {
     font-size: 16px;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     margin-bottom: 15px;
-    line-height: 1.8;
+    line-height: 1.26;
 }
 
 .guests-count {
     margin-top: 30px;
     padding: 20px;
-    background: rgba(255, 233, 173, 0.85);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 10px;
     font-size: 18px;
     font-weight: bold;
-    color: #4A6B42;
-    box-shadow: 0 4px 12px rgba(90, 124, 82, 0.15);
+    color: var(--color-primary-dark);
+    box-shadow: 0 4px 12px var(--color-shadow-green-medium);
 }
 
 /* Closing */
 .closing-text {
     font-size: 20px;
     text-align: center;
-    color: #2F2F2F;
+    color: var(--color-text-main);
     margin-bottom: 20px;
     font-style: italic;
 }
@@ -1171,7 +1455,7 @@ body {
 .couple-names-final {
     font-size: 28px;
     text-align: center;
-    color: #5A7C52;
+    color: var(--color-primary);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1231,7 +1515,7 @@ body {
     
     .clock-separator {
         font-size: 24px;
-        line-height: 60px;
+        line-height: 42px;
     }
     
     .clock-label {
@@ -1271,14 +1555,14 @@ body {
     background: rgba(255, 233, 173, 0.6);
     backdrop-filter: blur(2px);
     border-radius: 10px;
-    border-left: 4px solid #5A7C52;
-    box-shadow: 0 2px 8px rgba(90, 124, 82, 0.1);
+    border-left: 4px solid var(--color-primary);
+    box-shadow: 0 2px 8px var(--color-shadow-green);
 }
 
 .timeline-time {
     font-size: 18px;
     font-weight: 600;
-    color: #5A7C52;
+    color: var(--color-primary);
     min-width: 100px;
     margin-right: 20px;
     font-family: 'Playfair Display', 'Georgia', serif;
@@ -1286,8 +1570,8 @@ body {
 
 .timeline-event {
     font-size: 16px;
-    color: #2F2F2F;
-    line-height: 1.6;
+    color: var(--color-text-main);
+    line-height: 1.12;
     flex: 1;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
@@ -1298,31 +1582,49 @@ body {
 }
 
 .dresscode-card {
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--color-bg-card);
     backdrop-filter: blur(3px);
     padding: 40px 20px;
     margin: 20px 0;
-    border-top: 2px solid rgba(90, 124, 82, 0.6);
-    border-bottom: 2px solid rgba(90, 124, 82, 0.6);
+    border-top: 2px solid var(--color-overlay-green-border-medium);
+    border-bottom: 2px solid var(--color-overlay-green-border-medium);
     position: relative;
     z-index: 1;
-    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.1);
+    box-shadow: 0 4px 15px var(--color-shadow-green);
+}
+
+.dresscode-intro {
+    text-align: center;
+    font-size: 18px;
+    color: var(--color-text-main);
+    line-height: 1.26;
+    margin: 20px 0 30px;
+    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    padding: 0 20px;
 }
 
 .color-palette {
     display: flex;
     justify-content: center;
-    gap: 15px;
+    gap: 20px;
     margin: 30px 0;
     flex-wrap: wrap;
 }
 
+.color-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 80px;
+}
+
 .color-circle {
-    width: 50px;
-    height: 50px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    border: 3px solid rgba(90, 124, 82, 0.3);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    border: 3px solid var(--color-shadow-green-strong);
+    box-shadow: 0 4px 10px var(--color-shadow-black);
     transition: transform 0.3s ease;
 }
 
@@ -1330,90 +1632,63 @@ body {
     transform: scale(1.1);
 }
 
-.dresscode-slider {
-    position: relative;
-    width: 100%;
-    height: 400px;
-    overflow: hidden;
-    border-radius: 15px;
-    margin-top: 30px;
-    box-shadow: 0 8px 25px rgba(90, 124, 82, 0.2);
-}
-
-.dresscode-slider-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
-
-.dresscode-slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    transition: opacity 0.5s ease-in-out;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.dresscode-slide.active {
-    opacity: 1;
-    z-index: 1;
-}
-
-.dresscode-slide img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 15px;
-}
-
-/* Подсказки */
-.tips-section {
-    margin: 20px 0;
-}
-
-.tips-card {
-    background: rgba(90, 124, 82, 0.1);
-    backdrop-filter: blur(3px);
-    padding: 40px 20px;
-    margin: 20px 0;
-    border-top: 2px solid rgba(90, 124, 82, 0.6);
-    border-bottom: 2px solid rgba(90, 124, 82, 0.6);
-    position: relative;
-    z-index: 1;
-    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.1);
-}
-
-.tips-container {
-    margin-top: 30px;
-}
-
-.tip-item {
-    background: rgba(255, 255, 255, 0.7);
-    padding: 25px;
-    margin-bottom: 20px;
-    border-radius: 10px;
-    border-left: 4px solid #5A7C52;
-    box-shadow: 0 2px 8px rgba(90, 124, 82, 0.1);
-}
-
-.tip-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #5A7C52;
-    margin-bottom: 10px;
-    font-family: 'Playfair Display', 'Georgia', serif;
-}
-
-.tip-text {
-    font-size: 16px;
-    color: #2F2F2F;
-    line-height: 1.6;
+.color-name {
+    font-size: 14px;
+    color: var(--color-text-main);
     font-family: 'Cormorant Garamond', 'Georgia', serif;
+    text-align: center;
+    line-height: 0.98;
+}
+
+/* Пожелания */
+.wishes-section {
+    margin: 20px 0;
+}
+
+.wishes-section .section-card {
+    background: var(--color-primary-dark);
+    color: var(--color-bg-white);
+}
+
+.wishes-section .section-title {
+    color: var(--color-bg-white);
+}
+
+.wishes-content {
+    margin-top: 20px;
+}
+
+.wish-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 54px; /* ~3 строки (18px * 3) */
+    padding: 0 20px;
+}
+
+.wish-item:last-child {
+    margin-bottom: 0;
+}
+
+.wish-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--color-bg-white);
+    flex-shrink: 0;
+    margin-top: 8px;
+    margin-right: 16px;
+    display: inline-block;
+}
+
+.wishes-text {
+    font-size: 18px;
+    color: var(--color-bg-white);
+    line-height: 0.7; /* Высота строки равна размеру шрифта */
+    text-align: left;
+    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    flex: 1;
+    margin: 0;
 }
 
 /* Группа для гостей */
@@ -1422,15 +1697,15 @@ body {
 }
 
 .group-section .section-card {
-    background: rgba(255, 233, 173, 0.85);
+    background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     text-align: center;
 }
 
 .group-description {
     font-size: 16px;
-    color: #2F2F2F;
-    line-height: 1.6;
+    color: var(--color-text-main);
+    line-height: 1.12;
     margin-bottom: 25px;
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
@@ -1441,7 +1716,7 @@ body {
     justify-content: center;
     gap: 12px;
     padding: 18px 40px;
-    background: linear-gradient(135deg, #5A7C52 0%, #4A6B42 100%);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
     color: white;
     text-decoration: none;
     border-radius: 12px;
@@ -1450,15 +1725,15 @@ body {
     font-family: 'Playfair Display', 'Georgia', serif;
     text-transform: uppercase;
     letter-spacing: 1px;
-    box-shadow: 0 4px 15px rgba(90, 124, 82, 0.3);
+    box-shadow: 0 4px 15px var(--color-shadow-green-strong);
     transition: all 0.3s ease;
     border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 .btn-group-link:hover {
     transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(90, 124, 82, 0.4);
-    background: linear-gradient(135deg, #4A6B42 0%, #5A7C52 100%);
+    box-shadow: 0 6px 20px var(--color-shadow-green-strongest);
+    background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%);
 }
 
 .btn-group-link:active {
@@ -1482,14 +1757,23 @@ body {
 .venue-name {
     font-size: 28px;
     font-weight: 600;
-    color: #5A7C52;
+    color: var(--color-primary);
+    margin-bottom: 5px;
+    font-family: 'Playfair Display', 'Georgia', serif;
+}
+
+.venue-hall {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--color-primary-dark);
     margin-bottom: 10px;
     font-family: 'Playfair Display', 'Georgia', serif;
+    font-style: italic;
 }
 
 .venue-address {
     font-size: 18px;
-    color: #4A6B42;
+    color: var(--color-primary-dark);
     font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
 
@@ -1497,7 +1781,7 @@ body {
     margin: 30px 0;
     border-radius: 15px;
     overflow: hidden;
-    box-shadow: 0 8px 25px rgba(90, 124, 82, 0.2);
+    box-shadow: 0 8px 25px var(--color-shadow-green-dark);
 }
 
 .venue-image {
@@ -1507,10 +1791,24 @@ body {
 }
 
 .venue-map {
-    margin-top: 30px;
-    border-radius: 15px;
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
     overflow: hidden;
-    box-shadow: 0 8px 25px rgba(90, 124, 82, 0.2);
+    box-shadow: none;
+    aspect-ratio: 16 / 9;
+    position: relative;
+}
+
+.venue-map iframe {
+    border-radius: 0;
+    border: none;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 
 /* Адаптивность для основной страницы */
@@ -1539,9 +1837,6 @@ body {
         height: 40px;
     }
     
-    .dresscode-slider {
-        height: 300px;
-    }
     
     .venue-name {
         font-size: 24px;
@@ -1556,36 +1851,336 @@ body {
 .success-message {
     text-align: center;
     padding: 40px 20px;
-    background: rgba(90, 124, 82, 0.1);
+    background: var(--color-shadow-green);
     border-radius: 10px;
     margin-bottom: 20px;
 }
 
 .success-message h2 {
-    color: #5A7C52;
+    color: var(--color-primary);
     font-size: 32px;
     margin-bottom: 15px;
     font-family: 'Playfair Display', 'Georgia', serif;
 }
 
 .success-message p {
-    color: #2F2F2F;
+    color: var(--color-text-main);
     font-size: 18px;
-    line-height: 1.8;
+    line-height: 1.26;
 }
 
 .error-message {
     text-align: center;
     padding: 20px;
-    background: rgba(255, 87, 87, 0.1);
-    border: 2px solid rgba(255, 87, 87, 0.3);
+    background: var(--color-overlay-danger);
+    border: 2px solid var(--color-border-danger);
     border-radius: 10px;
     margin-bottom: 20px;
 }
 
 .error-message p {
-    color: #d32f2f;
+    color: var(--color-btn-danger-text);
     font-size: 16px;
     font-weight: 500;
+}
+
+/* Адаптивность для планшетов - увеличение шрифтов на +6pt (≈8px) */
+@media (min-width: 481px) and (max-width: 1024px) {
+    body {
+        font-size: calc(1em + 6pt);
+    }
+    
+    .couple-names {
+        font-size: calc(36px + 8px);
+    }
+    
+    .wedding-date-hero {
+        font-size: calc(24px + 8px);
+    }
+    
+    .section-title {
+        font-size: calc(28px + 8px);
+    }
+    
+    .greeting-text {
+        font-size: calc(20px + 8px);
+    }
+    
+    .clock-label {
+        font-size: calc(15px + 8px);
+    }
+    
+    .clock-separator {
+        font-size: calc(32px + 8px);
+    }
+    
+    .calendar-date-full {
+        font-size: calc(24px + 8px);
+    }
+    
+    .guest-item-title {
+        font-size: calc(20px + 8px);
+    }
+    
+    .guest-item input,
+    .guest-item select {
+        font-size: calc(20px + 8px);
+    }
+    
+    .form-group label {
+        font-size: calc(18px + 8px);
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: calc(18px + 8px);
+    }
+    
+    .btn-primary,
+    .btn-secondary,
+    .btn-cancel {
+        font-size: calc(18px + 8px);
+    }
+    
+    .timeline-time {
+        font-size: calc(20px + 8px);
+    }
+    
+    .timeline-event {
+        font-size: calc(20px + 8px);
+    }
+    
+    .dresscode-title {
+        font-size: calc(28px + 8px);
+    }
+    
+    .dresscode-description {
+        font-size: calc(16px + 8px);
+    }
+    
+    .dresscode-intro {
+        font-size: calc(18px + 8px);
+    }
+    
+    .color-name {
+        font-size: calc(14px + 8px);
+    }
+    
+    .venue-name {
+        font-size: calc(28px + 8px);
+    }
+    
+    .venue-hall {
+        font-size: calc(22px + 8px);
+    }
+    
+    .venue-address {
+        font-size: calc(18px + 8px);
+    }
+    
+    .main-couple-names {
+        font-size: calc(42px + 8px);
+    }
+    
+    .main-wedding-date {
+        font-size: calc(24px + 8px);
+    }
+    
+    .success-message h2 {
+        font-size: calc(32px + 8px);
+    }
+    
+    .success-message p {
+        font-size: calc(18px + 8px);
+    }
+    
+    .error-message p {
+        font-size: calc(16px + 8px);
+    }
+    
+    .btn-group-text {
+        font-size: calc(18px + 8px);
+    }
+    
+    .btn-group-icon {
+        font-size: calc(24px + 8px);
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-size: calc(1em + 8px);
+    }
+    
+    p, span, div, a, li {
+        font-size: calc(1em + 6pt);
+    }
+}
+
+/* Адаптивность для мобильных устройств - увеличение шрифтов на +3pt (≈4px) */
+/* Этот медиа-запрос применяется после всех остальных и увеличивает существующие размеры */
+@media (max-width: 480px) {
+    body {
+        font-size: calc(1em + 3pt);
+    }
+    
+    .couple-names {
+        font-size: calc(24px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .wedding-date-hero {
+        font-size: calc(24px + 4px);
+    }
+    
+    .section-title {
+        font-size: calc(20px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .greeting-text {
+        font-size: calc(20px + 4px);
+    }
+    
+    .clock-label {
+        font-size: calc(15px + 4px);
+    }
+    
+    .clock-separator {
+        font-size: calc(32px + 4px);
+    }
+    
+    .calendar-date-full {
+        font-size: calc(24px + 4px);
+    }
+    
+    .calendar-section .countdown-clock {
+        margin: 40px 0 60px;
+        padding-bottom: 30px;
+        min-height: 200px;
+    }
+    
+    .calendar-section .calendar-preview {
+        margin-top: 60px;
+        padding: 25px;
+    }
+    
+    .calendar-section .section-card {
+        padding: 50px 20px 60px;
+    }
+    
+    .guest-item-title {
+        font-size: calc(20px + 4px);
+    }
+    
+    .guest-item input,
+    .guest-item select {
+        font-size: calc(20px + 4px);
+    }
+    
+    .form-group label {
+        font-size: calc(18px + 4px);
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: calc(18px + 4px);
+    }
+    
+    .btn-primary,
+    .btn-secondary,
+    .btn-cancel {
+        font-size: calc(18px + 4px);
+    }
+    
+    .timeline-time {
+        font-size: calc(20px + 4px);
+    }
+    
+    .timeline-event {
+        font-size: calc(20px + 4px);
+    }
+    
+    .dresscode-title {
+        font-size: calc(28px + 4px);
+    }
+    
+    .dresscode-description {
+        font-size: calc(16px + 4px);
+    }
+    
+    .dresscode-intro {
+        font-size: calc(18px + 4px);
+    }
+    
+    .color-code {
+        font-size: calc(12px + 4px);
+    }
+    
+    .color-name {
+        font-size: calc(14px + 4px);
+    }
+    
+    .wish-icon {
+        width: 14px;
+        height: 14px;
+        margin-top: 10px;
+        margin-right: 18px;
+    }
+    
+    .wishes-text {
+        font-size: calc(18px + 4px);
+    }
+    
+    .venue-name {
+        font-size: calc(24px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .venue-hall {
+        font-size: calc(20px + 4px) !important;
+    }
+    
+    .venue-address {
+        font-size: calc(16px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .main-couple-names {
+        font-size: calc(28px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .main-wedding-date {
+        font-size: calc(20px + 4px) !important; /* Используем значение из существующего медиа-запроса + 4px */
+    }
+    
+    .success-message h2 {
+        font-size: calc(32px + 4px);
+    }
+    
+    .success-message p {
+        font-size: calc(18px + 4px);
+    }
+    
+    .error-message p {
+        font-size: calc(16px + 4px);
+    }
+    
+    .btn-group-text {
+        font-size: calc(18px + 4px);
+    }
+    
+    .btn-group-icon {
+        font-size: calc(24px + 4px);
+    }
+    
+    .clock-flip-top,
+    .clock-flip-bottom {
+        font-size: calc(28px + 4px);
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-size: calc(1em + 4px);
+    }
+    
+    p, span, div, a, li {
+        font-size: calc(1em + 3pt);
+    }
 }
 

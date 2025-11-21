@@ -50,8 +50,17 @@ async def serve_static(request):
                 logger.warning(f"Photo not found: {WEBAPP_PHOTO_PATH}")
                 return Response(text='Photo not found', status=404)
         
+        # Специальная обработка для Lottie файла из res/
+        if path == 'ring_animation.lottie' or path == 'res/ring_animation.lottie' or path.endswith('/ring_animation.lottie'):
+            lottie_path = Path('res/ring_animation.lottie')
+            if lottie_path.exists():
+                file_path = lottie_path
+            else:
+                logger.warning(f"Lottie file not found: {lottie_path}")
+                # Не возвращаем 404, продолжаем поиск в webapp/
+        
         # Если это директория или файл не существует, возвращаем index.html
-        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'wedding_photo.jpg'):
+        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie'):
             file_path = Path(WEBAPP_PATH) / 'index.html'
         
         if not file_path.exists():
@@ -70,6 +79,13 @@ async def serve_static(request):
             content_type = 'image/png'
         elif path.endswith('.svg'):
             content_type = 'image/svg+xml'
+        elif path.endswith('.lottie') or path.endswith('.json'):
+            # Lottie файлы могут быть в формате .lottie (бинарный) или .json
+            # Для .lottie используем application/octet-stream, для .json - application/json
+            if path.endswith('.lottie'):
+                content_type = 'application/octet-stream'
+            else:
+                content_type = 'application/json'
         
         # Для фотографии из res/ всегда image/jpeg
         if file_path == Path(WEBAPP_PHOTO_PATH):

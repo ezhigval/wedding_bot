@@ -3,40 +3,116 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Анимация открытия конверта
-function initEnvelopeAnimation() {
-    const envelopeContainer = document.getElementById('envelopeAnimation');
+// Анимация загрузки с обручальным кольцом (Lottie)
+function initRingLoader() {
+    const ringLoader = document.getElementById('ringLoader');
+    const lottieContainer = document.getElementById('lottieContainer');
     const appContainer = document.querySelector('.app-container');
     const silkBackground = document.querySelector('.silk-background');
     
-    if (!envelopeContainer) {
-        // Если по какой-то причине конверта нет, просто показываем содержимое
+    if (!ringLoader || !lottieContainer) {
+        // Если по какой-то причине загрузчика нет, просто показываем содержимое
         if (appContainer) appContainer.classList.add('visible');
         if (silkBackground) silkBackground.style.opacity = '1';
         initScrollReveal();
         return;
     }
 
-    // Стартуем анимацию конверта
-    setTimeout(() => {
-        envelopeContainer.classList.add('start');
-    }, 300);
+    // Изначально скрываем сайт
+    if (appContainer) {
+        appContainer.style.opacity = '0';
+    }
+    if (silkBackground) {
+        silkBackground.style.opacity = '0';
+    }
 
-    // После завершения анимации конверта плавно показываем основное содержимое
-    const totalDuration = 4500; // даём письму время полностью выехать и немного повисеть
-    setTimeout(() => {
-        envelopeContainer.classList.add('hidden');
-        if (appContainer) appContainer.classList.add('visible');
-        if (silkBackground) silkBackground.style.opacity = '1';
+    // Проверяем наличие Lottie
+    if (typeof lottie === 'undefined') {
+        console.error('Lottie library not loaded');
+        // Fallback: показываем сайт через 3 секунды
+        setTimeout(() => {
+            ringLoader.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('visible');
+                setTimeout(() => {
+                    appContainer.style.transition = 'opacity 0.8s ease-in';
+                    appContainer.style.opacity = '1';
+                }, 50);
+            }
+            if (silkBackground) {
+                setTimeout(() => {
+                    silkBackground.style.transition = 'opacity 0.8s ease-in';
+                    silkBackground.style.opacity = '1';
+                }, 50);
+            }
+            initScrollReveal();
+        }, 3000);
+        return;
+    }
+
+    // Загружаем Lottie анимацию из ring_animation.json
+    const animationPath = 'ring_animation.json';
+    
+    const anim = lottie.loadAnimation({
+        container: lottieContainer,
+        renderer: 'svg', // или 'canvas' для лучшей производительности
+        loop: false,
+        autoplay: true,
+        path: animationPath
+    });
+
+    // Обработка событий анимации
+    anim.addEventListener('data_ready', () => {
+        console.log('Lottie animation loaded');
+    });
+
+    anim.addEventListener('complete', () => {
+        // Анимация завершена, скрываем загрузчик и показываем сайт
+        ringLoader.classList.add('hidden');
+        if (appContainer) {
+            appContainer.classList.add('visible');
+            setTimeout(() => {
+                appContainer.style.transition = 'opacity 0.8s ease-in';
+                appContainer.style.opacity = '1';
+            }, 50);
+        }
+        if (silkBackground) {
+            setTimeout(() => {
+                silkBackground.style.transition = 'opacity 0.8s ease-in';
+                silkBackground.style.opacity = '1';
+            }, 50);
+        }
         initScrollReveal();
-    }, totalDuration);
+    });
+
+    // Fallback: если анимация не загрузилась за 5 секунд, показываем сайт
+    setTimeout(() => {
+        if (!ringLoader.classList.contains('hidden')) {
+            console.warn('Lottie animation timeout, showing site');
+            ringLoader.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('visible');
+                setTimeout(() => {
+                    appContainer.style.transition = 'opacity 0.8s ease-in';
+                    appContainer.style.opacity = '1';
+                }, 50);
+            }
+            if (silkBackground) {
+                setTimeout(() => {
+                    silkBackground.style.transition = 'opacity 0.8s ease-in';
+                    silkBackground.style.opacity = '1';
+                }, 50);
+            }
+            initScrollReveal();
+        }
+    }, 5000);
 }
 
 // Запускаем анимацию конверта при загрузке DOM
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initEnvelopeAnimation);
+    document.addEventListener('DOMContentLoaded', initRingLoader);
 } else {
-    initEnvelopeAnimation();
+    initRingLoader();
 }
 
     // Загружаем конфигурацию с сервера
@@ -49,6 +125,7 @@ if (document.readyState === 'loading') {
         weddingAddress: 'Санкт-Петербург',
         apiUrl: window.location.origin + '/api'
     };
+
 
 // Состояние гостей
 let guests = [];
@@ -100,7 +177,17 @@ function updateUI() {
     const weddingDate = new Date(CONFIG.weddingDate);
     const day = String(weddingDate.getDate()).padStart(2, '0');
     const year = weddingDate.getFullYear();
-    document.getElementById('calendarDateFull').textContent = `${monthNames[weddingDate.getMonth()]} ${day} ${year}`;
+    const dateText = `${monthNames[weddingDate.getMonth()]} ${day} ${year}`;
+    
+    const calendarDateFull = document.getElementById('calendarDateFull');
+    if (calendarDateFull) {
+        calendarDateFull.textContent = dateText;
+    }
+    
+    const mainCalendarDateFull = document.getElementById('mainCalendarDateFull');
+    if (mainCalendarDateFull) {
+        mainCalendarDateFull.textContent = dateText;
+    }
 }
 
 // Обновляем контакты
@@ -156,7 +243,7 @@ function renderGuests() {
                     <label>Telegram (username)</label>
                     <input type="text" placeholder="@username или username" value="${guest.telegram || ''}" 
                            onchange="updateGuest(${guest.id}, 'telegram', this.value)">
-                    <small style="color: #666; font-size: 14px; margin-top: 5px; display: block;">Опционально</small>
+                    <small style="color: var(--color-text-secondary); font-size: 14px; margin-top: 5px; display: block;">Опционально</small>
                 </div>
             </div>
         `;
@@ -249,9 +336,6 @@ async function loadMainPageData() {
         console.error('Error loading timeline:', error);
     }
     
-    // Загружаем изображения дресс-кода
-    loadDresscodeImages();
-    
     // Загружаем изображение места проведения
     loadVenueImage();
     
@@ -283,12 +367,15 @@ function updateMainPageUI() {
         mainWeddingDate.textContent = `${day} ${month} ${year}`;
     }
     
+    // Точный адрес места проведения
+    const venueFullAddress = 'Разъезжая улица, 15, городской посёлок Токсово, Токсовское городское поселение, Всеволожский район, Ленинградская область';
+    
     if (venueName) {
-        venueName.textContent = CONFIG.weddingAddress || 'Санкт-Петербург';
+        venueName.textContent = 'Токсово';
     }
     
     if (venueAddress) {
-        venueAddress.textContent = CONFIG.weddingAddress || 'Санкт-Петербург';
+        venueAddress.textContent = venueFullAddress;
     }
 }
 
@@ -298,7 +385,7 @@ function renderTimeline(timeline) {
     if (!container) return;
     
     if (!timeline || timeline.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #666;">План дня будет добавлен позже</p>';
+        container.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary);">План дня будет добавлен позже</p>';
         return;
     }
     
@@ -311,91 +398,6 @@ function renderTimeline(timeline) {
     
     // Инициализируем анимации появления
     initScrollReveal();
-}
-
-// Загрузка изображений дресс-кода
-function loadDresscodeImages() {
-    const slider = document.getElementById('dresscodeSlider');
-    if (!slider) return;
-    
-    // Список изображений (будет загружаться из папки res/dresscode)
-    const images = [
-        'res/dresscode/1.jpg',
-        'res/dresscode/2.jpg',
-        'res/dresscode/3.jpg'
-    ];
-    
-    // Пока используем заглушку, пока пользователь не добавит фотографии
-    slider.innerHTML = `
-        <div class="dresscode-slider-container">
-            <div class="dresscode-slide active">
-                <img src="res/dresscode/1.jpg" alt="Дресс-код" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                <div style="display: none; padding: 40px; text-align: center; color: #666;">
-                    <p>Фотографии дресс-кода будут добавлены позже</p>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Если есть несколько изображений, создаем слайдер
-    if (images.length > 1) {
-        initDresscodeSlider(images);
-    }
-}
-
-// Инициализация слайдера дресс-кода
-function initDresscodeSlider(images) {
-    const slider = document.getElementById('dresscodeSlider');
-    if (!slider) return;
-    
-    let currentIndex = 0;
-    
-    slider.innerHTML = images.map((img, index) => `
-        <div class="dresscode-slide ${index === 0 ? 'active' : ''}">
-            <img src="${img}" alt="Дресс-код ${index + 1}" onerror="this.style.display='none';">
-        </div>
-    `).join('');
-    
-    // Автоматическая смена слайдов каждые 1500мс (1.5 секунды)
-    setInterval(() => {
-        const slides = slider.querySelectorAll('.dresscode-slide');
-        if (slides.length > 1) {
-            slides[currentIndex].classList.remove('active');
-            currentIndex = (currentIndex + 1) % slides.length;
-            slides[currentIndex].classList.add('active');
-        }
-    }, 1500);
-    
-    // Свайп для мобильных
-    let touchStartX = 0;
-    let touchEndX = 0;
-    
-    slider.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-    });
-    
-    slider.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    });
-    
-    function handleSwipe() {
-        const slides = slider.querySelectorAll('.dresscode-slide');
-        if (slides.length <= 1) return;
-        
-        if (touchEndX < touchStartX - 50) {
-            // Свайп влево - следующий слайд
-            slides[currentIndex].classList.remove('active');
-            currentIndex = (currentIndex + 1) % slides.length;
-            slides[currentIndex].classList.add('active');
-        }
-        if (touchEndX > touchStartX + 50) {
-            // Свайп вправо - предыдущий слайд
-            slides[currentIndex].classList.remove('active');
-            currentIndex = (currentIndex - 1 + slides.length) % slides.length;
-            slides[currentIndex].classList.add('active');
-        }
-    }
 }
 
 // Загрузка изображения места проведения
@@ -414,16 +416,19 @@ function initYandexMap() {
     const mapContainer = document.getElementById('venueMap');
     if (!mapContainer) return;
     
-    const address = CONFIG.weddingAddress || 'Санкт-Петербург';
+    // Координаты места проведения: 60.136143, 30.525849
+    const lat = 60.136143;
+    const lon = 30.525849;
+    const zoom = 15;
     
-    // Используем iframe для встраивания Яндекс карты
+    // Используем iframe для встраивания Яндекс карты с координатами
     mapContainer.innerHTML = `
         <iframe 
-            src="https://yandex.ru/map-widget/v1/?text=${encodeURIComponent(address)}&z=15"
+            src="https://yandex.ru/map-widget/v1/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat}"
             width="100%" 
-            height="300" 
+            height="100%" 
             frameborder="0" 
-            style="border-radius: 10px; margin-top: 20px; border: 2px solid rgba(90, 124, 82, 0.3);">
+            style="border: none; display: block;">
         </iframe>
     `;
 }
@@ -458,36 +463,42 @@ loadConfig();
 // Функция для проверки регистрации и отображения правильной страницы
 async function checkAndShowPage() {
     try {
+        // ⚠️ ВАЖНО: УДАЛИТЬ ПЕРЕД МЕРДЖЕМ В MAIN! ⚠️
+        // Для локальной разработки: на localhost всегда показываем основную страницу
+        // ЭТО ДЫРА В БЕЗОПАСНОСТИ - НЕ ОСТАВЛЯТЬ В ПРОДАКШЕНЕ!
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            showMainPage();
+            return;
+        }
+        
         const user = tg.initDataUnsafe?.user;
         const userId = user?.id;
         
-        // ВРЕМЕННО: Всегда показываем страницу регистрации
-        // Основная страница закрыта для всех
-        document.querySelector('.hero-section').style.display = 'block';
-        document.querySelector('.greeting-section').style.display = 'block';
-        document.querySelector('.calendar-section').style.display = 'block';
-        document.getElementById('rsvpSection').style.display = 'block';
-        document.getElementById('registrationContactSection').style.display = 'block';
-        document.querySelector('.closing-section').style.display = 'block';
+        if (!userId) {
+            // Если нет userId, показываем страницу регистрации
+            showRegistrationPage();
+            return;
+        }
         
-        // Скрываем основную страницу
-        document.getElementById('mainPage').style.display = 'none';
+        // Проверяем текущий статус регистрации
+        const registered = await checkRegistration();
         
-        if (userId) {
+        if (registered) {
+            // Пользователь зарегистрирован - показываем основную страницу
+            showMainPage();
+        } else {
+            // Пользователь не зарегистрирован - показываем страницу регистрации
+            showRegistrationPage();
+            
             // Проверяем, был ли пользователь ранее зарегистрирован (из localStorage)
             const wasRegistered = localStorage.getItem(`registered_${userId}`) === 'true';
             
-            // Проверяем текущий статус регистрации
-            const registered = await checkRegistration();
-            
             // Если пользователь был зарегистрирован, но теперь не найден - показываем ошибку
-            if (wasRegistered && !registered) {
+            if (wasRegistered) {
                 showErrorMessage();
             } else {
                 hideErrorMessage();
             }
-        } else {
-            hideErrorMessage();
         }
     } catch (error) {
         console.error('Error checking registration:', error);
@@ -523,13 +534,48 @@ function hideErrorMessage() {
 
 // Функция для показа страницы регистрации
 function showRegistrationPage() {
-    document.querySelector('.hero-section').style.display = 'block';
-    document.querySelector('.greeting-section').style.display = 'block';
-    document.querySelector('.calendar-section').style.display = 'block';
-    document.getElementById('rsvpSection').style.display = 'block';
-    document.getElementById('registrationContactSection').style.display = 'block';
-    document.querySelector('.closing-section').style.display = 'block';
-    document.getElementById('mainPage').style.display = 'none';
+    // Показываем секции регистрационной страницы
+    const registrationSections = [
+        document.querySelector('.hero-section'),
+        document.querySelector('.greeting-section'),
+        document.querySelector('.calendar-section'),
+        document.getElementById('rsvpSection'),
+        document.getElementById('registrationContactSection'),
+        document.querySelector('.closing-section')
+    ];
+    
+    registrationSections.forEach(section => {
+        if (section) section.style.display = 'block';
+    });
+    
+    // Скрываем основную страницу
+    const mainPage = document.getElementById('mainPage');
+    if (mainPage) mainPage.style.display = 'none';
+}
+
+// Функция для показа основной страницы
+function showMainPage() {
+    // Скрываем секции регистрационной страницы
+    const registrationSections = [
+        document.querySelector('.hero-section'),
+        document.querySelector('.greeting-section'),
+        document.querySelector('.calendar-section'),
+        document.getElementById('rsvpSection'),
+        document.getElementById('registrationContactSection'),
+        document.querySelector('.closing-section')
+    ];
+    
+    registrationSections.forEach(section => {
+        if (section) section.style.display = 'none';
+    });
+    
+    // Показываем основную страницу
+    const mainPage = document.getElementById('mainPage');
+    if (mainPage) {
+        mainPage.style.display = 'block';
+        // Загружаем данные для основной страницы
+        loadMainPageData();
+    }
 }
 
 // Проверка регистрации при загрузке страницы
@@ -633,14 +679,14 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                     localStorage.setItem(`registered_${userId}`, 'true');
                 }
                 
-                // Показываем сообщение об успешной регистрации
-                showSuccessMessage();
-                
                 // Скрываем сообщение об ошибке, если оно было показано
                 hideErrorMessage();
                 
-                // Прокручиваем к сообщению
-                document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
+                // Переключаемся на основную страницу
+                showMainPage();
+                
+                // Прокручиваем к началу страницы
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 
                 // Вибрация
                 if (tg.HapticFeedback) {
@@ -813,8 +859,8 @@ if (mainCancelInvitationBtn) {
 
 // Настройка темы Telegram
 if (tg.colorScheme === 'dark') {
-    document.body.style.background = '#1a1a1a';
-    document.body.style.color = '#fff';
+    document.body.style.background = 'var(--color-text-dark)';
+    document.body.style.color = 'var(--color-bg-white)';
 }
 
 // Плавная прокрутка при загрузке
