@@ -13,3 +13,18 @@ env/
 .venv/
 инструкции/
 
+# Системные файлы
+.DS_Store
+**/.DS_Store
+
+# Локальная разработка
+dev_server.py
+.dev-reminder.md
+
+# Документация и временные файлы
+webapp/LOTTIE_SETUP.md
+
+# Исходные Lottie файлы (используем JSON)
+*.lottie
+res/*.lottie
+

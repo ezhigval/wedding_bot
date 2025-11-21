@@ -5,23 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Свадьба Валентин и Мария</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" integrity="sha512-jEnuDt6jfecCjthQAJ+ed0MTVA++5ZKmlUcmDGBv2vUI/REn6FuIdixLNnQT+vKusE2hhTk2is3cFvv5wA+Hgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Cormorant+Garamond:wght@300;400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Анимация конверта -->
-    <div id="envelopeAnimation" class="envelope-container">
-        <div class="envelope">
-            <div class="envelope-back"></div>
-            <div class="envelope-front">
-                <div class="envelope-flap"></div>
-            </div>
-            <div class="envelope-content">
-                <div class="envelope-pattern"></div>
-            </div>
-        </div>
+    <!-- Анимация загрузки с обручальным кольцом (Lottie) -->
+    <div id="ringLoader" class="ring-loader">
+        <div id="lottieContainer" class="lottie-container"></div>
     </div>
     
     <!-- Фон с анимацией шелковой ткани -->
@@ -62,7 +55,7 @@
                 <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
                 <!-- Внешний таймер MegaTimer -->
                 <div class="countdown-clock" id="countdownClock">
-                    <script src="//megatimer.ru/get/6dc646ded445f1d457301d6d08264e13.js"></script>
+                    <script src="//megatimer.ru/get/7747e73dbcadf95d77ffb904c28a7d9b.js"></script>
                 </div>
                 <div class="calendar-preview">
                     <div class="calendar-date-full" id="calendarDateFull">Июнь 05 2026</div>
@@ -196,33 +189,19 @@
                 </div>
             </section>
 
-            <!-- Группа для гостей -->
-            <section class="group-section">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">СВАДЕБНЫЙ ЧАТ</h2>
-                    <p class="group-description scroll-reveal-item">
-                        Присоединяйтесь к нашему чату, чтобы общаться с другими гостями и получать важные обновления!
-                    </p>
-                    <a href="https://t.me/+ow7ttcFCmoUzYzRi" target="_blank" class="btn-group-link scroll-reveal-item">
-                        <span class="btn-group-icon">💬</span>
-                        <span class="btn-group-text">Присоединиться к чату</span>
-                    </a>
-                </div>
-            </section>
-
             <!-- Пожелания -->
             <section class="wishes-section">
                 <div class="section-card scroll-reveal">
                     <h2 class="section-title scroll-reveal-item">ПОЖЕЛАНИЯ</h2>
                     <div class="wishes-content scroll-reveal-item">
                         <div class="wish-item">
-                            <span class="wish-icon">🍷</span>
+                            <span class="wish-icon"></span>
                             <p class="wishes-text">
                                 Просим не дарить нам цветы, прекрасной альтернативой станет бутылка хорошего вина для нашей семейной винотеки.
                             </p>
                         </div>
                         <div class="wish-item">
-                            <span class="wish-icon">💝</span>
+                            <span class="wish-icon"></span>
                             <p class="wishes-text">
                                 Если хотите сделать нам ценный и нужный подарок, мы будем признательны за вклад в бюджет нашей молодой семьи.
                             </p>
@@ -246,6 +225,34 @@
                 </div>
                 <div class="venue-map scroll-reveal-item" id="venueMap">
                     <!-- Яндекс карта -->
+                </div>
+            </section>
+
+            <!-- Обратный отсчет до свадьбы -->
+            <section class="calendar-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
+                    <!-- Внешний таймер MegaTimer -->
+                    <div class="countdown-clock" id="mainCountdownClock">
+                        <script src="//megatimer.ru/get/7747e73dbcadf95d77ffb904c28a7d9b.js"></script>
+                    </div>
+                    <div class="calendar-preview">
+                        <div class="calendar-date-full" id="mainCalendarDateFull">Июнь 05 2026</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Группа для гостей -->
+            <section class="group-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">СВАДЕБНЫЙ ЧАТ</h2>
+                    <p class="group-description scroll-reveal-item">
+                        Присоединяйтесь к нашему чату, чтобы общаться с другими гостями и получать важные обновления!
+                    </p>
+                    <a href="https://t.me/+ow7ttcFCmoUzYzRi" target="_blank" class="btn-group-link scroll-reveal-item">
+                        <span class="btn-group-icon">💬</span>
+                        <span class="btn-group-text">Присоединиться к чату</span>
+                    </a>
                 </div>
             </section>
 

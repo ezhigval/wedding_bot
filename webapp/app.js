@@ -3,40 +3,116 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Анимация открытия конверта
-function initEnvelopeAnimation() {
-    const envelopeContainer = document.getElementById('envelopeAnimation');
+// Анимация загрузки с обручальным кольцом (Lottie)
+function initRingLoader() {
+    const ringLoader = document.getElementById('ringLoader');
+    const lottieContainer = document.getElementById('lottieContainer');
     const appContainer = document.querySelector('.app-container');
     const silkBackground = document.querySelector('.silk-background');
     
-    if (!envelopeContainer) {
-        // Если по какой-то причине конверта нет, просто показываем содержимое
+    if (!ringLoader || !lottieContainer) {
+        // Если по какой-то причине загрузчика нет, просто показываем содержимое
         if (appContainer) appContainer.classList.add('visible');
         if (silkBackground) silkBackground.style.opacity = '1';
         initScrollReveal();
         return;
     }
 
-    // Стартуем анимацию конверта
-    setTimeout(() => {
-        envelopeContainer.classList.add('start');
-    }, 300);
+    // Изначально скрываем сайт
+    if (appContainer) {
+        appContainer.style.opacity = '0';
+    }
+    if (silkBackground) {
+        silkBackground.style.opacity = '0';
+    }
 
-    // После завершения анимации конверта плавно показываем основное содержимое
-    const totalDuration = 4500; // даём письму время полностью выехать и немного повисеть
-    setTimeout(() => {
-        envelopeContainer.classList.add('hidden');
-        if (appContainer) appContainer.classList.add('visible');
-        if (silkBackground) silkBackground.style.opacity = '1';
+    // Проверяем наличие Lottie
+    if (typeof lottie === 'undefined') {
+        console.error('Lottie library not loaded');
+        // Fallback: показываем сайт через 3 секунды
+        setTimeout(() => {
+            ringLoader.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('visible');
+                setTimeout(() => {
+                    appContainer.style.transition = 'opacity 0.8s ease-in';
+                    appContainer.style.opacity = '1';
+                }, 50);
+            }
+            if (silkBackground) {
+                setTimeout(() => {
+                    silkBackground.style.transition = 'opacity 0.8s ease-in';
+                    silkBackground.style.opacity = '1';
+                }, 50);
+            }
+            initScrollReveal();
+        }, 3000);
+        return;
+    }
+
+    // Загружаем Lottie анимацию из ring_animation.json
+    const animationPath = 'ring_animation.json';
+    
+    const anim = lottie.loadAnimation({
+        container: lottieContainer,
+        renderer: 'svg', // или 'canvas' для лучшей производительности
+        loop: false,
+        autoplay: true,
+        path: animationPath
+    });
+
+    // Обработка событий анимации
+    anim.addEventListener('data_ready', () => {
+        console.log('Lottie animation loaded');
+    });
+
+    anim.addEventListener('complete', () => {
+        // Анимация завершена, скрываем загрузчик и показываем сайт
+        ringLoader.classList.add('hidden');
+        if (appContainer) {
+            appContainer.classList.add('visible');
+            setTimeout(() => {
+                appContainer.style.transition = 'opacity 0.8s ease-in';
+                appContainer.style.opacity = '1';
+            }, 50);
+        }
+        if (silkBackground) {
+            setTimeout(() => {
+                silkBackground.style.transition = 'opacity 0.8s ease-in';
+                silkBackground.style.opacity = '1';
+            }, 50);
+        }
         initScrollReveal();
-    }, totalDuration);
+    });
+
+    // Fallback: если анимация не загрузилась за 5 секунд, показываем сайт
+    setTimeout(() => {
+        if (!ringLoader.classList.contains('hidden')) {
+            console.warn('Lottie animation timeout, showing site');
+            ringLoader.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('visible');
+                setTimeout(() => {
+                    appContainer.style.transition = 'opacity 0.8s ease-in';
+                    appContainer.style.opacity = '1';
+                }, 50);
+            }
+            if (silkBackground) {
+                setTimeout(() => {
+                    silkBackground.style.transition = 'opacity 0.8s ease-in';
+                    silkBackground.style.opacity = '1';
+                }, 50);
+            }
+            initScrollReveal();
+        }
+    }, 5000);
 }
 
 // Запускаем анимацию конверта при загрузке DOM
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initEnvelopeAnimation);
+    document.addEventListener('DOMContentLoaded', initRingLoader);
 } else {
-    initEnvelopeAnimation();
+    initRingLoader();
 }
 
     // Загружаем конфигурацию с сервера
@@ -101,7 +177,17 @@ function updateUI() {
     const weddingDate = new Date(CONFIG.weddingDate);
     const day = String(weddingDate.getDate()).padStart(2, '0');
     const year = weddingDate.getFullYear();
-    document.getElementById('calendarDateFull').textContent = `${monthNames[weddingDate.getMonth()]} ${day} ${year}`;
+    const dateText = `${monthNames[weddingDate.getMonth()]} ${day} ${year}`;
+    
+    const calendarDateFull = document.getElementById('calendarDateFull');
+    if (calendarDateFull) {
+        calendarDateFull.textContent = dateText;
+    }
+    
+    const mainCalendarDateFull = document.getElementById('mainCalendarDateFull');
+    if (mainCalendarDateFull) {
+        mainCalendarDateFull.textContent = dateText;
+    }
 }
 
 // Обновляем контакты
