@@ -11,7 +11,13 @@ logger = logging.getLogger(__name__)
 # Пытаемся импортировать Telethon
 try:
     from telethon import TelegramClient
-    from telethon.errors import SessionPasswordNeededError, PhoneNumberInvalidError
+    from telethon.errors import (
+        SessionPasswordNeededError, 
+        PhoneNumberInvalidError,
+        PhoneCodeInvalidError,
+        PhoneCodeExpiredError,
+        PhoneCodeEmptyError
+    )
     TELETHON_AVAILABLE = True
 except ImportError:
     TELETHON_AVAILABLE = False
@@ -270,16 +276,69 @@ async def authorize_with_code(admin_user_id: int, code: str) -> Tuple[bool, str]
                 return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
             else:
                 return False, "❌ Авторизация не удалась. Проверьте код и попробуйте снова."
+        except PhoneCodeInvalidError:
+            # Неверный код
+            logger.warning(f"Неверный код подтверждения для админа {admin_user_id}")
+            return False, "INVALID_CODE"  # Специальный код для неверного кода
+        except PhoneCodeExpiredError:
+            # Код устарел
+            logger.warning(f"Код подтверждения устарел для админа {admin_user_id}")
+            return False, "EXPIRED_CODE"  # Специальный код для устаревшего кода
+        except PhoneCodeEmptyError:
+            # Пустой код
+            logger.warning(f"Пустой код подтверждения для админа {admin_user_id}")
+            return False, "EMPTY_CODE"  # Специальный код для пустого кода
         except SessionPasswordNeededError:
             # Требуется пароль 2FA
             logger.info(f"Для админа {admin_user_id} требуется пароль 2FA")
             return False, "2FA_PASSWORD_REQUIRED"  # Специальный код для запроса пароля
         except Exception as e:
-            logger.error(f"Ошибка авторизации с кодом для админа {admin_user_id}: {e}")
-            return False, f"❌ Ошибка авторизации: {str(e)}"
+            error_msg = str(e).lower()
+            if "code" in error_msg and ("invalid" in error_msg or "wrong" in error_msg):
+                logger.warning(f"Неверный код подтверждения для админа {admin_user_id}: {e}")
+                return False, "INVALID_CODE"
+            elif "code" in error_msg and ("expired" in error_msg or "timeout" in error_msg):
+                logger.warning(f"Код подтверждения устарел для админа {admin_user_id}: {e}")
+                return False, "EXPIRED_CODE"
+            else:
+                logger.error(f"Ошибка авторизации с кодом для админа {admin_user_id}: {e}")
+                return False, f"❌ Ошибка авторизации: {str(e)}"
     except Exception as e:
         logger.error(f"Ошибка при авторизации клиента для админа {admin_user_id}: {e}")
         return False, f"❌ Ошибка: {str(e)}"
+
+async def resend_code(admin_user_id: int) -> Tuple[bool, str]:
+    """
+    Повторно отправить код подтверждения
+    
+    Args:
+        admin_user_id: User ID админа
+    
+    Returns:
+        (success: bool, message: str) - успех отправки и сообщение
+    """
+    if not TELETHON_AVAILABLE:
+        return False, "Telethon недоступен"
+    
+    if admin_user_id not in _pending_clients:
+        return False, "Нет ожидающего авторизации клиента. Начните процесс авторизации заново."
+    
+    try:
+        pending = _pending_clients[admin_user_id]
+        client = pending['client']
+        phone = pending['phone']
+        
+        # Отправляем новый код
+        code_request = await client.send_code_request(phone)
+        
+        # Обновляем phone_code_hash
+        pending['phone_code_hash'] = code_request.phone_code_hash
+        
+        logger.info(f"Новый код подтверждения отправлен для админа {admin_user_id}")
+        return True, "✅ Новый код подтверждения отправлен в ваш Telegram"
+    except Exception as e:
+        logger.error(f"Ошибка повторной отправки кода для админа {admin_user_id}: {e}")
+        return False, f"❌ Ошибка отправки кода: {str(e)}"
 
 async def authorize_with_password(admin_user_id: int, password: str) -> Tuple[bool, str]:
     """

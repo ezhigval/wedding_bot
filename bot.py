@@ -21,7 +21,7 @@ from google_sheets import (
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
     delete_guest_from_sheets, update_invitation_user_id, mark_invitation_as_sent
 )
-from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password
+from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -550,12 +550,46 @@ async def process_auth_code(message: Message, state: FSMContext, code: str):
             reply_markup=keyboard,
             parse_mode="HTML"
         )
-    else:
+    elif msg == "INVALID_CODE":
+        # Неверный код
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
             [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="admin_auth_telegram")],
             [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
         ])
-        await message.answer(msg, reply_markup=keyboard)
+        await message.answer(
+            "❌ <b>Неверный код подтверждения</b>\n\n"
+            "Проверьте код и попробуйте снова.\n\n"
+            "💡 Если код не приходит или устарел, запросите новый код.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    elif msg == "EXPIRED_CODE":
+        # Код устарел
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+            [InlineKeyboardButton(text="🔄 Начать заново", callback_data="admin_auth_telegram")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await message.answer(
+            "⏰ <b>Код подтверждения устарел</b>\n\n"
+            "Коды подтверждения действительны ограниченное время.\n\n"
+            "Нажмите 'Запросить новый код' для получения нового кода.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        # Другие ошибки
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="admin_auth_telegram")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await message.answer(
+            f"{msg}\n\n"
+            "💡 Если проблема сохраняется, попробуйте запросить новый код.",
+            reply_markup=keyboard
+        )
 
 # Обработка обычных сообщений в состоянии ожидания кода
 @dp.message(TelegramClientAuthStates.waiting_code)
@@ -691,6 +725,7 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
         await state.update_data(admin_user_id=admin_user_id)
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
         ])
         await callback.message.answer(
@@ -698,7 +733,10 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
             "Введите код подтверждения:\n\n"
             "<code>/auth_code [код]</code>\n\n"
             "Например: <code>/auth_code 12345</code>\n\n"
-            "💡 Код приходит в ваш Telegram (не в бота)",
+            "💡 <b>Важно:</b>\n"
+            "• Код приходит в ваш Telegram (не в бота)\n"
+            "• Если код не пришел, нажмите 'Запросить новый код'\n"
+            "• Код действителен ограниченное время",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -811,6 +849,50 @@ async def admin_reload(callback: CallbackQuery):
 
 # Команды name_mapping удалены - все данные теперь в Google Sheets
 
+@dp.callback_query(F.data == "resend_auth_code")
+async def resend_auth_code_callback(callback: CallbackQuery, state: FSMContext):
+    """Повторный запрос кода подтверждения"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    admin_user_id = callback.from_user.id
+    
+    await callback.message.answer("📱 Отправляю новый код подтверждения...")
+    
+    # Пытаемся отправить новый код
+    success, msg = await resend_code(admin_user_id)
+    
+    if success:
+        # Обновляем состояние на ожидание кода
+        await state.set_state(TelegramClientAuthStates.waiting_code)
+        await state.update_data(admin_user_id=admin_user_id)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            f"{msg}\n\n"
+            "Введите новый код подтверждения:\n\n"
+            "<code>/auth_code [код]</code>\n\n"
+            "Или просто отправьте код как обычное сообщение.\n\n"
+            "💡 Код приходит в ваш Telegram (не в бота)",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Начать заново", callback_data="admin_auth_telegram")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            f"{msg}\n\n"
+            "Попробуйте начать процесс авторизации заново.",
+            reply_markup=keyboard
+        )
+
 @dp.callback_query(F.data == "admin_auth_telegram")
 async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
     """Авторизация Telegram Client через админское меню"""
@@ -893,6 +975,7 @@ async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
         await state.update_data(admin_user_id=admin_user_id)
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
         ])
         await callback.message.answer(
@@ -900,7 +983,10 @@ async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
             "Введите код подтверждения:\n\n"
             "<code>/auth_code [код]</code>\n\n"
             "Например: <code>/auth_code 12345</code>\n\n"
-            "💡 Код приходит в ваш Telegram (не в бота)",
+            "💡 <b>Важно:</b>\n"
+            "• Код приходит в ваш Telegram (не в бота)\n"
+            "• Если код не пришел, нажмите 'Запросить новый код'\n"
+            "• Код действителен ограниченное время",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
