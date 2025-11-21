@@ -380,12 +380,13 @@ def _get_invitations_list_sync() -> List[Dict[str, str]]:
                 start_row = 1
         
         # Обрабатываем данные
-        # Столбец A - имя, столбец B - телеграм ID, столбец C - user_id
+        # Столбец A - имя, столбец B - телеграм ID, столбец C - статус отправки ("ДА" или пусто)
         for row in all_values[start_row:]:
             if len(row) >= 1:
                 name = row[0].strip() if row[0] else ""
                 telegram_id = row[1].strip() if len(row) > 1 and row[1] else ""
-                user_id = row[2].strip() if len(row) > 2 and row[2] else ""
+                status = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C - статус отправки
+                user_id = row[3].strip() if len(row) > 3 and row[3] else ""  # Столбец D - user_id (если есть)
                 
                 # Пропускаем пустые строки (где нет имени)
                 if not name:
@@ -394,10 +395,14 @@ def _get_invitations_list_sync() -> List[Dict[str, str]]:
                 # Нормализуем телеграм ID, если он есть
                 normalized_id = normalize_telegram_id(telegram_id) if telegram_id else ""
                 
+                # Проверяем статус отправки
+                is_sent = status.upper() == "ДА"
+                
                 invitations.append({
                     'name': name,
                     'telegram_id': normalized_id,  # Может быть пустой строкой
-                    'user_id': user_id if user_id else None  # User ID из столбца C
+                    'user_id': user_id if user_id else None,  # User ID из столбца D
+                    'is_sent': is_sent  # Статус отправки из столбца C
                 })
         
         logger.info(f"Получено {len(invitations)} приглашений из Google Sheets")
@@ -470,16 +475,21 @@ def _update_invitation_user_id_sync(guest_name: str, user_id: int, username: str
                     break
         
         if found_row:
-            # Обновляем столбец C (индекс 3) с user_id
-            worksheet.update_cell(found_row, 3, str(user_id))
-            
             # Если передан username, обновляем столбец B (индекс 2)
             if username:
                 # Убираем @ если есть
                 username_clean = username.lstrip('@')
                 worksheet.update_cell(found_row, 2, username_clean)
-                logger.info(f"Обновлены user_id и username для {guest_name} в строке {found_row}: user_id={user_id}, username={username_clean}")
-            else:
+            
+            # Обновляем столбец D (индекс 4) с user_id, если передан
+            if user_id:
+                worksheet.update_cell(found_row, 4, str(user_id))
+            
+            if username and user_id:
+                logger.info(f"Обновлены username и user_id для {guest_name} в строке {found_row}: username={username_clean}, user_id={user_id}")
+            elif username:
+                logger.info(f"Обновлен username для {guest_name} в строке {found_row}: {username_clean}")
+            elif user_id:
                 logger.info(f"Обновлен user_id для {guest_name} в строке {found_row}: {user_id}")
             return True
         else:
@@ -488,6 +498,79 @@ def _update_invitation_user_id_sync(guest_name: str, user_id: int, username: str
         
     except Exception as e:
         logger.error(f"Ошибка обновления user_id в таблице приглашений: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+async def mark_invitation_as_sent(guest_name: str) -> bool:
+    """
+    Отметить приглашение как отправленное (столбец C = "ДА")
+    
+    Args:
+        guest_name: Имя гостя (из столбца A)
+    
+    Returns:
+        True если обновление успешно, False в противном случае
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _mark_invitation_as_sent_sync, guest_name)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка отметки приглашения как отправленного: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _mark_invitation_as_sent_sync(guest_name: str) -> bool:
+    """Синхронная функция для отметки приглашения как отправленного"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_INVITATIONS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Вкладка '{GOOGLE_SHEETS_INVITATIONS_SHEET_NAME}' не найдена: {e}")
+            return False
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Пропускаем заголовок
+        start_row = 0
+        if all_values and len(all_values) > 0:
+            first_row = all_values[0]
+            if any(keyword in str(first_row[0]).lower() for keyword in ['имя', 'name', 'гость']):
+                start_row = 1
+        
+        # Ищем строку с именем гостя
+        found_row = None
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
+            if len(row) > 0:
+                name = row[0].strip() if row[0] else ""
+                if name.lower() == guest_name.lower():
+                    found_row = row_idx
+                    break
+        
+        if found_row:
+            # Обновляем столбец C (индекс 3) на "ДА"
+            worksheet.update_cell(found_row, 3, "ДА")
+            logger.info(f"Приглашение для {guest_name} отмечено как отправленное (строка {found_row})")
+            return True
+        else:
+            logger.warning(f"Гость {guest_name} не найден в таблице приглашений")
+            return False
+        
+    except Exception as e:
+        logger.error(f"Ошибка отметки приглашения как отправленного: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False

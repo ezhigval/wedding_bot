@@ -20,6 +20,36 @@ except ImportError:
 # Словарь клиентов для каждого админа (ключ - user_id админа)
 _clients = {}
 
+def normalize_admin_phone(phone: str) -> str:
+    """
+    Нормализует номер телефона админа для использования в Telethon
+    Google Sheets не поддерживает символ +, поэтому номера хранятся как 79...
+    Telethon требует формат +79...
+    
+    Args:
+        phone: Номер телефона (может быть 79..., +79..., 89...)
+    
+    Returns:
+        Номер телефона в формате +79...
+    """
+    if not phone:
+        return phone
+    
+    phone = phone.strip()
+    
+    # Если начинается с 8, заменяем на +7
+    if phone.startswith("8"):
+        return "+7" + phone[1:]
+    # Если начинается с 7 (без +), добавляем +
+    elif phone.startswith("7"):
+        return "+" + phone
+    # Если уже начинается с +, оставляем как есть
+    elif phone.startswith("+"):
+        return phone
+    # Иначе добавляем +
+    else:
+        return "+" + phone
+
 async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, phone: str):
     """
     Получить или инициализировать Telegram клиент для конкретного админа
@@ -28,7 +58,8 @@ async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, pho
         admin_user_id: User ID админа
         api_id: API ID из my.telegram.org
         api_hash: API Hash из my.telegram.org
-        phone: Номер телефона админа (формат: +79001234567)
+        phone: Номер телефона админа (формат: 79001234567 или +79001234567)
+               Google Sheets хранит номера как 79... (без +), функция автоматически нормализует
     
     Returns:
         TelegramClient или None если не удалось инициализировать
@@ -64,11 +95,14 @@ async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, pho
         client = TelegramClient(session_file, api_id_int, api_hash)
         await client.connect()
         
+        # Нормализуем номер телефона (Google Sheets хранит номера как 79..., а Telethon требует +79...)
+        phone_normalized = normalize_admin_phone(phone)
+        
         # Проверяем, авторизован ли клиент
         if not await client.is_user_authorized():
             logger.warning(f"Telegram клиент для админа {admin_user_id} не авторизован. Нужно отправить код подтверждения.")
             # Отправляем код
-            await client.send_code_request(phone)
+            await client.send_code_request(phone_normalized)
             # В реальном использовании нужно будет запросить код у админа
             # Пока возвращаем None
             await client.disconnect()
@@ -90,7 +124,8 @@ async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_f
     Args:
         api_id: API ID из my.telegram.org
         api_hash: API Hash из my.telegram.org
-        phone: Номер телефона админа (формат: +79001234567)
+        phone: Номер телефона админа (формат: 79001234567 или +79001234567)
+               Google Sheets хранит номера как 79... (без +), функция автоматически нормализует
         session_file: Имя файла для сохранения сессии
     
     Returns:
@@ -111,10 +146,13 @@ async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_f
         client = TelegramClient(session_file, api_id_int, api_hash)
         await client.connect()
         
+        # Нормализуем номер телефона (Google Sheets хранит номера как 79..., а Telethon требует +79...)
+        phone_normalized = normalize_admin_phone(phone)
+        
         # Проверяем, авторизован ли клиент
         if not await client.is_user_authorized():
             logger.warning("Telegram клиент не авторизован. Нужно отправить код подтверждения.")
-            await client.send_code_request(phone)
+            await client.send_code_request(phone_normalized)
             await client.disconnect()
             return None
         

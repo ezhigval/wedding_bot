@@ -64,15 +64,26 @@ def get_guests_selection_keyboard(invitations: list):
         row = []
         # Первая кнопка в ряду
         inv = invitations[i]
+        is_sent = inv.get('is_sent', False)
+        # Если приглашение отправлено - показываем с галочкой
+        if is_sent:
+            button_text = f"✅ {inv['name']}"
+        else:
+            button_text = f"👤 {inv['name']}"
         row.append(InlineKeyboardButton(
-            text=f"👤 {inv['name']}",
+            text=button_text,
             callback_data=f"invite_guest_{i}"
         ))
         # Вторая кнопка в ряду (если есть)
         if i + 1 < len(invitations):
             inv2 = invitations[i + 1]
+            is_sent2 = inv2.get('is_sent', False)
+            if is_sent2:
+                button_text2 = f"✅ {inv2['name']}"
+            else:
+                button_text2 = f"👤 {inv2['name']}"
             row.append(InlineKeyboardButton(
-                text=f"👤 {inv2['name']}",
+                text=button_text2,
                 callback_data=f"invite_guest_{i + 1}"
             ))
         keyboard_buttons.append(row)

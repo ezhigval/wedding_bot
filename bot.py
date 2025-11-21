@@ -19,7 +19,7 @@ from keyboards import (
 from google_sheets import (
     get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    delete_guest_from_sheets, update_invitation_user_id
+    delete_guest_from_sheets, update_invitation_user_id, mark_invitation_as_sent
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client
 
@@ -42,6 +42,7 @@ class RegistrationStates(StatesGroup):
 # Состояния для рассылки приглашений
 class InvitationStates(StatesGroup):
     waiting_guest_selection = State()
+    waiting_sent_confirmation = State()  # Ожидание подтверждения отправки
 
 # Состояния для управления группой
 class GroupManagementStates(StatesGroup):
@@ -1096,6 +1097,9 @@ async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
     
     await callback.answer()
     
+    # Очищаем state при возврате к списку
+    await state.clear()
+    
     # Загружаем список приглашений из Google Sheets
     invitations = await get_invitations_list()
     
@@ -1120,9 +1124,13 @@ async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
     await state.update_data(invitations=invitations)
     
     # Формируем сообщение со списком гостей
+    sent_count = sum(1 for inv in invitations if inv.get('is_sent', False))
     guests_list = f"📋 <b>Выберите гостя для отправки приглашения:</b>\n\n"
-    guests_list += f"Всего гостей: <b>{len(invitations)}</b>\n\n"
-    guests_list += "Нажмите на кнопку с именем гостя, чтобы открыть диалог с заготовленным текстом приглашения."
+    guests_list += f"Всего гостей: <b>{len(invitations)}</b>\n"
+    guests_list += f"✅ Отправлено: <b>{sent_count}</b>\n"
+    guests_list += f"⏳ Осталось: <b>{len(invitations) - sent_count}</b>\n\n"
+    guests_list += "Нажмите на кнопку с именем гостя, чтобы открыть диалог с заготовленным текстом приглашения.\n\n"
+    guests_list += "💡 <i>Гости с галочкой ✅ уже получили приглашение</i>"
     
     # Создаем клавиатуру с кнопками для каждого гостя
     keyboard = get_guests_selection_keyboard(invitations)
@@ -1338,6 +1346,29 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
             f"💡 Скопируйте ссылку и отправьте гостю",
             parse_mode="HTML"
         )
+        
+        # Сохраняем имя гостя в state для подтверждения отправки
+        await state.update_data(guest_name_for_confirmation=guest_name)
+        await state.set_state(InvitationStates.waiting_sent_confirmation)
+        
+        # Спрашиваем у админа, отправлено ли приглашение
+        confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="✅ Да, отправлено",
+                callback_data="invite_sent_yes"
+            )],
+            [InlineKeyboardButton(
+                text="❌ Нет, не отправлено",
+                callback_data="invite_sent_no"
+            )]
+        ])
+        
+        await callback.message.answer(
+            f"❓ <b>Приглашение отправлено?</b>\n\n"
+            f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
+            reply_markup=confirmation_keyboard,
+            parse_mode="HTML"
+        )
         return
     
     # ЛОГИКА 2: Если есть номер телефона - автоматически находим username (уже обработано выше)
@@ -1377,6 +1408,29 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
             f"🔗 <b>Ссылка на приложение:</b>\n\n"
             f"<code>{WEBAPP_URL}</code>\n\n"
             f"💡 Скопируйте ссылку и отправьте гостю",
+            parse_mode="HTML"
+        )
+        
+        # Сохраняем имя гостя в state для подтверждения отправки
+        await state.update_data(guest_name_for_confirmation=guest_name)
+        await state.set_state(InvitationStates.waiting_sent_confirmation)
+        
+        # Спрашиваем у админа, отправлено ли приглашение
+        confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="✅ Да, отправлено",
+                callback_data="invite_sent_yes"
+            )],
+            [InlineKeyboardButton(
+                text="❌ Нет, не отправлено",
+                callback_data="invite_sent_no"
+            )]
+        ])
+        
+        await callback.message.answer(
+            f"❓ <b>Приглашение отправлено?</b>\n\n"
+            f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
+            reply_markup=confirmation_keyboard,
             parse_mode="HTML"
         )
         return
@@ -1431,51 +1485,29 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         f"<code>{WEBAPP_URL}</code>",
         parse_mode="HTML"
     )
-        info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
-        info_text += "💡 <b>Инструкция:</b>\n"
-        info_text += "1. Нажмите и удерживайте сообщение ниже\n"
-        info_text += "2. Выберите 'Переслать'\n"
-        info_text += "3. Найдите контакт по номеру телефона\n"
-        info_text += "4. Отправьте\n\n"
-        info_text += "⚠️ <i>Для номеров телефонов нужно пересылать вручную</i>"
-    else:
-        # Для username создаем deep link для быстрого открытия диалога
-        from urllib.parse import quote
-        display_telegram = telegram_id if telegram_id else 'не указан'
-        if display_telegram != 'не указан' and not display_telegram.startswith("@"):
-            display_telegram = f"@{display_telegram}"
-        
-        info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n\n"
-        info_text += "💡 <b>Инструкция:</b>\n"
-        info_text += "1. Нажмите кнопку ниже, чтобы открыть диалог с предзаполненным текстом\n"
-        info_text += "2. Или перешлите готовое сообщение ниже\n"
-        info_text += "3. Добавьте кнопку приглашения (она уже в сообщении)\n"
-        info_text += "4. Отправьте\n\n"
-        info_text += "✅ <i>Кнопка приглашения уже включена в сообщение!</i>"
-        
-        # Создаем deep link для быстрого открытия диалога
-        encoded_text = quote(invitation_text)
-        if len(encoded_text) > 2000:
-            # Используем короткую версию для deep link
-            short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение ниже 💒"
-            encoded_text = quote(short_text)
-        
-        username_clean = telegram_id.lstrip('@')
-        deep_link = f"tg://msg?to={username_clean}&text={encoded_text}"
-        
-        # Добавляем кнопку для открытия диалога
-        quick_open_button = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="💬 Быстро открыть диалог",
-                url=deep_link
-            )],
-            [InlineKeyboardButton(
-                text="⬅️ Вернуться к списку",
-                callback_data="admin_send_invite"
-            )]
-        ])
-        
-        await callback.message.answer(info_text, reply_markup=quick_open_button, parse_mode="HTML")
+    
+    # Сохраняем имя гостя в state для подтверждения отправки
+    await state.update_data(guest_name_for_confirmation=guest_name)
+    await state.set_state(InvitationStates.waiting_sent_confirmation)
+    
+    # Спрашиваем у админа, отправлено ли приглашение
+    confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Да, отправлено",
+            callback_data="invite_sent_yes"
+        )],
+        [InlineKeyboardButton(
+            text="❌ Нет, не отправлено",
+            callback_data="invite_sent_no"
+        )]
+    ])
+    
+    await callback.message.answer(
+        f"❓ <b>Приглашение отправлено?</b>\n\n"
+        f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
+        reply_markup=confirmation_keyboard,
+        parse_mode="HTML"
+    )
     
     # Отправляем само сообщение с приглашением и кнопкой для пересылки
     await callback.message.answer(
@@ -1699,6 +1731,90 @@ async def get_invite_for_forwarding(callback: CallbackQuery, state: FSMContext):
         reply_markup=back_keyboard,
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data == "invite_sent_yes")
+async def confirm_invite_sent(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение отправки приглашения - отмечаем в таблице"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Получаем имя гостя из state
+    data = await state.get_data()
+    guest_name = data.get('guest_name_for_confirmation')
+    
+    if not guest_name:
+        await callback.message.answer("❌ Ошибка: не найдено имя гостя")
+        await state.clear()
+        return
+    
+    # Обновляем статус в таблице (столбец C = "ДА")
+    success = await mark_invitation_as_sent(guest_name)
+    
+    if success:
+        await callback.message.answer(
+            f"✅ <b>Приглашение отмечено как отправленное!</b>\n\n"
+            f"Гость: <b>{guest_name}</b>\n\n"
+            f"В таблице установлена галочка ✅",
+            parse_mode="HTML"
+        )
+        logger.info(f"Админ {callback.from_user.id} подтвердил отправку приглашения для {guest_name}")
+    else:
+        await callback.message.answer(
+            f"⚠️ <b>Ошибка обновления таблицы</b>\n\n"
+            f"Не удалось отметить приглашение как отправленное для <b>{guest_name}</b>.\n"
+            f"Попробуйте позже или обновите вручную.",
+            parse_mode="HTML"
+        )
+    
+    # Очищаем state
+    await state.clear()
+    
+    # Предлагаем вернуться к списку
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⬅️ Вернуться к списку приглашений",
+            callback_data="admin_send_invite"
+        )]
+    ])
+    await callback.message.answer("Выберите действие:", reply_markup=back_keyboard)
+
+@dp.callback_query(F.data == "invite_sent_no")
+async def cancel_invite_sent(callback: CallbackQuery, state: FSMContext):
+    """Отмена подтверждения отправки приглашения"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Получаем имя гостя из state
+    data = await state.get_data()
+    guest_name = data.get('guest_name_for_confirmation')
+    
+    # Очищаем state
+    await state.clear()
+    
+    if guest_name:
+        await callback.message.answer(
+            f"ℹ️ <b>Приглашение не отмечено как отправленное</b>\n\n"
+            f"Гость: <b>{guest_name}</b>\n\n"
+            f"Когда отправите приглашение, вернитесь и отметьте его.",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.answer("ℹ️ Приглашение не отмечено как отправленное")
+    
+    # Предлагаем вернуться к списку
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⬅️ Вернуться к списку приглашений",
+            callback_data="admin_send_invite"
+        )]
+    ])
+    await callback.message.answer("Выберите действие:", reply_markup=back_keyboard)
 
 @dp.callback_query(F.data == "admin_reset_me")
 async def admin_reset_me(callback: CallbackQuery):
