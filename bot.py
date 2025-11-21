@@ -62,6 +62,34 @@ async def get_user_display_name(user):
     
     return "друг"  # Fallback
 
+def is_phone_number(value: str) -> bool:
+    """Проверяет, является ли значение номером телефона
+    
+    Номер телефона начинается с 8, 7 или +7
+    Username начинается с @
+    """
+    if not value:
+        return False
+    
+    value = value.strip()
+    
+    # Если начинается с @ - это username, не номер
+    if value.startswith("@"):
+        return False
+    
+    # Если начинается с 8, 7 или +7 - это номер телефона
+    if value.startswith("+7") or value.startswith("7") or value.startswith("8"):
+        return True
+    
+    # Дополнительная проверка: если после очистки от форматирования остаются только цифры
+    # и начинается с 7 или 8 - это номер
+    cleaned = value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("+", "")
+    if cleaned.isdigit():
+        if cleaned.startswith("7") or cleaned.startswith("8"):
+            return True
+    
+    return False
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
@@ -930,9 +958,12 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     guest_name = guest['name']
     telegram_id = guest['telegram_id']
     
+    # Проверяем, является ли telegram_id номером телефона
+    is_phone = is_phone_number(telegram_id) if telegram_id else False
+    
     # Создаем текст приглашения согласно требованиям
     invitation_text = (
-        f"Дорогой(ая) {guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся и хотим разделить "
+        f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся и хотим разделить "
         f"этот знаменательный день с родными и близкими, прикрепляем ниже открытку - просим подтвердить, "
         f"хотя бы предварительно, свое присутствие"
     )
@@ -945,28 +976,271 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         )]
     ])
     
-    # Отправляем готовое сообщение для копирования
+    # Пытаемся найти user_id гостя в списке зарегистрированных гостей
+    registered_guests = await get_all_guests_from_sheets()
+    guest_user_id = None
+    
+    # Ищем по имени (сравниваем полное имя)
+    for reg_guest in registered_guests:
+        reg_full_name = f"{reg_guest.get('first_name', '')} {reg_guest.get('last_name', '')}".strip()
+        if reg_full_name.lower() == guest_name.lower():
+            guest_user_id = reg_guest.get('user_id')
+            if guest_user_id:
+                try:
+                    guest_user_id = int(guest_user_id)
+                except (ValueError, TypeError):
+                    guest_user_id = None
+            break
+    
+    # Создаем клавиатуру с опциями
+    action_keyboard_buttons = []
+    
+    # Если нашли user_id, добавляем кнопку автоматической отправки
+    if guest_user_id:
+        action_keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="✅ Отправить автоматически",
+                callback_data=f"send_invite_auto_{guest_index}"
+            )
+        ])
+    
+    action_keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="📤 Получить для пересылки",
+            callback_data=f"send_invite_forward_{guest_index}"
+        )
+    ])
+    action_keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="⬅️ Вернуться к списку",
+            callback_data="admin_send_invite"
+        )
+    ])
+    
+    action_keyboard = InlineKeyboardMarkup(inline_keyboard=action_keyboard_buttons)
+    
+    # Отправляем информацию о госте
+    info_text = f"💌 <b>Приглашение для {guest_name}</b>\n\n"
+    
+    if is_phone:
+        # Если это номер телефона
+        info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
+        info_text += "⚠️ <b>Указан номер телефона вместо username</b>\n\n"
+        info_text += "💡 <b>Варианты отправки:</b>\n"
+        if guest_user_id:
+            info_text += "1. ✅ Автоматическая отправка (если гость уже зарегистрирован)\n"
+            info_text += "2. 📤 Пересылка сообщения (если нужно отправить вручную)\n"
+            info_text += "3. 📲 Отправить через WhatsApp/другие мессенджеры\n"
+        else:
+            info_text += "1. 📤 Получить готовое сообщение для пересылки\n"
+            info_text += "2. 📲 Отправить через WhatsApp/другие мессенджеры\n"
+            info_text += "3. 📧 Отправить по SMS или другим способом\n\n"
+            info_text += "💡 <i>Гость может написать боту /start, чтобы получить приглашение автоматически</i>"
+    else:
+        # Обычный username - показываем с @ если его нет
+        display_telegram = telegram_id if telegram_id else 'не указан'
+        if display_telegram != 'не указан' and not display_telegram.startswith("@"):
+            display_telegram = f"@{display_telegram}"
+        info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n"
+        if guest_user_id:
+            info_text += f"🆔 <b>User ID:</b> <code>{guest_user_id}</code> (найден в списке гостей)\n\n"
+            info_text += "✅ Можно отправить автоматически!"
+        else:
+            info_text += "\n⚠️ User ID не найден. Используйте пересылку сообщения."
+    
+    await callback.message.answer(info_text, reply_markup=action_keyboard, parse_mode="HTML")
+    
+    # Сохраняем данные гостя в state для использования в других callback
+    await state.update_data(
+        current_guest_index=guest_index,
+        current_guest_name=guest_name,
+        current_guest_telegram_id=telegram_id,
+        current_guest_user_id=guest_user_id,
+        current_invitation_text=invitation_text
+    )
+
+@dp.callback_query(F.data.startswith("send_invite_auto_"))
+async def send_invite_automatically(callback: CallbackQuery, state: FSMContext):
+    """Автоматическая отправка приглашения гостю"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Получаем индекс гостя из callback_data
+    try:
+        guest_index = int(callback.data.split("_")[-1])
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка: неверный формат данных.")
+        return
+    
+    # Получаем данные из state
+    data = await state.get_data()
+    guest_name = data.get('current_guest_name')
+    guest_user_id = data.get('current_guest_user_id')
+    invitation_text = data.get('current_invitation_text')
+    
+    if not guest_user_id or not invitation_text:
+        await callback.message.answer("❌ Ошибка: данные гостя не найдены. Попробуйте выбрать снова.")
+        return
+    
+    # Создаем клавиатуру с кнопкой Mini App
+    bot_invite_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💒 Открыть приглашение",
+            web_app=WebAppInfo(url=WEBAPP_URL)
+        )]
+    ])
+    
+    try:
+        # Отправляем приглашение гостю
+        await bot.send_message(
+            chat_id=guest_user_id,
+            text=invitation_text,
+            reply_markup=bot_invite_keyboard
+        )
+        
+        # Уведомляем админа об успешной отправке
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⬅️ Вернуться к списку",
+                callback_data="admin_send_invite"
+            )]
+        ])
+        
+        await callback.message.answer(
+            f"✅ <b>Приглашение отправлено!</b>\n\n"
+            f"👤 <b>Гость:</b> {guest_name}\n"
+            f"🆔 <b>User ID:</b> <code>{guest_user_id}</code>\n\n"
+            f"Приглашение доставлено гостю автоматически.",
+            reply_markup=back_keyboard,
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Админ {callback.from_user.id} автоматически отправил приглашение гостю {guest_name} (user_id: {guest_user_id})")
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка автоматической отправки приглашения: {e}")
+        
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📤 Получить для пересылки",
+                callback_data=f"send_invite_forward_{guest_index}"
+            )],
+            [InlineKeyboardButton(
+                text="⬅️ Вернуться к списку",
+                callback_data="admin_send_invite"
+            )]
+        ])
+        
+        if "chat not found" in error_msg.lower() or "user not found" in error_msg.lower():
+            error_text = (
+                f"❌ <b>Не удалось отправить автоматически</b>\n\n"
+                f"👤 <b>Гость:</b> {guest_name}\n"
+                f"🆔 <b>User ID:</b> <code>{guest_user_id}</code>\n\n"
+                f"⚠️ Гость не найден или не начал диалог с ботом.\n\n"
+                f"💡 <b>Решение:</b> Используйте кнопку ниже, чтобы получить готовое сообщение для пересылки."
+            )
+        else:
+            error_text = (
+                f"❌ <b>Ошибка отправки</b>\n\n"
+                f"<code>{error_msg}</code>\n\n"
+                f"💡 Попробуйте использовать пересылку сообщения."
+            )
+        
+        await callback.message.answer(error_text, reply_markup=back_keyboard, parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("send_invite_forward_"))
+async def get_invite_for_forwarding(callback: CallbackQuery, state: FSMContext):
+    """Получение готового сообщения с приглашением для пересылки"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Получаем индекс гостя из callback_data
+    try:
+        guest_index = int(callback.data.split("_")[-1])
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ Ошибка: неверный формат данных.")
+        return
+    
+    # Получаем данные из state
+    data = await state.get_data()
+    guest_name = data.get('current_guest_name')
+    telegram_id = data.get('current_guest_telegram_id')
+    invitation_text = data.get('current_invitation_text')
+    
+    if not invitation_text:
+        # Если данных нет в state, получаем из списка приглашений
+        invitations = data.get('invitations', [])
+        if not invitations or guest_index >= len(invitations):
+            await callback.message.answer("❌ Ошибка: гость не найден. Попробуйте выбрать снова.")
+            return
+        
+        guest = invitations[guest_index]
+        guest_name = guest['name']
+        telegram_id = guest['telegram_id']
+        invitation_text = (
+            f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся и хотим разделить "
+            f"этот знаменательный день с родными и близкими, прикрепляем ниже открытку - просим подтвердить, "
+            f"хотя бы предварительно, свое присутствие"
+        )
+    
+    # Создаем клавиатуру с кнопкой Mini App
+    bot_invite_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💒 Открыть приглашение",
+            web_app=WebAppInfo(url=WEBAPP_URL)
+        )]
+    ])
+    
+    # Проверяем, является ли telegram_id номером телефона
+    is_phone = is_phone_number(telegram_id) if telegram_id else False
+    
+    # Формируем инструкцию в зависимости от типа контакта
+    if is_phone:
+        instruction_text = (
+            f"📤 <b>Готовое сообщение для отправки</b>\n\n"
+            f"👤 <b>Гость:</b> {guest_name}\n"
+            f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
+            f"💡 <b>Варианты отправки:</b>\n"
+            f"1. <b>Через Telegram:</b> Найдите контакт по номеру {telegram_id} и перешлите сообщение\n"
+            f"2. <b>Через другие мессенджеры:</b> Скопируйте текст и отправьте через WhatsApp/SMS\n"
+            f"3. <b>Через бота:</b> Попросите гостя написать боту /start\n\n"
+            f"✅ Кнопка приглашения включена в сообщение ниже (работает только в Telegram)!"
+        )
+    else:
+        # Обычный username - показываем с @ если его нет
+        display_telegram = telegram_id if telegram_id else 'не указан'
+        if display_telegram != 'не указан' and not display_telegram.startswith("@"):
+            display_telegram = f"@{display_telegram}"
+        instruction_text = (
+            f"📤 <b>Готовое сообщение для пересылки</b>\n\n"
+            f"👤 <b>Гость:</b> {guest_name}\n"
+            f"📱 <b>Телеграм:</b> {display_telegram}\n\n"
+            f"💡 <b>Инструкция:</b>\n"
+            f"1. Нажмите и удерживайте сообщение ниже\n"
+            f"2. Выберите 'Переслать'\n"
+            f"3. Выберите получателя ({display_telegram})\n"
+            f"4. Отправьте\n\n"
+            f"✅ Кнопка приглашения уже включена в сообщение!"
+        )
+    
+    # Отправляем готовое сообщение с приглашением и кнопкой
+    # Админ может просто переслать это сообщение гостю
+    await callback.message.answer(instruction_text, parse_mode="HTML")
+    
+    # Отправляем само сообщение с приглашением и кнопкой
     await callback.message.answer(
-        f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
-        f"📋 <b>Текст приглашения:</b>\n\n"
-        f"<code>{invitation_text}</code>\n\n"
-        f"📱 <b>Телеграм:</b> @{telegram_id}\n\n"
-        f"<b>Инструкция:</b>\n"
-        f"1. Скопируйте текст выше\n"
-        f"2. Откройте диалог с @{telegram_id}\n"
-        f"3. Вставьте и отправьте сообщение\n"
-        f"4. Добавьте кнопку '💒 Открыть приглашение' (используйте кнопку ниже)",
-        parse_mode="HTML"
+        invitation_text,
+        reply_markup=bot_invite_keyboard
     )
     
-    # Отправляем отдельное сообщение с кнопкой Mini App
-    await callback.message.answer(
-        f"📋 <b>Кнопка для добавления в сообщение гостю:</b>",
-        reply_markup=bot_invite_keyboard,
-        parse_mode="HTML"
-    )
-    
-    # Отправляем кнопку для возврата к списку
+    # Кнопка для возврата
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="⬅️ Вернуться к списку гостей",
@@ -974,7 +1248,7 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         )]
     ])
     await callback.message.answer(
-        "💡 <i>Скопируйте текст и отправьте гостю. Кнопку приглашения можно добавить через кнопку выше.</i>",
+        "💡 <i>Просто перешлите сообщение выше гостю - кнопка приглашения уже включена!</i>",
         reply_markup=back_keyboard,
         parse_mode="HTML"
     )

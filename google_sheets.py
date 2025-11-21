@@ -296,14 +296,19 @@ def normalize_telegram_id(telegram_id: str) -> str:
             - t.me/username
             - @username
             - username
+            - номер телефона (8, 7, +7) - возвращается как есть
     
     Returns:
-        Нормализованный username (без @ и без t.me/)
+        Нормализованный username (без @ и без t.me/) или номер телефона как есть
     """
     if not telegram_id:
         return ""
     
     telegram_id = telegram_id.strip()
+    
+    # Если это номер телефона (начинается с 8, 7 или +7), возвращаем как есть
+    if telegram_id.startswith("+7") or telegram_id.startswith("7") or telegram_id.startswith("8"):
+        return telegram_id
     
     # Убираем t.me/
     if telegram_id.startswith("t.me/"):
@@ -313,7 +318,7 @@ def normalize_telegram_id(telegram_id: str) -> str:
     elif telegram_id.startswith("http://t.me/"):
         telegram_id = telegram_id[12:]
     
-    # Убираем @
+    # Убираем @ только если это username
     if telegram_id.startswith("@"):
         telegram_id = telegram_id[1:]
     
