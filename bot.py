@@ -1302,20 +1302,135 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
                             guest_user_id = None
                 break
     
-    # Сохраняем данные в state
-    await state.update_data(
-        current_guest_index=guest_index,
-        current_guest_name=guest_name,
-        current_guest_telegram_id=telegram_id,
-        current_guest_user_id=guest_user_id,
-        current_invitation_text=invitation_text
-    )
+    # ЛОГИКА 1: Если поле username пусто (telegram_id пусто или None)
+    if not telegram_id or telegram_id == "":
+        # Присылаем готовый текст для копирования + ссылку на приложение (не кнопку)
+        info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
+        info_text += "📱 <b>Телеграм:</b> не указан\n\n"
+        info_text += "💡 <b>Инструкция:</b>\n"
+        info_text += "1. Скопируйте текст ниже\n"
+        info_text += "2. Скопируйте ссылку на приложение ниже\n"
+        info_text += "3. Откройте диалог с гостем вручную\n"
+        info_text += "4. Вставьте текст и ссылку\n"
+        info_text += "5. Отправьте\n\n"
+        info_text += "⚠️ <i>Username не указан, отправка вручную</i>"
+        
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⬅️ Вернуться к списку",
+                callback_data="admin_send_invite"
+            )]
+        ])
+        
+        await callback.message.answer(info_text, reply_markup=back_keyboard, parse_mode="HTML")
+        
+        # Отправляем текст для копирования
+        await callback.message.answer(
+            f"📋 <b>Текст для копирования:</b>\n\n"
+            f"<code>{invitation_text}</code>",
+            parse_mode="HTML"
+        )
+        
+        # Отправляем ссылку на приложение (не кнопку, чтобы можно было скопировать)
+        await callback.message.answer(
+            f"🔗 <b>Ссылка на приложение:</b>\n\n"
+            f"<code>{WEBAPP_URL}</code>\n\n"
+            f"💡 Скопируйте ссылку и отправьте гостю",
+            parse_mode="HTML"
+        )
+        return
     
-    # Отправляем готовое сообщение админу для пересылки
-    # Это сообщение админ может переслать гостю от своего имени
-    info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
+    # ЛОГИКА 2: Если есть номер телефона - автоматически находим username (уже обработано выше)
+    # После обработки номера телефона telegram_id либо стал username, либо остался номером (если не найден)
     
+    # Если после обработки номера телефона username не найден - показываем как для пустого
     if is_phone:
+        info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
+        info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
+        info_text += "⚠️ <b>Username не найден</b>\n\n"
+        info_text += "💡 <b>Инструкция:</b>\n"
+        info_text += "1. Скопируйте текст ниже\n"
+        info_text += "2. Скопируйте ссылку на приложение ниже\n"
+        info_text += "3. Откройте диалог с гостем по номеру телефона\n"
+        info_text += "4. Вставьте текст и ссылку\n"
+        info_text += "5. Отправьте\n\n"
+        info_text += "⚠️ <i>Username не найден в ваших контактах, отправка вручную</i>"
+        
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⬅️ Вернуться к списку",
+                callback_data="admin_send_invite"
+            )]
+        ])
+        
+        await callback.message.answer(info_text, reply_markup=back_keyboard, parse_mode="HTML")
+        
+        # Отправляем текст для копирования
+        await callback.message.answer(
+            f"📋 <b>Текст для копирования:</b>\n\n"
+            f"<code>{invitation_text}</code>",
+            parse_mode="HTML"
+        )
+        
+        # Отправляем ссылку на приложение
+        await callback.message.answer(
+            f"🔗 <b>Ссылка на приложение:</b>\n\n"
+            f"<code>{WEBAPP_URL}</code>\n\n"
+            f"💡 Скопируйте ссылку и отправьте гостю",
+            parse_mode="HTML"
+        )
+        return
+    
+    # ЛОГИКА 3: Если есть telegram username - присылаем deep link кнопку "Отправить автоматически"
+    # (telegram_id теперь точно username)
+    from urllib.parse import quote
+    
+    # Создаем deep link с текстом приглашения + ссылкой на приложение
+    invitation_with_link = f"{invitation_text}\n\n🔗 Открыть приглашение: {WEBAPP_URL}"
+    encoded_text = quote(invitation_with_link)
+    if len(encoded_text) > 2000:
+        # Используем короткую версию для deep link
+        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение: {WEBAPP_URL}"
+        encoded_text = quote(short_text)
+    
+    username_clean = telegram_id.lstrip('@')
+    deep_link = f"tg://msg?to={username_clean}&text={encoded_text}"
+    
+    # Информация для админа
+    display_telegram = telegram_id if not telegram_id.startswith("@") else telegram_id
+    if not display_telegram.startswith("@"):
+        display_telegram = f"@{display_telegram}"
+    
+    info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
+    info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n\n"
+    info_text += "💡 <b>Инструкция:</b>\n"
+    info_text += "1. Нажмите кнопку 'Отправить автоматически' ниже\n"
+    info_text += "2. Откроется диалог с предзаполненным текстом и ссылкой\n"
+    info_text += "3. Отправьте сообщение\n\n"
+    info_text += "✅ <i>Текст и ссылка уже подготовлены в диалоге!</i>"
+    
+    # Кнопка "Отправить автоматически" с deep link
+    send_button = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✅ Отправить автоматически",
+            url=deep_link
+        )],
+        [InlineKeyboardButton(
+            text="⬅️ Вернуться к списку",
+            callback_data="admin_send_invite"
+        )]
+    ])
+    
+    await callback.message.answer(info_text, reply_markup=send_button, parse_mode="HTML")
+    
+    # Отправляем текст приглашения для справки
+    await callback.message.answer(
+        f"📋 <b>Текст приглашения (для справки):</b>\n\n"
+        f"<code>{invitation_text}</code>\n\n"
+        f"🔗 <b>Ссылка на приложение:</b>\n"
+        f"<code>{WEBAPP_URL}</code>",
+        parse_mode="HTML"
+    )
         info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
         info_text += "💡 <b>Инструкция:</b>\n"
         info_text += "1. Нажмите и удерживайте сообщение ниже\n"
