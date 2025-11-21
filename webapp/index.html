@@ -49,8 +49,8 @@
                 </p>
                 <div class="heartbeat-line">
                     <svg viewBox="0 0 200 20" class="heartbeat-svg">
-                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="#5A7C52" stroke-width="2" fill="none"/>
-                        <circle cx="100" cy="10" r="3" fill="#5A7C52"/>
+                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="var(--color-primary)" stroke-width="2" fill="none"/>
+                        <circle cx="100" cy="10" r="3" fill="var(--color-primary)"/>
                     </svg>
                 </div>
             </div>
@@ -168,40 +168,29 @@
             <section class="dresscode-section">
                 <div class="dresscode-card scroll-reveal">
                     <h2 class="section-title scroll-reveal-item">ДРЕСС-КОД</h2>
+                    <p class="dresscode-intro scroll-reveal-item">
+                        Мы очень старались сделать праздник красивым и будем рады, если вы поддержите цветовую палитру торжества.
+                    </p>
                     <div class="color-palette scroll-reveal-item">
-                        <div class="color-circle" style="background: #5A7C52;"></div>
-                        <div class="color-circle" style="background: #4A6B42;"></div>
-                        <div class="color-circle" style="background: #FFE9AD;"></div>
-                        <div class="color-circle" style="background: #F8F8F8;"></div>
-                        <div class="color-circle" style="background: #DBD0C4;"></div>
-                    </div>
-                    <div class="dresscode-slider scroll-reveal-item" id="dresscodeSlider">
-                        <!-- Загружается динамически из папки res/dresscode -->
-                    </div>
-                </div>
-            </section>
-
-            <!-- Подсказки -->
-            <section class="tips-section">
-                <div class="tips-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">ПОДСКАЗКИ</h2>
-                    <div class="tips-container" id="tipsContainer">
-                        <!-- Загружается из конфига или Google Sheets -->
-                        <div class="tip-item scroll-reveal-item">
-                            <h3 class="tip-title">Сюрпризы</h3>
-                            <p class="tip-text">Мы будем рады любому вниманию, но больше всего ценим ваше присутствие!</p>
+                        <div class="color-item">
+                            <div class="color-circle" style="background: var(--color-primary);"></div>
+                            <div class="color-name">Зеленый</div>
                         </div>
-                        <div class="tip-item scroll-reveal-item">
-                            <h3 class="tip-title">Цветы</h3>
-                            <p class="tip-text">Если хотите подарить цветы, мы будем рады букетам в пастельных тонах.</p>
+                        <div class="color-item">
+                            <div class="color-circle" style="background: var(--color-primary-dark);"></div>
+                            <div class="color-name">Темно-зеленый</div>
                         </div>
-                        <div class="tip-item scroll-reveal-item">
-                            <h3 class="tip-title">Подарки</h3>
-                            <p class="tip-text">Ваше присутствие - лучший подарок! Но если хотите что-то подарить, мы будем благодарны.</p>
+                        <div class="color-item">
+                            <div class="color-circle" style="background: var(--color-cream);"></div>
+                            <div class="color-name">Кремовый</div>
                         </div>
-                        <div class="tip-item scroll-reveal-item">
-                            <h3 class="tip-title">Если возникла проблема</h3>
-                            <p class="tip-text">Свяжитесь с нами через контакты внизу страницы, мы обязательно поможем!</p>
+                        <div class="color-item">
+                            <div class="color-circle" style="background: var(--color-bg-main);"></div>
+                            <div class="color-name">Слоновая кость</div>
+                        </div>
+                        <div class="color-item">
+                            <div class="color-circle" style="background: var(--color-sand);"></div>
+                            <div class="color-name">Песочный</div>
                         </div>
                     </div>
                 </div>
@@ -221,20 +210,42 @@
                 </div>
             </section>
 
+            <!-- Пожелания -->
+            <section class="wishes-section">
+                <div class="section-card scroll-reveal">
+                    <h2 class="section-title scroll-reveal-item">ПОЖЕЛАНИЯ</h2>
+                    <div class="wishes-content scroll-reveal-item">
+                        <div class="wish-item">
+                            <span class="wish-icon">🍷</span>
+                            <p class="wishes-text">
+                                Просим не дарить нам цветы, прекрасной альтернативой станет бутылка хорошего вина для нашей семейной винотеки.
+                            </p>
+                        </div>
+                        <div class="wish-item">
+                            <span class="wish-icon">💝</span>
+                            <p class="wishes-text">
+                                Если хотите сделать нам ценный и нужный подарок, мы будем признательны за вклад в бюджет нашей молодой семьи.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Место проведения -->
             <section class="venue-section">
                 <div class="section-card scroll-reveal">
                     <h2 class="section-title scroll-reveal-item">МЕСТО ПРОВЕДЕНИЯ</h2>
                     <div class="venue-info scroll-reveal-item">
-                        <h3 class="venue-name" id="venueName">Санкт-Петербург</h3>
-                        <p class="venue-address" id="venueAddress">Санкт-Петербург</p>
+                        <h3 class="venue-name" id="venueName">Токсово</h3>
+                        <p class="venue-hall">Панорама Холл</p>
+                        <p class="venue-address" id="venueAddress">Разъезжая улица, 15, городской посёлок Токсово, Токсовское городское поселение, Всеволожский район, Ленинградская область</p>
                     </div>
                     <div class="venue-image-container scroll-reveal-item" id="venueImageContainer">
                         <!-- Изображение загружается из res/venue -->
                     </div>
-                    <div class="venue-map scroll-reveal-item" id="venueMap">
-                        <!-- Яндекс карта -->
-                    </div>
+                </div>
+                <div class="venue-map scroll-reveal-item" id="venueMap">
+                    <!-- Яндекс карта -->
                 </div>
             </section>
 
@@ -286,8 +297,8 @@
                 <div class="couple-names-final scroll-reveal-item" id="coupleNamesFinal">Валентин и Мария</div>
                 <div class="heartbeat-line">
                     <svg viewBox="0 0 200 20" class="heartbeat-svg">
-                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="#5A7C52" stroke-width="2" fill="none"/>
-                        <circle cx="100" cy="10" r="3" fill="#5A7C52"/>
+                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="var(--color-primary)" stroke-width="2" fill="none"/>
+                        <circle cx="100" cy="10" r="3" fill="var(--color-primary)"/>
                     </svg>
                 </div>
             </div>
@@ -295,5 +306,22 @@
     </div>
 
     <script src="app.js"></script>
+    
+    <!-- Hot reload для разработки -->
+    <script>
+        // Подключаемся к WebSocket для hot reload только на localhost
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            const ws = new WebSocket('ws://localhost:8000/reload');
+            ws.onmessage = function(event) {
+                if (event.data === 'reload') {
+                    console.log('🔄 Перезагрузка страницы...');
+                    window.location.reload();
+                }
+            };
+            ws.onerror = function(error) {
+                console.log('WebSocket для hot reload недоступен (это нормально в продакшене)');
+            };
+        }
+    </script>
 </body>
 </html>
