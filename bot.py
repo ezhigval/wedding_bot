@@ -2210,26 +2210,6 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     await state.update_data(guest_name_for_confirmation=guest_name)
     await state.set_state(InvitationStates.waiting_sent_confirmation)
     
-    # Отправляем само сообщение с приглашением и кнопкой для пересылки
-    await callback.message.answer(
-        invitation_text,
-        reply_markup=bot_invite_keyboard
-    )
-    
-    # Кнопка для возврата
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="⬅️ Вернуться к списку гостей",
-            callback_data="admin_send_invite"
-        )]
-    ])
-    
-    await callback.message.answer(
-        "💡 <i>Просто перешлите сообщение выше гостю - кнопка приглашения уже включена!</i>",
-        reply_markup=back_keyboard,
-        parse_mode="HTML"
-    )
-    
     # Сохраняем данные гостя в state для использования в других callback
     await state.update_data(
         current_guest_index=guest_index,
@@ -2410,28 +2390,8 @@ async def get_invite_for_forwarding(callback: CallbackQuery, state: FSMContext):
             f"✅ Кнопка приглашения уже включена в сообщение!"
         )
     
-    # Отправляем готовое сообщение с приглашением и кнопкой
-    # Админ может просто переслать это сообщение гостю
-    await callback.message.answer(instruction_text, parse_mode="HTML")
-    
-    # Отправляем само сообщение с приглашением и кнопкой
-    await callback.message.answer(
-        invitation_text,
-        reply_markup=bot_invite_keyboard
-    )
-    
-    # Кнопка для возврата
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="⬅️ Вернуться к списку гостей",
-            callback_data="admin_send_invite"
-        )]
-    ])
-    await callback.message.answer(
-        "💡 <i>Просто перешлите сообщение выше гостю - кнопка приглашения уже включена!</i>",
-        reply_markup=back_keyboard,
-        parse_mode="HTML"
-    )
+    # Удалено: больше не отправляем сообщение с приглашением и кнопкой для пересылки
+    # Админ использует текст для пересылки, который уже был отправлен выше
 
 @dp.callback_query(F.data == "invite_sent_yes")
 async def confirm_invite_sent(callback: CallbackQuery, state: FSMContext):
