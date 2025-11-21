@@ -404,6 +404,10 @@ async def check_qr_authorization(admin_user_id: int) -> Tuple[bool, str]:
         
         # Проверяем, была ли завершена авторизация
         try:
+            # Переподключаемся к клиенту, чтобы обновить статус
+            if not client.is_connected():
+                await client.connect()
+            
             # Сначала проверяем статус авторизации напрямую
             is_authorized = await client.is_user_authorized()
             
@@ -423,7 +427,7 @@ async def check_qr_authorization(admin_user_id: int) -> Tuple[bool, str]:
                 if me:
                     _clients[admin_user_id] = client
                     del _pending_clients[admin_user_id]
-                    logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код")
+                    logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код (проверено через get_me)")
                     return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
             except SessionPasswordNeededError:
                 # Требуется пароль 2FA после QR-кода
@@ -435,36 +439,57 @@ async def check_qr_authorization(admin_user_id: int) -> Tuple[bool, str]:
                 if "password" in error_msg or "2fa" in error_msg or "session" in error_msg:
                     logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
                     return False, "2FA_PASSWORD_REQUIRED"
+                # Если ошибка не связана с паролем, продолжаем проверку
             
-            # Пробуем использовать wait() с таймаутом
+            # Пробуем использовать wait() с таймаутом (но не ждем долго)
             try:
-                # Ждем завершения авторизации с коротким таймаутом
                 import asyncio
-                await asyncio.wait_for(qr_login.wait(), timeout=1.0)
-                
-                # Если wait() завершился, проверяем статус
-                if await client.is_user_authorized():
-                    _clients[admin_user_id] = client
-                    del _pending_clients[admin_user_id]
-                    logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код")
-                    return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+                # Ждем завершения авторизации с очень коротким таймаутом (0.5 сек)
+                # Это нужно только для обновления внутреннего состояния qr_login
+                await asyncio.wait_for(qr_login.wait(), timeout=0.5)
             except asyncio.TimeoutError:
-                # Таймаут - QR-код еще не отсканирован или требуется пароль
-                # Проверяем еще раз статус
-                try:
-                    me = await client.get_me()
-                    if me:
-                        _clients[admin_user_id] = client
-                        del _pending_clients[admin_user_id]
-                        return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
-                except SessionPasswordNeededError:
+                # Таймаут - это нормально, продолжаем проверку статуса
+                pass
+            except Exception as wait_error:
+                # Другие ошибки при wait - игнорируем
+                error_msg = str(wait_error).lower()
+                if "password" in error_msg or "2fa" in error_msg:
                     logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
                     return False, "2FA_PASSWORD_REQUIRED"
-                except Exception:
-                    pass  # Игнорируем другие ошибки
             
-            # Если дошли сюда - QR-код еще не отсканирован
-            return False, "QR-код еще не отсканирован. Отсканируйте QR-код в Telegram на телефоне."
+            # После wait() проверяем статус еще раз
+            try:
+                # Переподключаемся для обновления статуса
+                if not client.is_connected():
+                    await client.connect()
+                
+                # Проверяем статус авторизации еще раз
+                is_authorized = await client.is_user_authorized()
+                if is_authorized:
+                    _clients[admin_user_id] = client
+                    del _pending_clients[admin_user_id]
+                    logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код (после wait)")
+                    return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+                
+                # Пробуем get_me() еще раз
+                me = await client.get_me()
+                if me:
+                    _clients[admin_user_id] = client
+                    del _pending_clients[admin_user_id]
+                    logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код (get_me после wait)")
+                    return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+            except SessionPasswordNeededError:
+                logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
+                return False, "2FA_PASSWORD_REQUIRED"
+            except Exception as final_check_error:
+                # Если get_me() все еще не работает - возможно еще не отсканирован
+                error_msg = str(final_check_error).lower()
+                if "password" in error_msg or "2fa" in error_msg:
+                    logger.info(f"Для админа {admin_user_id} требуется пароль 2FA после QR-кода")
+                    return False, "2FA_PASSWORD_REQUIRED"
+            
+            # Если дошли сюда - QR-код еще не отсканирован или авторизация не завершена
+            return False, "QR-код еще не отсканирован или авторизация не завершена. Отсканируйте QR-код в Telegram на телефоне и нажмите 'Проверить авторизацию' снова."
             
         except SessionPasswordNeededError:
             # Требуется пароль 2FA после QR-кода
