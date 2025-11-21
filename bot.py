@@ -1857,6 +1857,18 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     # Проверяем, является ли telegram_id номером телефона
     is_phone = is_phone_number(telegram_id) if telegram_id else False
     
+    # Получаем username бота для ссылки
+    bot_username = "нашбот"  # По умолчанию
+    bot_link = WEBAPP_URL  # Fallback на приложение
+    try:
+        if bot:
+            bot_info = await bot.get_me()
+            if bot_info and bot_info.username:
+                bot_username = bot_info.username
+                bot_link = f"https://t.me/{bot_username}"
+    except:
+        pass
+    
     # Создаем текст приглашения согласно требованиям
     invitation_text = (
         f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся и хотим разделить "
@@ -2093,17 +2105,19 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         
         # Получаем username бота для инструкции
         bot_username = "нашбот"  # По умолчанию
+        bot_link = WEBAPP_URL  # Fallback на приложение
         try:
             if bot:
                 bot_info = await bot.get_me()
                 if bot_info and bot_info.username:
                     bot_username = f"@{bot_info.username}"
+                    bot_link = f"https://t.me/{bot_info.username}"
         except:
             pass
         
         # Объединяем текст приглашения с инструкцией и ссылкой для копирования
         full_text_for_copy = f"{invitation_text}\n\n"
-        full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт или откройте приложение по ссылке: {WEBAPP_URL}"
+        full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
         
         # Отправляем полный текст для копирования
         await callback.message.answer(
@@ -2141,29 +2155,38 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     # (telegram_id теперь точно username)
     from urllib.parse import quote
     
-    # Создаем deep link с текстом приглашения + ссылкой на приложение
-    invitation_with_link = f"{invitation_text}\n\n🔗 Открыть приглашение: {WEBAPP_URL}"
+    # Получаем username бота для ссылки
+    bot_username = "нашбот"  # По умолчанию
+    bot_link = WEBAPP_URL  # Fallback на приложение
+    try:
+        if bot:
+            bot_info = await bot.get_me()
+            if bot_info and bot_info.username:
+                bot_username = bot_info.username
+                bot_link = f"https://t.me/{bot_username}"
+    except:
+        pass
+    
+    # Создаем deep link с текстом приглашения + ссылкой на бота (не на приложение)
+    invitation_with_link = f"{invitation_text}\n\n🔗 Перейдите в бота: {bot_link}"
     encoded_text = quote(invitation_with_link)
     if len(encoded_text) > 2000:
         # Используем короткую версию для deep link
-        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение: {WEBAPP_URL}"
+        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Перейдите в бота: {bot_link}"
         encoded_text = quote(short_text)
     
     username_clean = telegram_id.lstrip('@')
     
-    # Пробуем разные форматы deep link для открытия диалога с текстом
-    # Формат https://t.me/{username}?text={text} работает в большинстве случаев
-    # Если не работает, можно попробовать tg://msg?text={text}&to={username}
-    
-    # Используем веб-формат как основной (более надежный и работает везде)
-    deep_link = f"https://t.me/{username_clean}?text={encoded_text}"
+    # Используем формат tg://msg?text={text}&to={username} - более надежный для мобильных
+    # Параметры должны быть в правильном порядке: сначала text, потом to
+    deep_link = f"tg://msg?text={encoded_text}&to={username_clean}"
     
     # Если deep link слишком длинный, используем короткую версию
     if len(deep_link) > 2000:
         # Используем короткую версию
-        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение: {WEBAPP_URL}"
+        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Перейдите в бота: {bot_link}"
         encoded_short = quote(short_text)
-        deep_link = f"https://t.me/{username_clean}?text={encoded_short}"
+        deep_link = f"tg://msg?text={encoded_short}&to={username_clean}"
     
     # Информация для админа
     display_telegram = telegram_id if not telegram_id.startswith("@") else telegram_id
@@ -2195,19 +2218,12 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     await callback.message.answer(info_text, reply_markup=send_button, parse_mode="HTML")
     
     # Отправляем текст приглашения для справки (на случай если deep link не работает)
-    # Получаем username бота для инструкции
-    bot_username = "нашбот"  # По умолчанию
-    try:
-        if bot:
-            bot_info = await bot.get_me()
-            if bot_info and bot_info.username:
-                bot_username = f"@{bot_info.username}"
-    except:
-        pass
+    # Получаем username бота для инструкции (используем уже полученные выше)
+    # bot_username и bot_link уже определены выше в этой функции
     
     # Объединяем текст приглашения с инструкцией и ссылкой для копирования
     full_text_for_copy = f"{invitation_text}\n\n"
-    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт или откройте приложение по ссылке: {WEBAPP_URL}"
+    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
     
     await callback.message.answer(
         f"📋 <b>Текст приглашения (для справки, если deep link не работает):</b>\n\n"
