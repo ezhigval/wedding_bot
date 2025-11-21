@@ -4,7 +4,7 @@
 """
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,9 @@ except ImportError:
 
 # Словарь клиентов для каждого админа (ключ - user_id админа)
 _clients = {}
+
+# Словарь клиентов, ожидающих код подтверждения (ключ - user_id админа)
+_pending_clients = {}
 
 def normalize_admin_phone(phone: str) -> str:
     """
@@ -100,13 +103,23 @@ async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, pho
         
         # Проверяем, авторизован ли клиент
         if not await client.is_user_authorized():
-            logger.warning(f"Telegram клиент для админа {admin_user_id} не авторизован. Нужно отправить код подтверждения.")
-            # Отправляем код
-            await client.send_code_request(phone_normalized)
-            # В реальном использовании нужно будет запросить код у админа
-            # Пока возвращаем None
-            await client.disconnect()
-            return None
+            logger.info(f"Telegram клиент для админа {admin_user_id} не авторизован. Отправляем код подтверждения...")
+            try:
+                # Отправляем код подтверждения
+                code_request = await client.send_code_request(phone_normalized)
+                # Сохраняем клиент в словарь ожидающих авторизации
+                _pending_clients[admin_user_id] = {
+                    'client': client,
+                    'phone': phone_normalized,
+                    'phone_code_hash': code_request.phone_code_hash
+                }
+                logger.info(f"Код подтверждения отправлен на номер {phone_normalized} для админа {admin_user_id}")
+                # Возвращаем None, чтобы бот мог запросить код у админа
+                return None
+            except Exception as e:
+                logger.error(f"Ошибка отправки кода подтверждения для админа {admin_user_id}: {e}")
+                await client.disconnect()
+                return None
         
         # Сохраняем клиент
         _clients[admin_user_id] = client
@@ -222,13 +235,99 @@ async def get_username_by_phone(phone_number: str, admin_user_id: int = None, cl
         logger.error(traceback.format_exc())
         return None
 
+async def authorize_with_code(admin_user_id: int, code: str) -> Tuple[bool, str]:
+    """
+    Авторизовать Telegram клиент с кодом подтверждения
+    
+    Args:
+        admin_user_id: User ID админа
+        code: Код подтверждения из Telegram
+    
+    Returns:
+        (success: bool, message: str) - успех авторизации и сообщение
+    """
+    if not TELETHON_AVAILABLE:
+        return False, "Telethon недоступен"
+    
+    if admin_user_id not in _pending_clients:
+        return False, "Нет ожидающего авторизации клиента. Попробуйте использовать функцию поиска username по номеру телефона."
+    
+    try:
+        pending = _pending_clients[admin_user_id]
+        client = pending['client']
+        phone_code_hash = pending['phone_code_hash']
+        
+        # Пытаемся авторизоваться с кодом
+        try:
+            await client.sign_in(phone=pending['phone'], code=code, phone_code_hash=phone_code_hash)
+            
+            # Проверяем, авторизован ли клиент
+            if await client.is_user_authorized():
+                # Перемещаем клиент в активные
+                _clients[admin_user_id] = client
+                del _pending_clients[admin_user_id]
+                logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован")
+                return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+            else:
+                return False, "❌ Авторизация не удалась. Проверьте код и попробуйте снова."
+        except SessionPasswordNeededError:
+            # Требуется пароль 2FA
+            logger.info(f"Для админа {admin_user_id} требуется пароль 2FA")
+            return False, "2FA_PASSWORD_REQUIRED"  # Специальный код для запроса пароля
+        except Exception as e:
+            logger.error(f"Ошибка авторизации с кодом для админа {admin_user_id}: {e}")
+            return False, f"❌ Ошибка авторизации: {str(e)}"
+    except Exception as e:
+        logger.error(f"Ошибка при авторизации клиента для админа {admin_user_id}: {e}")
+        return False, f"❌ Ошибка: {str(e)}"
+
+async def authorize_with_password(admin_user_id: int, password: str) -> Tuple[bool, str]:
+    """
+    Авторизовать Telegram клиент с паролем 2FA
+    
+    Args:
+        admin_user_id: User ID админа
+        password: Пароль двухфакторной аутентификации
+    
+    Returns:
+        (success: bool, message: str) - успех авторизации и сообщение
+    """
+    if not TELETHON_AVAILABLE:
+        return False, "Telethon недоступен"
+    
+    if admin_user_id not in _pending_clients:
+        return False, "Нет ожидающего авторизации клиента"
+    
+    try:
+        pending = _pending_clients[admin_user_id]
+        client = pending['client']
+        
+        # Авторизуемся с паролем
+        await client.sign_in(password=password)
+        
+        # Проверяем, авторизован ли клиент
+        if await client.is_user_authorized():
+            # Перемещаем клиент в активные
+            _clients[admin_user_id] = client
+            del _pending_clients[admin_user_id]
+            logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован с паролем 2FA")
+            return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+        else:
+            return False, "❌ Авторизация не удалась. Проверьте пароль и попробуйте снова."
+    except Exception as e:
+        logger.error(f"Ошибка авторизации с паролем для админа {admin_user_id}: {e}")
+        return False, f"❌ Ошибка авторизации: {str(e)}"
+
 async def close_client(admin_user_id: int = None):
     """Закрыть соединение с Telegram для конкретного админа или всех"""
-    global _clients
+    global _clients, _pending_clients
     if admin_user_id:
         if admin_user_id in _clients:
             await _clients[admin_user_id].disconnect()
             del _clients[admin_user_id]
+        if admin_user_id in _pending_clients:
+            await _pending_clients[admin_user_id]['client'].disconnect()
+            del _pending_clients[admin_user_id]
     else:
         # Закрываем все клиенты
         for client in _clients.values():
@@ -236,5 +335,11 @@ async def close_client(admin_user_id: int = None):
                 await client.disconnect()
             except:
                 pass
+        for pending in _pending_clients.values():
+            try:
+                await pending['client'].disconnect()
+            except:
+                pass
         _clients.clear()
+        _pending_clients.clear()
 
