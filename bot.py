@@ -1899,18 +1899,25 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         
         await callback.message.answer(info_text, reply_markup=back_keyboard, parse_mode="HTML")
         
-        # Отправляем текст для копирования
-        await callback.message.answer(
-            f"📋 <b>Текст для копирования:</b>\n\n"
-            f"<code>{invitation_text}</code>",
-            parse_mode="HTML"
-        )
+        # Получаем username бота для инструкции
+        bot_username = "нашбот"  # По умолчанию
+        try:
+            if bot:
+                bot_info = await bot.get_me()
+                if bot_info and bot_info.username:
+                    bot_username = f"@{bot_info.username}"
+        except:
+            pass
         
-        # Отправляем ссылку на приложение
+        # Объединяем текст приглашения с инструкцией и ссылкой для копирования
+        full_text_for_copy = f"{invitation_text}\n\n"
+        full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт или откройте приложение по ссылке: {WEBAPP_URL}"
+        
+        # Отправляем полный текст для копирования
         await callback.message.answer(
-            f"🔗 <b>Ссылка на приложение:</b>\n\n"
-            f"<code>{WEBAPP_URL}</code>\n\n"
-            f"💡 Скопируйте ссылку и отправьте гостю",
+            f"📋 <b>Текст для копирования (все в одном сообщении):</b>\n\n"
+            f"<code>{full_text_for_copy}</code>\n\n"
+            f"💡 Скопируйте весь текст выше и отправьте гостю",
             parse_mode="HTML"
         )
         
@@ -1951,7 +1958,18 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
         encoded_text = quote(short_text)
     
     username_clean = telegram_id.lstrip('@')
+    
+    # Используем формат tg://msg для открытия диалога с предзаполненным текстом
+    # Формат: tg://msg?to={username}&text={encoded_text}
+    # username должен быть без @
     deep_link = f"tg://msg?to={username_clean}&text={encoded_text}"
+    
+    # Если deep link слишком длинный, используем короткую версию
+    if len(deep_link) > 2000:
+        # Используем короткую версию
+        short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение: {WEBAPP_URL}"
+        encoded_short = quote(short_text)
+        deep_link = f"tg://msg?to={username_clean}&text={encoded_short}"
     
     # Информация для админа
     display_telegram = telegram_id if not telegram_id.startswith("@") else telegram_id
