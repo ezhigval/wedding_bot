@@ -2151,17 +2151,19 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     
     username_clean = telegram_id.lstrip('@')
     
-    # Используем формат tg://msg для открытия диалога с предзаполненным текстом
-    # Формат: tg://msg?to={username}&text={encoded_text}
-    # username должен быть без @
-    deep_link = f"tg://msg?to={username_clean}&text={encoded_text}"
+    # Пробуем разные форматы deep link для открытия диалога с текстом
+    # Формат https://t.me/{username}?text={text} работает в большинстве случаев
+    # Если не работает, можно попробовать tg://msg?text={text}&to={username}
+    
+    # Используем веб-формат как основной (более надежный и работает везде)
+    deep_link = f"https://t.me/{username_clean}?text={encoded_text}"
     
     # Если deep link слишком длинный, используем короткую версию
     if len(deep_link) > 2000:
         # Используем короткую версию
         short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Открой приглашение: {WEBAPP_URL}"
         encoded_short = quote(short_text)
-        deep_link = f"tg://msg?to={username_clean}&text={encoded_short}"
+        deep_link = f"https://t.me/{username_clean}?text={encoded_short}"
     
     # Информация для админа
     display_telegram = telegram_id if not telegram_id.startswith("@") else telegram_id
@@ -2174,13 +2176,15 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     info_text += "1. Нажмите кнопку 'Отправить автоматически' ниже\n"
     info_text += "2. Откроется диалог с предзаполненным текстом и ссылкой\n"
     info_text += "3. Отправьте сообщение\n\n"
-    info_text += "✅ <i>Текст и ссылка уже подготовлены в диалоге!</i>"
+    info_text += "✅ <i>Текст и ссылка уже подготовлены в диалоге!</i>\n\n"
+    info_text += "⚠️ <i>Если кнопка не открывает диалог, скопируйте текст ниже и отправьте вручную</i>"
     
     # Кнопка "Отправить автоматически" с deep link
+    # Используем веб-формат, который работает и в мобильных приложениях
     send_button = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="✅ Отправить автоматически",
-            url=deep_link
+            url=deep_link  # https://t.me/username?text=... работает везде
         )],
         [InlineKeyboardButton(
             text="⬅️ Вернуться к списку",
@@ -2190,12 +2194,25 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     
     await callback.message.answer(info_text, reply_markup=send_button, parse_mode="HTML")
     
-    # Отправляем текст приглашения для справки
+    # Отправляем текст приглашения для справки (на случай если deep link не работает)
+    # Получаем username бота для инструкции
+    bot_username = "нашбот"  # По умолчанию
+    try:
+        if bot:
+            bot_info = await bot.get_me()
+            if bot_info and bot_info.username:
+                bot_username = f"@{bot_info.username}"
+    except:
+        pass
+    
+    # Объединяем текст приглашения с инструкцией и ссылкой для копирования
+    full_text_for_copy = f"{invitation_text}\n\n"
+    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт или откройте приложение по ссылке: {WEBAPP_URL}"
+    
     await callback.message.answer(
-        f"📋 <b>Текст приглашения (для справки):</b>\n\n"
-        f"<code>{invitation_text}</code>\n\n"
-        f"🔗 <b>Ссылка на приложение:</b>\n"
-        f"<code>{WEBAPP_URL}</code>",
+        f"📋 <b>Текст приглашения (для справки, если deep link не работает):</b>\n\n"
+        f"<code>{full_text_for_copy}</code>\n\n"
+        f"💡 Скопируйте весь текст выше и отправьте гостю вручную, если кнопка не работает",
         parse_mode="HTML"
     )
     
