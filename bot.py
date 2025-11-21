@@ -22,6 +22,13 @@ from google_sheets import (
     delete_guest_from_sheets, update_invitation_user_id, mark_invitation_as_sent
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
+from llm_chat import get_llm_response, check_ollama_available
+from llm_scripts import save_script, format_script_with_llm, get_all_scripts, load_scripts
+from group_context import (
+    add_message, get_recent_messages, find_question_in_context,
+    should_respond_to_message
+)
+from admin_commands import detect_admin_command, execute_command
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +65,10 @@ class DeleteGuestStates(StatesGroup):
 class TelegramClientAuthStates(StatesGroup):
     waiting_code = State()  # Ожидание кода подтверждения
     waiting_password = State()  # Ожидание пароля 2FA (если включен)
+
+# Состояния для записи правил/скриптов для LLM
+class LLMScriptStates(StatesGroup):
+    waiting_script = State()  # Ожидание текста правила/скрипта
 
 async def get_user_display_name(user):
     """Получает имя пользователя из Telegram"""
@@ -1291,6 +1302,9 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
+    
+    # Очищаем все состояния
+    await state.clear()
     
     # Очищаем состояние при возврате в меню
     await state.clear()
@@ -2866,6 +2880,245 @@ async def group_list_members(callback: CallbackQuery):
             )
     
     await callback.answer()
+
+# Обработчик для записи правил/скриптов для LLM
+@dp.callback_query(F.data == "admin_add_script")
+async def admin_add_script_start(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса записи правила для LLM"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(
+        "📝 <b>Запись правила для LLM</b>\n\n"
+        "Напишите правило или инструкцию, которую нужно добавить в скрипты ответов бота.\n\n"
+        "Например:\n"
+        "• 'Если спрашивают про парковку, говори что есть бесплатная парковка на 50 мест'\n"
+        "• 'На вопросы про подарки отвечай что предпочтительны деньги или вино'\n"
+        "• 'Если гость спрашивает про время начала, говори что регистрация в 14:30'\n\n"
+        "Бот автоматически отформатирует и добавит это правило.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(LLMScriptStates.waiting_script)
+    await callback.answer()
+
+@dp.message(LLMScriptStates.waiting_script)
+async def process_script_message(message: Message, state: FSMContext):
+    """Обработка текста правила от админа"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+    
+    if not message.text or not message.text.strip():
+        await message.answer("❌ Пожалуйста, отправьте текст правила.")
+        return
+    
+    raw_script = message.text.strip()
+    admin_name = message.from_user.first_name or "Админ"
+    if message.from_user.last_name:
+        admin_name = f"{message.from_user.first_name} {message.from_user.last_name}"
+    
+    # Показываем, что обрабатываем
+    processing_msg = await message.answer("⏳ Обрабатываю правило с помощью LLM...")
+    
+    try:
+        # Форматируем правило с помощью LLM
+        formatted_script = await format_script_with_llm(raw_script)
+        
+        if not formatted_script:
+            formatted_script = raw_script  # Используем исходный текст, если LLM не ответил
+        
+        # Сохраняем скрипт
+        success = save_script(formatted_script, admin_name=admin_name)
+        
+        if success:
+            await processing_msg.delete()
+            await message.answer(
+                f"✅ <b>Правило успешно добавлено!</b>\n\n"
+                f"<b>Исходный текст:</b>\n{raw_script}\n\n"
+                f"<b>Отформатированное правило:</b>\n{formatted_script}\n\n"
+                f"Правило будет использоваться ботом при ответах на вопросы гостей.",
+                parse_mode="HTML"
+            )
+            logger.info(f"Админ {admin_name} (ID: {message.from_user.id}) добавил правило: {formatted_script[:50]}...")
+        else:
+            await processing_msg.delete()
+            await message.answer(
+                "❌ Ошибка при сохранении правила. Попробуйте еще раз.",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка обработки правила: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await processing_msg.delete()
+        await message.answer(
+            f"❌ Произошла ошибка при обработке правила: {str(e)}\n\n"
+            f"Попробуйте еще раз или сохраните правило вручную.",
+            parse_mode="HTML"
+        )
+    
+    await state.clear()
+    
+    # Показываем админ-меню
+    admin_text = f"""
+🔧 <b>Панель администратора</b>
+
+💒 Свадьба: {GROOM_NAME} и {BRIDE_NAME}
+📅 Дата: {format_wedding_date()}
+🌐 Mini App: {WEBAPP_URL}
+
+Используйте кнопки ниже для управления:
+"""
+    await message.answer(admin_text, reply_markup=get_admin_keyboard(), parse_mode="HTML")
+
+# Обработчик сообщений из группового чата с LLM
+@dp.message(F.chat.type.in_(["group", "supergroup"]))
+async def handle_group_message(message: Message):
+    """Обработчик сообщений из группового чата с использованием LLM"""
+    # Проверяем, что это нужная группа
+    if GROUP_ID and str(message.chat.id) != str(GROUP_ID):
+        return  # Игнорируем сообщения из других групп
+    
+    # Игнорируем сообщения от самого бота
+    if message.from_user and message.from_user.is_bot:
+        return
+    
+    # Игнорируем команды (они обрабатываются отдельно)
+    if message.text and message.text.startswith('/'):
+        return
+    
+    # Игнорируем пустые сообщения
+    if not message.text or not message.text.strip():
+        return
+    
+    # Проверяем, что бот инициализирован
+    if bot is None:
+        logger.warning("Бот не инициализирован, пропускаем обработку сообщения")
+        return
+    
+    # Получаем имя пользователя
+    user_name = message.from_user.first_name or "Гость"
+    if message.from_user.last_name:
+        user_name = f"{message.from_user.first_name} {message.from_user.last_name}"
+    
+    user_id = message.from_user.id if message.from_user else None
+    
+    # Проверяем, является ли это командой-действием от админа
+    if user_id:
+        is_admin_user = is_admin(user_id)
+        if is_admin_user:
+            command_info = await detect_admin_command(message.text, user_id, is_admin_user)
+            if command_info:
+                # Это команда-действие от админа, выполняем её
+                try:
+                    result = await execute_command(command_info, bot, message.chat.id, user_id)
+                    await message.reply(result, parse_mode="HTML")
+                    logger.info(f"Выполнена команда от админа {user_id}: {command_info.get('command')}")
+                    return  # Не обрабатываем дальше как обычное сообщение
+                except Exception as e:
+                    logger.error(f"Ошибка выполнения команды от админа: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    await message.reply(f"❌ Ошибка выполнения команды: {str(e)}")
+                    return
+    
+    # Добавляем сообщение в контекст (всегда, для отслеживания)
+    if user_id:
+        add_message(
+            chat_id=message.chat.id,
+            user_id=user_id,
+            user_name=user_name,
+            text=message.text
+        )
+    
+    # Проверяем, должен ли бот отвечать на это сообщение
+    bot_username = bot.username if bot else None
+    
+    # Проверяем reply_to_message
+    reply_to_dict = None
+    if message.reply_to_message:
+        reply_user = message.reply_to_message.from_user
+        reply_to_dict = {
+            "from_user": {
+                "is_bot": reply_user.is_bot if reply_user else False
+            }
+        }
+    
+    should_respond = should_respond_to_message(
+        message_text=message.text,
+        bot_username=bot_username,
+        reply_to_message=reply_to_dict
+    )
+    
+    question_context = None
+    
+    # Если в текущем сообщении есть слово "бот" или упоминание, проверяем контекст на наличие вопроса
+    if should_respond:
+        # Ищем вопрос в предыдущих сообщениях от другого пользователя
+        question_context = find_question_in_context(
+            chat_id=message.chat.id,
+            current_user_id=user_id
+        )
+        
+        if question_context:
+            logger.info(f"Найден вопрос в контексте от {question_context['user_name']}: {question_context['text'][:50]}...")
+    
+    # Если нет прямого обращения и нет вопроса в контексте - не отвечаем
+    if not should_respond:
+        # Бот не должен отвечать на это сообщение
+        return
+    
+    # Проверяем доступность Ollama
+    ollama_available = await check_ollama_available()
+    if not ollama_available:
+        logger.warning("Ollama недоступен, пропускаем обработку сообщения")
+        return
+    
+    try:
+        # Показываем индикатор печати
+        await bot.send_chat_action(message.chat.id, "typing")
+        
+        # Формируем контекст для LLM
+        user_message = message.text
+        context_user_name = user_name
+        
+        # Если нашли вопрос в контексте, объединяем его с текущим сообщением
+        if question_context:
+            # Объединяем вопрос и текущее сообщение
+            user_message = f"{question_context['user_name']}: {question_context['text']}\n{user_name}: {message.text}"
+            logger.info(f"Используется контекст: вопрос от {question_context['user_name']}, ответ от {user_name}")
+        
+        # Получаем ответ от LLM с сохранением в память
+        user_id_str = str(user_id) if user_id else None
+        chat_id_str = str(message.chat.id)
+        
+        response = await get_llm_response(
+            user_message=user_message,
+            user_name=context_user_name,
+            chat_id=chat_id_str,
+            user_id=user_id_str
+        )
+        
+        if response:
+            # Отвечаем на сообщение
+            await message.reply(response)
+            logger.info(f"LLM ответил на сообщение от {user_name} в группе {message.chat.id}")
+        else:
+            logger.warning(f"LLM не вернул ответ на сообщение от {user_name}")
+            
+    except Exception as e:
+        logger.error(f"Ошибка при обработке группового сообщения: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # Не отправляем ошибку в чат, чтобы не спамить
 
 async def init_bot():
     """Инициализация бота"""

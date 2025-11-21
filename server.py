@@ -13,6 +13,7 @@ from pathlib import Path
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+from llm_memory import init_memory_db
 
 # Настройка логирования с выводом в stdout для Render
 logging.basicConfig(
@@ -140,6 +141,14 @@ async def start_web_server():
 async def main():
     """Главная функция"""
     try:
+        # Инициализация базы данных памяти для LLM
+        try:
+            await init_memory_db()
+            logger.info("✅ База данных памяти LLM инициализирована")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка инициализации базы данных памяти: {e}")
+            # Продолжаем работу даже если память не инициализирована
+        
         # Инициализация бота
         bot = await init_bot()
         if bot is None:

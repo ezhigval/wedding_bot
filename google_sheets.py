@@ -17,7 +17,7 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME
+from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME, GOOGLE_SHEETS_RULES_SHEET_NAME
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -1156,3 +1156,131 @@ def _delete_guest_from_sheets_sync(user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+async def save_ai_rule_to_sheets(rule_text: str, admin_name: str = None) -> bool:
+    """
+    Сохранить правило ИИ в Google Sheets (вкладка "Правила ИИ")
+    
+    Args:
+        rule_text: Текст правила
+        admin_name: Имя админа, который добавил правило (опционально)
+    
+    Returns:
+        True если успешно сохранено, False в случае ошибки
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _save_ai_rule_to_sheets_sync, rule_text, admin_name)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка сохранения правила ИИ в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _save_ai_rule_to_sheets_sync(rule_text: str, admin_name: str = None) -> bool:
+    """Синхронная функция для сохранения правила ИИ в Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Пытаемся получить вкладку, если её нет - создаем
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_RULES_SHEET_NAME)
+        except Exception:
+            logger.info(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' не найдена, создаем...")
+            worksheet = spreadsheet.add_worksheet(title=GOOGLE_SHEETS_RULES_SHEET_NAME, rows=1000, cols=3)
+            # Добавляем заголовки
+            worksheet.update('A1:C1', [['Правило', 'Админ', 'Дата']])
+            logger.info(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' создана")
+        
+        # Получаем все данные
+        all_values = worksheet.get_all_values()
+        
+        # Определяем следующую пустую строку (пропускаем заголовок)
+        empty_row = len(all_values) + 1
+        if len(all_values) == 0:
+            # Если лист пустой, добавляем заголовки
+            worksheet.update('A1:C1', [['Правило', 'Админ', 'Дата']])
+            empty_row = 2
+        
+        # Подготавливаем данные для записи
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        row_data = [rule_text, admin_name or "Система", current_date]
+        
+        # Записываем в таблицу
+        worksheet.update(f'A{empty_row}:C{empty_row}', [row_data])
+        
+        logger.info(f"Правило ИИ сохранено в Google Sheets (строка {empty_row})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения правила ИИ в Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+async def get_ai_rules_from_sheets() -> List[str]:
+    """
+    Получить все правила ИИ из Google Sheets (вкладка "Правила ИИ")
+    
+    Returns:
+        Список текстов правил
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _get_ai_rules_from_sheets_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка получения правил ИИ из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+def _get_ai_rules_from_sheets_sync() -> List[str]:
+    """Синхронная функция для получения правил ИИ из Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_RULES_SHEET_NAME)
+        except Exception:
+            logger.warning(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' не найдена")
+            return []
+        
+        # Получаем все данные (столбец A - правило)
+        all_values = worksheet.get_all_values()
+        
+        if len(all_values) <= 1:
+            return []  # Только заголовок или пусто
+        
+        # Пропускаем заголовок и собираем правила
+        rules = []
+        for row in all_values[1:]:  # Пропускаем первую строку (заголовок)
+            if row and len(row) > 0 and row[0].strip():  # Проверяем, что есть правило
+                rules.append(row[0].strip())
+        
+        return rules
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения правил ИИ из Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []

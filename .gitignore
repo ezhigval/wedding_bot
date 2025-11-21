@@ -28,3 +28,13 @@ webapp/LOTTIE_SETUP.md
 *.lottie
 res/*.lottie
 
+# Тестовые скрипты (можно добавить в git, но пока в игноре)
+# test_llm.py
+# test_memory.py
+
+# База данных памяти LLM (локальные данные)
+data/llm_memory.db
+
+# Скрипты ответов LLM (можно добавить в git, но пока в игноре для локальной разработки)
+# response_scripts.txt
+

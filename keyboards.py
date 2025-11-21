@@ -31,6 +31,7 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="🔐 Авторизовать Telegram Client", callback_data="admin_auth_telegram")],
         [InlineKeyboardButton(text="🗑️ Удалить гостя", callback_data="admin_delete_guest")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
+        [InlineKeyboardButton(text="📝 Записать правило для LLM", callback_data="admin_add_script")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
     ])
