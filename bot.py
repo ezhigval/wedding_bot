@@ -565,37 +565,25 @@ async def process_auth_code(message: Message, state: FSMContext, code: str):
             parse_mode="HTML"
         )
     elif msg == "EXPIRED_CODE":
-        # Код устарел - автоматически запрашиваем новый код
-        await message.answer("⏰ Код устарел. Запрашиваю новый код...")
-        
-        # Автоматически запрашиваем новый код
-        success, resend_msg = await resend_code(admin_user_id)
-        
-        if success:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-            ])
-            await message.answer(
-                f"✅ {resend_msg}\n\n"
-                "⚡ <b>Введите новый код как можно быстрее!</b>\n\n"
-                "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
-                "Введите код:\n"
-                "<code>/auth_code [код]</code>\n\n"
-                "Или просто отправьте код как обычное сообщение.\n\n"
-                "💡 <b>Совет:</b> Откройте Telegram заранее, чтобы быстро скопировать код.",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-        else:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Начать заново", callback_data="admin_auth_telegram")],
-                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-            ])
-            await message.answer(
-                f"❌ Не удалось запросить новый код: {resend_msg}\n\n"
-                "Попробуйте начать процесс авторизации заново.",
-                reply_markup=keyboard
-            )
+        # Код устарел - предлагаем запросить новый вручную
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+            [InlineKeyboardButton(text="🔄 Попробовать использовать последний код", callback_data="try_last_code")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await message.answer(
+            "⏰ <b>Код подтверждения устарел</b>\n\n"
+            "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
+            "💡 <b>Что делать:</b>\n\n"
+            "1. <b>Попробуйте использовать последний полученный код</b>\n"
+            "   Если вы получили код ранее, он может быть еще действителен.\n\n"
+            "2. <b>Запросите новый код</b>\n"
+            "   Нажмите 'Запросить новый код' для получения нового кода.\n\n"
+            "⚠️ <b>Внимание:</b> Telegram ограничивает количество попыток отправки кода.\n"
+            "Если все варианты использованы, нужно подождать 24 часа.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
     else:
         # Другие ошибки
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -904,6 +892,51 @@ async def resend_auth_code_callback(callback: CallbackQuery, state: FSMContext):
             reply_markup=keyboard,
             parse_mode="HTML"
         )
+    elif msg == "ALL_OPTIONS_USED":
+        # Все варианты отправки кода использованы
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать использовать последний код", callback_data="try_last_code")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "⚠️ <b>Все варианты отправки кода использованы</b>\n\n"
+            "Telegram ограничивает количество попыток отправки кода для безопасности.\n\n"
+            "💡 <b>Что делать:</b>\n\n"
+            "1. <b>Попробуйте использовать последний полученный код</b>\n"
+            "   Если вы получили код ранее, он может быть еще действителен.\n\n"
+            "2. <b>Подождите 24 часа</b>\n"
+            "   Лимит на отправку кодов сбрасывается через 24 часа.\n\n"
+            "3. <b>Используйте другой номер телефона</b>\n"
+            "   Если у вас есть доступ к другому номеру с Telegram аккаунтом.\n\n"
+            "4. <b>Авторизуйтесь через официальное приложение Telegram</b>\n"
+            "   После авторизации в приложении, сессия может синхронизироваться.\n\n"
+            "🔒 <i>Это ограничение безопасности от Telegram, мы не можем его обойти.</i>",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    elif msg.startswith("RATE_LIMIT:"):
+        # Ограничение частоты запросов
+        wait_seconds = int(msg.split(":")[1])
+        wait_minutes = wait_seconds // 60
+        wait_seconds_remainder = wait_seconds % 60
+        
+        if wait_minutes > 0:
+            wait_time = f"{wait_minutes} мин. {wait_seconds_remainder} сек."
+        else:
+            wait_time = f"{wait_seconds} сек."
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать использовать последний код", callback_data="try_last_code")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            f"⏳ <b>Ограничение частоты запросов</b>\n\n"
+            f"Подождите <b>{wait_time}</b> перед повторным запросом кода.\n\n"
+            "💡 <b>Попробуйте использовать последний полученный код</b>\n"
+            "Если вы получили код ранее, он может быть еще действителен.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Начать заново", callback_data="admin_auth_telegram")],
@@ -914,6 +947,51 @@ async def resend_auth_code_callback(callback: CallbackQuery, state: FSMContext):
             "Попробуйте начать процесс авторизации заново.",
             reply_markup=keyboard
         )
+
+@dp.callback_query(F.data == "try_last_code")
+async def try_last_code_callback(callback: CallbackQuery, state: FSMContext):
+    """Попытка использовать последний полученный код"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    # Проверяем, есть ли ожидающий авторизации клиент
+    from telegram_client import _pending_clients
+    admin_user_id = callback.from_user.id
+    
+    if admin_user_id not in _pending_clients:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Начать авторизацию заново", callback_data="admin_auth_telegram")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "⚠️ Нет активного процесса авторизации.\n\n"
+            "Начните процесс авторизации заново.",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Переводим в состояние ожидания кода
+    await state.set_state(TelegramClientAuthStates.waiting_code)
+    await state.update_data(admin_user_id=admin_user_id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+    await callback.message.answer(
+        "💡 <b>Попробуйте использовать последний полученный код</b>\n\n"
+        "Если вы получили код подтверждения ранее, он может быть еще действителен.\n\n"
+        "Введите код:\n"
+        "<code>/auth_code [код]</code>\n\n"
+        "Или просто отправьте код как обычное сообщение.\n\n"
+        "⚠️ <b>Если код не подходит:</b>\n"
+        "• Подождите 24 часа для сброса лимита\n"
+        "• Или используйте другой номер телефона",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
 
 @dp.callback_query(F.data == "admin_auth_telegram")
 async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):

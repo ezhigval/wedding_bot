@@ -16,7 +16,9 @@ try:
         PhoneNumberInvalidError,
         PhoneCodeInvalidError,
         PhoneCodeExpiredError,
-        PhoneCodeEmptyError
+        PhoneCodeEmptyError,
+        FloodWaitError,
+        PhoneNumberFloodError
     )
     TELETHON_AVAILABLE = True
 except ImportError:
@@ -336,9 +338,32 @@ async def resend_code(admin_user_id: int) -> Tuple[bool, str]:
         
         logger.info(f"Новый код подтверждения отправлен для админа {admin_user_id}")
         return True, "✅ Новый код подтверждения отправлен в ваш Telegram"
+    except FloodWaitError as e:
+        # Ограничение частоты запросов
+        wait_seconds = e.seconds
+        wait_minutes = wait_seconds // 60
+        wait_seconds_remainder = wait_seconds % 60
+        
+        if wait_minutes > 0:
+            wait_time = f"{wait_minutes} мин. {wait_seconds_remainder} сек."
+        else:
+            wait_time = f"{wait_seconds} сек."
+        
+        logger.warning(f"Ограничение частоты запросов кода для админа {admin_user_id}: нужно подождать {wait_time}")
+        return False, f"RATE_LIMIT:{wait_seconds}"  # Специальный код с временем ожидания
+    except PhoneNumberFloodError:
+        # Все варианты отправки кода уже использованы
+        logger.warning(f"Все варианты отправки кода использованы для админа {admin_user_id}")
+        return False, "ALL_OPTIONS_USED"  # Специальный код
     except Exception as e:
-        logger.error(f"Ошибка повторной отправки кода для админа {admin_user_id}: {e}")
-        return False, f"❌ Ошибка отправки кода: {str(e)}"
+        error_msg = str(e).lower()
+        # Проверяем, не является ли это ошибкой о том, что все варианты использованы
+        if "all available options" in error_msg or "already used" in error_msg:
+            logger.warning(f"Все варианты отправки кода использованы для админа {admin_user_id}: {e}")
+            return False, "ALL_OPTIONS_USED"
+        else:
+            logger.error(f"Ошибка повторной отправки кода для админа {admin_user_id}: {e}")
+            return False, f"❌ Ошибка отправки кода: {str(e)}"
 
 async def authorize_with_password(admin_user_id: int, password: str) -> Tuple[bool, str]:
     """
