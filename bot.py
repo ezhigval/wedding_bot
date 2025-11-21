@@ -518,6 +518,10 @@ async def cmd_auth_code(message: Message, state: FSMContext):
         return
     
     code = command_parts[1].strip()
+    await process_auth_code(message, state, code)
+
+async def process_auth_code(message: Message, state: FSMContext, code: str):
+    """Обработка кода подтверждения"""
     admin_user_id = message.from_user.id
     
     await message.answer("⏳ Авторизую Telegram Client...")
@@ -526,20 +530,59 @@ async def cmd_auth_code(message: Message, state: FSMContext):
     success, msg = await authorize_with_code(admin_user_id, code)
     
     if success:
-        await message.answer(msg)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+        ])
+        await message.answer(msg, reply_markup=keyboard)
+        await state.clear()
     elif msg == "2FA_PASSWORD_REQUIRED":
         # Требуется пароль 2FA
         await state.set_state(TelegramClientAuthStates.waiting_password)
         await state.update_data(admin_user_id=admin_user_id)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
         await message.answer(
             "🔐 <b>Требуется пароль двухфакторной аутентификации</b>\n\n"
             "Введите пароль 2FA:\n\n"
             "<code>/auth_password [пароль]</code>\n\n"
             "Пример: <code>/auth_password mypassword123</code>",
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
     else:
-        await message.answer(msg)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="admin_auth_telegram")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await message.answer(msg, reply_markup=keyboard)
+
+# Обработка обычных сообщений в состоянии ожидания кода
+@dp.message(TelegramClientAuthStates.waiting_code)
+async def handle_auth_code_message(message: Message, state: FSMContext):
+    """Обработка кода подтверждения из обычного сообщения (без команды)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа.")
+        await state.clear()
+        return
+    
+    # Пробуем использовать текст сообщения как код
+    code = message.text.strip()
+    
+    # Проверяем, что это похоже на код (цифры, возможно с дефисами)
+    if not code.replace("-", "").replace(" ", "").isdigit():
+        await message.answer(
+            "❌ Неверный формат кода. Код должен содержать только цифры.\n\n"
+            "Попробуйте снова или используйте команду:\n"
+            "<code>/auth_code [код]</code>",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Убираем дефисы и пробелы
+    code = code.replace("-", "").replace(" ", "")
+    
+    await process_auth_code(message, state, code)
 
 @dp.message(Command("auth_password"))
 async def cmd_auth_password(message: Message, state: FSMContext):
@@ -560,6 +603,10 @@ async def cmd_auth_password(message: Message, state: FSMContext):
         return
     
     password = command_parts[1].strip()
+    await process_auth_password(message, state, password)
+
+async def process_auth_password(message: Message, state: FSMContext, password: str):
+    """Обработка пароля 2FA"""
     admin_user_id = message.from_user.id
     
     await message.answer("⏳ Авторизую Telegram Client с паролем 2FA...")
@@ -567,8 +614,25 @@ async def cmd_auth_password(message: Message, state: FSMContext):
     # Пытаемся авторизоваться с паролем
     success, msg = await authorize_with_password(admin_user_id, password)
     
-    await message.answer(msg)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+    ])
+    await message.answer(msg, reply_markup=keyboard)
     await state.clear()
+
+# Обработка обычных сообщений в состоянии ожидания пароля
+@dp.message(TelegramClientAuthStates.waiting_password)
+async def handle_auth_password_message(message: Message, state: FSMContext):
+    """Обработка пароля 2FA из обычного сообщения (без команды)"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа.")
+        await state.clear()
+        return
+    
+    # Используем текст сообщения как пароль
+    password = message.text.strip()
+    
+    await process_auth_password(message, state, password)
 
 @dp.callback_query(F.data == "auth_telegram_client")
 async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMContext):
@@ -603,7 +667,7 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
         return
     
     # Пытаемся инициализировать клиент (это отправит код)
-    await callback.message.answer("📱 Отправляю код подтверждения...")
+    await callback.message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
     client = await get_or_init_client(
         admin_user_id,
         admin_data['api_id'],
@@ -612,13 +676,30 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
     )
     
     if client:
-        await callback.message.answer("✅ Telegram Client уже авторизован!")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+            "Вы можете использовать поиск username по номеру телефона.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
     else:
+        # Код отправлен, переводим в состояние ожидания кода
+        await state.set_state(TelegramClientAuthStates.waiting_code)
+        await state.update_data(admin_user_id=admin_user_id)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
         await callback.message.answer(
             "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
-            "Используйте команду:\n"
+            "Введите код подтверждения:\n\n"
             "<code>/auth_code [код]</code>\n\n"
-            "Например: <code>/auth_code 12345</code>",
+            "Например: <code>/auth_code 12345</code>\n\n"
+            "💡 Код приходит в ваш Telegram (не в бота)",
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
 
@@ -730,12 +811,109 @@ async def admin_reload(callback: CallbackQuery):
 
 # Команды name_mapping удалены - все данные теперь в Google Sheets
 
+@dp.callback_query(F.data == "admin_auth_telegram")
+async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
+    """Авторизация Telegram Client через админское меню"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    admin_user_id = callback.from_user.id
+    
+    # Получаем данные админа из Google Sheets
+    admins_list = await get_admins_list()
+    admin_data = None
+    
+    for admin in admins_list:
+        if admin.get('user_id') == admin_user_id:
+            admin_data = admin
+            break
+    
+    if not admin_data or not admin_data.get('api_id') or not admin_data.get('api_hash') or not admin_data.get('phone'):
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "⚠️ <b>Telegram Client API не настроен</b>\n\n"
+            "Добавьте в Google Sheets (вкладка 'Админ бота'):\n"
+            "• API_ID (столбец D)\n"
+            "• API_HASH (столбец E)\n"
+            "• PHONE (столбец F) - формат: 79001234567 (без +)\n\n"
+            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Проверяем, не авторизован ли уже клиент
+    from telegram_client import _clients
+    if admin_user_id in _clients:
+        client = _clients[admin_user_id]
+        try:
+            if client.is_connected() and await client.is_user_authorized():
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+                ])
+                await callback.message.answer(
+                    "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+                    "Вы можете использовать поиск username по номеру телефона.",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                return
+        except:
+            pass
+    
+    # Пытаемся инициализировать клиент (это отправит код)
+    await callback.message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
+    
+    client = await get_or_init_client(
+        admin_user_id,
+        admin_data['api_id'],
+        admin_data['api_hash'],
+        admin_data['phone']
+    )
+    
+    if client:
+        # Клиент уже авторизован
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+            "Вы можете использовать поиск username по номеру телефона.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        # Код отправлен, переводим в состояние ожидания кода
+        await state.set_state(TelegramClientAuthStates.waiting_code)
+        await state.update_data(admin_user_id=admin_user_id)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
+            "Введите код подтверждения:\n\n"
+            "<code>/auth_code [код]</code>\n\n"
+            "Например: <code>/auth_code 12345</code>\n\n"
+            "💡 Код приходит в ваш Telegram (не в бота)",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
 @dp.callback_query(F.data == "admin_back")
-async def admin_back(callback: CallbackQuery):
+async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню админа"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
+    
+    # Очищаем состояние при возврате в меню
+    await state.clear()
     
     await callback.message.answer(
         "👋 <b>Главное меню</b>\n\n"
