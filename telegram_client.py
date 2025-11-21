@@ -111,19 +111,50 @@ async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, pho
         
         # Проверяем, авторизован ли клиент
         if not await client.is_user_authorized():
-            logger.info(f"Telegram клиент для админа {admin_user_id} не авторизован. Отправляем код подтверждения...")
+            logger.info(f"Telegram клиент для админа {admin_user_id} не авторизован. Пробуем QR-код авторизацию...")
             try:
-                # Отправляем код подтверждения
-                code_request = await client.send_code_request(phone_normalized)
-                # Сохраняем клиент в словарь ожидающих авторизации
-                _pending_clients[admin_user_id] = {
-                    'client': client,
-                    'phone': phone_normalized,
-                    'phone_code_hash': code_request.phone_code_hash
-                }
-                logger.info(f"Код подтверждения отправлен на номер {phone_normalized} для админа {admin_user_id}")
-                # Возвращаем None, чтобы бот мог запросить код у админа
-                return None
+                # Пробуем QR-код авторизацию (более удобный способ)
+                try:
+                    qr_login = await client.qr_login()
+                    # Сохраняем клиент в словарь ожидающих авторизации через QR
+                    _pending_clients[admin_user_id] = {
+                        'client': client,
+                        'phone': phone_normalized,
+                        'qr_login': qr_login,
+                        'auth_method': 'qr'
+                    }
+                    logger.info(f"QR-код авторизация инициализирована для админа {admin_user_id}")
+                    return None  # Возвращаем None, чтобы бот мог отправить QR-код
+                except Exception as qr_error:
+                    # Если QR-код не работает, используем код подтверждения
+                    logger.info(f"QR-код авторизация недоступна, используем код подтверждения: {qr_error}")
+                    
+                    # Отправляем код подтверждения
+                    # По умолчанию Telegram отправляет код через SMS или Telegram (если аккаунт уже авторизован в другом месте)
+                    code_request = await client.send_code_request(phone_normalized)
+                    
+                    # Определяем тип отправки кода
+                    code_type = "SMS"
+                    if hasattr(code_request, 'type'):
+                        if hasattr(code_request.type, 'type'):
+                            if 'sms' in str(code_request.type.type).lower():
+                                code_type = "SMS"
+                            elif 'call' in str(code_request.type.type).lower():
+                                code_type = "звонок"
+                            elif 'flash' in str(code_request.type.type).lower():
+                                code_type = "flash-звонок"
+                    
+                    # Сохраняем клиент в словарь ожидающих авторизации
+                    _pending_clients[admin_user_id] = {
+                        'client': client,
+                        'phone': phone_normalized,
+                        'phone_code_hash': code_request.phone_code_hash,
+                        'code_type': code_type,
+                        'auth_method': 'code'
+                    }
+                    logger.info(f"Код подтверждения отправлен на номер {phone_normalized} для админа {admin_user_id} (тип: {code_type})")
+                    # Возвращаем None, чтобы бот мог запросить код у админа
+                    return None
             except Exception as e:
                 logger.error(f"Ошибка отправки кода подтверждения для админа {admin_user_id}: {e}")
                 await client.disconnect()
@@ -307,6 +338,89 @@ async def authorize_with_code(admin_user_id: int, code: str) -> Tuple[bool, str]
                 return False, f"❌ Ошибка авторизации: {str(e)}"
     except Exception as e:
         logger.error(f"Ошибка при авторизации клиента для админа {admin_user_id}: {e}")
+        return False, f"❌ Ошибка: {str(e)}"
+
+async def get_qr_code(admin_user_id: int) -> Tuple[bool, str, Optional[str]]:
+    """
+    Получить QR-код для авторизации
+    
+    Args:
+        admin_user_id: User ID админа
+    
+    Returns:
+        (success: bool, message: str, qr_url: str) - успех, сообщение и URL QR-кода
+    """
+    if not TELETHON_AVAILABLE:
+        return False, "Telethon недоступен", None
+    
+    if admin_user_id not in _pending_clients:
+        return False, "Нет ожидающего авторизации клиента. Начните процесс авторизации заново.", None
+    
+    try:
+        pending = _pending_clients[admin_user_id]
+        
+        if pending.get('auth_method') != 'qr':
+            return False, "QR-код авторизация не инициализирована. Используйте код подтверждения.", None
+        
+        qr_login = pending.get('qr_login')
+        if not qr_login:
+            return False, "QR-код не найден. Начните процесс авторизации заново.", None
+        
+        # Получаем URL QR-кода
+        qr_url = qr_login.url
+        
+        return True, "QR-код готов", qr_url
+    except Exception as e:
+        logger.error(f"Ошибка получения QR-кода для админа {admin_user_id}: {e}")
+        return False, f"❌ Ошибка получения QR-кода: {str(e)}", None
+
+async def check_qr_authorization(admin_user_id: int) -> Tuple[bool, str]:
+    """
+    Проверить, была ли завершена QR-код авторизация
+    
+    Args:
+        admin_user_id: User ID админа
+    
+    Returns:
+        (success: bool, message: str) - успех авторизации и сообщение
+    """
+    if not TELETHON_AVAILABLE:
+        return False, "Telethon недоступен"
+    
+    if admin_user_id not in _pending_clients:
+        return False, "Нет ожидающего авторизации клиента"
+    
+    try:
+        pending = _pending_clients[admin_user_id]
+        
+        if pending.get('auth_method') != 'qr':
+            return False, "QR-код авторизация не инициализирована"
+        
+        client = pending['client']
+        qr_login = pending.get('qr_login')
+        
+        if not qr_login:
+            return False, "QR-код не найден"
+        
+        # Проверяем, была ли завершена авторизация
+        try:
+            # Ждем завершения авторизации (неблокирующий вызов)
+            await qr_login.wait()
+            
+            # Проверяем, авторизован ли клиент
+            if await client.is_user_authorized():
+                # Перемещаем клиент в активные
+                _clients[admin_user_id] = client
+                del _pending_clients[admin_user_id]
+                logger.info(f"Telegram клиент для админа {admin_user_id} успешно авторизован через QR-код")
+                return True, "✅ Авторизация успешна! Теперь можно использовать поиск username по номеру телефона."
+            else:
+                return False, "Авторизация не завершена. Отсканируйте QR-код в Telegram на телефоне."
+        except Exception as wait_error:
+            # Если еще не отсканирован
+            return False, "QR-код еще не отсканирован. Отсканируйте QR-код в Telegram на телефоне."
+    except Exception as e:
+        logger.error(f"Ошибка проверки QR-код авторизации для админа {admin_user_id}: {e}")
         return False, f"❌ Ошибка: {str(e)}"
 
 async def resend_code(admin_user_id: int) -> Tuple[bool, str]:

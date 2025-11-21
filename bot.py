@@ -21,7 +21,7 @@ from google_sheets import (
     get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
     delete_guest_from_sheets, update_invitation_user_id, mark_invitation_as_sent
 )
-from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code
+from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -993,6 +993,103 @@ async def try_last_code_callback(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML"
     )
 
+@dp.callback_query(F.data == "check_qr_auth")
+async def check_qr_auth_callback(callback: CallbackQuery, state: FSMContext):
+    """Проверка QR-код авторизации"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    admin_user_id = callback.from_user.id
+    
+    await callback.message.answer("⏳ Проверяю авторизацию...")
+    
+    success, msg = await check_qr_authorization(admin_user_id)
+    
+    if success:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+        ])
+        await callback.message.answer(msg, reply_markup=keyboard)
+        await state.clear()
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Проверить снова", callback_data="check_qr_auth")],
+            [InlineKeyboardButton(text="📱 Использовать код подтверждения", callback_data="use_code_auth")],
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            f"{msg}\n\n"
+            "💡 Если QR-код уже отсканирован, попробуйте проверить снова.\n"
+            "Или используйте код подтверждения.",
+            reply_markup=keyboard
+        )
+
+@dp.callback_query(F.data == "use_code_auth")
+async def use_code_auth_callback(callback: CallbackQuery, state: FSMContext):
+    """Переключение на авторизацию через код подтверждения"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    admin_user_id = callback.from_user.id
+    
+    # Получаем данные админа
+    admins_list = await get_admins_list()
+    admin_data = None
+    
+    for admin in admins_list:
+        if admin.get('user_id') == admin_user_id:
+            admin_data = admin
+            break
+    
+    if not admin_data:
+        await callback.message.answer("❌ Ошибка: данные админа не найдены")
+        return
+    
+    # Закрываем текущий клиент и создаем новый с кодом подтверждения
+    from telegram_client import _pending_clients, close_client
+    if admin_user_id in _pending_clients:
+        try:
+            await close_client(admin_user_id)
+        except:
+            pass
+    
+    await callback.message.answer("📱 Запрашиваю код подтверждения...")
+    
+    # Создаем новый клиент с кодом подтверждения
+    from telegram_client import get_or_init_client
+    client = await get_or_init_client(
+        admin_user_id,
+        admin_data['api_id'],
+        admin_data['api_hash'],
+        admin_data['phone']
+    )
+    
+    if not client:
+        # Код отправлен
+        await state.set_state(TelegramClientAuthStates.waiting_code)
+        await state.update_data(admin_user_id=admin_user_id, auth_method='code')
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
+            "⚡ <b>ВАЖНО: Введите код как можно быстрее!</b>\n\n"
+            "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
+            "Введите код:\n"
+            "<code>/auth_code [код]</code>\n\n"
+            "Или просто отправьте код как обычное сообщение.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
 @dp.callback_query(F.data == "admin_auth_telegram")
 async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
     """Авторизация Telegram Client через админское меню"""
@@ -1023,7 +1120,9 @@ async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
             "• API_ID (столбец D)\n"
             "• API_HASH (столбец E)\n"
             "• PHONE (столбец F) - формат: 79001234567 (без +)\n\n"
-            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
+            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth\n\n"
+            "💡 <b>Альтернатива:</b> Используйте существующую сессию Telegram Desktop\n"
+            "Скопируйте файл сессии с компьютера на сервер (см. документацию)",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
@@ -1048,8 +1147,8 @@ async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
         except:
             pass
     
-    # Пытаемся инициализировать клиент (это отправит код)
-    await callback.message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
+    # Пытаемся инициализировать клиент (пробуем QR-код, если не получится - код)
+    await callback.message.answer("📱 Инициализирую авторизацию...")
     
     client = await get_or_init_client(
         admin_user_id,
@@ -1070,28 +1169,105 @@ async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
     else:
-        # Код отправлен, переводим в состояние ожидания кода
-        await state.set_state(TelegramClientAuthStates.waiting_code)
-        await state.update_data(admin_user_id=admin_user_id)
+        # Проверяем, какой метод авторизации используется
+        from telegram_client import _pending_clients
+        auth_method = None
+        if admin_user_id in _pending_clients:
+            auth_method = _pending_clients[admin_user_id].get('auth_method', 'code')
         
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
-            "⚡ <b>ВАЖНО: Введите код как можно быстрее!</b>\n\n"
-            "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
-            "Введите код:\n"
-            "<code>/auth_code [код]</code>\n\n"
-            "Или просто отправьте код как обычное сообщение.\n\n"
-            "💡 <b>Совет:</b>\n"
-            "• Откройте Telegram заранее, чтобы быстро скопировать код\n"
-            "• Код приходит в ваш Telegram (не в бота)\n"
-            "• Если код не пришел или устарел, нажмите 'Запросить новый код'",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
+        if auth_method == 'qr':
+            # QR-код авторизация
+            success, msg, qr_url = await get_qr_code(admin_user_id)
+            
+            if success and qr_url:
+                # Отправляем QR-код
+                try:
+                    import qrcode
+                    from io import BytesIO
+                    from aiogram.types import BufferedInputFile
+                    
+                    # Генерируем QR-код
+                    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+                    qr.add_data(qr_url)
+                    qr.make(fit=True)
+                    
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    buf = BytesIO()
+                    img.save(buf, format='PNG')
+                    buf.seek(0)
+                    
+                    # Отправляем QR-код как фото
+                    photo = BufferedInputFile(buf.read(), filename="qr_code.png")
+                    await callback.message.answer_photo(
+                        photo=photo,
+                        caption="📱 <b>Отсканируйте QR-код для авторизации</b>\n\n"
+                                "1. Откройте Telegram на телефоне\n"
+                                "2. Перейдите в Настройки → Устройства\n"
+                                "3. Нажмите 'Подключить устройство'\n"
+                                "4. Отсканируйте QR-код выше\n\n"
+                                "✅ После сканирования нажмите 'Проверить авторизацию'",
+                        parse_mode="HTML"
+                    )
+                    
+                    # Сохраняем состояние для проверки авторизации
+                    await state.set_state(TelegramClientAuthStates.waiting_code)
+                    await state.update_data(admin_user_id=admin_user_id, auth_method='qr')
+                    
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🔄 Проверить авторизацию", callback_data="check_qr_auth")],
+                        [InlineKeyboardButton(text="📱 Использовать код подтверждения", callback_data="use_code_auth")],
+                        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+                    ])
+                    await callback.message.answer(
+                        "⏳ <b>Ожидание сканирования QR-кода...</b>\n\n"
+                        "После сканирования QR-кода нажмите 'Проверить авторизацию'.\n\n"
+                        "💡 Если QR-код не работает, можно использовать код подтверждения.",
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                except ImportError:
+                    # Если библиотека qrcode не установлена, отправляем ссылку
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🔗 Открыть QR-код", url=qr_url)],
+                        [InlineKeyboardButton(text="📱 Использовать код подтверждения", callback_data="use_code_auth")],
+                        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+                    ])
+                    await callback.message.answer(
+                        f"📱 <b>QR-код авторизация</b>\n\n"
+                        f"Откройте ссылку ниже для авторизации:\n"
+                        f"<code>{qr_url}</code>\n\n"
+                        f"Или используйте код подтверждения.",
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+            else:
+                # Если QR-код не получился, используем код подтверждения
+                await callback.message.answer("⚠️ QR-код недоступен, используем код подтверждения...")
+                auth_method = 'code'
+        
+        if auth_method == 'code':
+            # Код отправлен, переводим в состояние ожидания кода
+            await state.set_state(TelegramClientAuthStates.waiting_code)
+            await state.update_data(admin_user_id=admin_user_id, auth_method='code')
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+            ])
+            await callback.message.answer(
+                "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
+                "⚡ <b>ВАЖНО: Введите код как можно быстрее!</b>\n\n"
+                "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
+                "Введите код:\n"
+                "<code>/auth_code [код]</code>\n\n"
+                "Или просто отправьте код как обычное сообщение.\n\n"
+                "💡 <b>Совет:</b>\n"
+                "• Откройте Telegram заранее, чтобы быстро скопировать код\n"
+                "• Код приходит в ваш Telegram (не в бота)\n"
+                "• Если код не пришел или устарел, нажмите 'Запросить новый код'",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
 
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
