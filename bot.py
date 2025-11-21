@@ -2147,16 +2147,16 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     
     username_clean = telegram_id.lstrip('@')
     
-    # Используем формат tg://msg?text={text}&to={username} - более надежный для мобильных
-    # Параметры должны быть в правильном порядке: сначала text, потом to
-    deep_link = f"tg://msg?text={encoded_text}&to={username_clean}"
+    # Используем формат https://t.me/{username}?text={text} - более надежный и работает везде
+    # Этот формат работает в веб-версии Telegram, мобильных приложениях и десктопе
+    deep_link = f"https://t.me/{username_clean}?text={encoded_text}"
     
     # Если deep link слишком длинный, используем короткую версию
     if len(deep_link) > 2000:
         # Используем короткую версию
         short_text = f"{guest_name}, мы - {GROOM_NAME} и {BRIDE_NAME} - женимся! Перейдите в бота: {bot_link}"
         encoded_short = quote(short_text)
-        deep_link = f"tg://msg?text={encoded_short}&to={username_clean}"
+        deep_link = f"https://t.me/{username_clean}?text={encoded_short}"
     
     # Информация для админа
     display_telegram = telegram_id if not telegram_id.startswith("@") else telegram_id
