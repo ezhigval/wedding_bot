@@ -2017,65 +2017,62 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
                             guest_user_id = None
                 break
     
+    # Получаем username бота для ссылки
+    bot_username = "нашбот"  # По умолчанию
+    bot_link = WEBAPP_URL  # Fallback на приложение
+    try:
+        if bot:
+            bot_info = await bot.get_me()
+            if bot_info and bot_info.username:
+                bot_username = bot_info.username
+                bot_link = f"https://t.me/{bot_info.username}"
+    except:
+        pass
+    
+    # Объединяем текст приглашения с инструкцией и ссылкой для копирования
+    full_text_for_copy = f"{invitation_text}\n\n"
+    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
+    
     # ЛОГИКА 1: Если поле username пусто (telegram_id пусто или None)
     if not telegram_id or telegram_id == "":
-        # Присылаем готовый текст для копирования + ссылку на приложение (не кнопку)
+        # Информация для админа
         info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
         info_text += "📱 <b>Телеграм:</b> не указан\n\n"
         info_text += "💡 <b>Инструкция:</b>\n"
-        info_text += "1. Скопируйте текст ниже\n"
-        info_text += "2. Скопируйте ссылку на приложение ниже\n"
-        info_text += "3. Откройте диалог с гостем вручную\n"
-        info_text += "4. Вставьте текст и ссылку\n"
-        info_text += "5. Отправьте\n\n"
+        info_text += "1. Скопируйте текст ниже и отправьте гостю вручную\n"
+        info_text += "2. После отправки нажмите 'Отправлено' или 'Не отправлено'\n\n"
         info_text += "⚠️ <i>Username не указан, отправка вручную</i>"
         
-        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        # Кнопки: Отправлено, Не отправлено, Вернуться
+        buttons = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Отправлено",
+                    callback_data="invite_sent_yes"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Не отправлено",
+                    callback_data="invite_sent_no"
+                )
+            ],
             [InlineKeyboardButton(
                 text="⬅️ Вернуться к списку",
                 callback_data="admin_send_invite"
             )]
         ])
         
-        await callback.message.answer(info_text, reply_markup=back_keyboard, parse_mode="HTML")
+        await callback.message.answer(info_text, reply_markup=buttons, parse_mode="HTML")
         
-        # Отправляем текст для копирования
+        # Отправляем текст сообщения для пересылки
         await callback.message.answer(
-            f"📋 <b>Текст для копирования:</b>\n\n"
-            f"<code>{invitation_text}</code>",
-            parse_mode="HTML"
-        )
-        
-        # Отправляем ссылку на приложение (не кнопку, чтобы можно было скопировать)
-        await callback.message.answer(
-            f"🔗 <b>Ссылка на приложение:</b>\n\n"
-            f"<code>{WEBAPP_URL}</code>\n\n"
-            f"💡 Скопируйте ссылку и отправьте гостю",
+            f"📋 <b>Текст сообщения для пересылки:</b>\n\n"
+            f"<code>{full_text_for_copy}</code>",
             parse_mode="HTML"
         )
         
         # Сохраняем имя гостя в state для подтверждения отправки
         await state.update_data(guest_name_for_confirmation=guest_name)
         await state.set_state(InvitationStates.waiting_sent_confirmation)
-        
-        # Спрашиваем у админа, отправлено ли приглашение
-        confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="✅ Да, отправлено",
-                callback_data="invite_sent_yes"
-            )],
-            [InlineKeyboardButton(
-                text="❌ Нет, не отправлено",
-                callback_data="invite_sent_no"
-            )]
-        ])
-        
-        await callback.message.answer(
-            f"❓ <b>Приглашение отправлено?</b>\n\n"
-            f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
-            reply_markup=confirmation_keyboard,
-            parse_mode="HTML"
-        )
         return
     
     # ЛОГИКА 2: Если есть номер телефона - автоматически находим username (уже обработано выше)
@@ -2083,72 +2080,45 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     
     # Если после обработки номера телефона username не найден - показываем как для пустого
     if is_phone:
+        # Информация для админа
         info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
         info_text += f"📱 <b>Телефон:</b> <code>{telegram_id}</code>\n\n"
         info_text += "⚠️ <b>Username не найден</b>\n\n"
         info_text += "💡 <b>Инструкция:</b>\n"
-        info_text += "1. Скопируйте текст ниже\n"
-        info_text += "2. Скопируйте ссылку на приложение ниже\n"
-        info_text += "3. Откройте диалог с гостем по номеру телефона\n"
-        info_text += "4. Вставьте текст и ссылку\n"
-        info_text += "5. Отправьте\n\n"
+        info_text += "1. Скопируйте текст ниже и отправьте гостю вручную\n"
+        info_text += "2. После отправки нажмите 'Отправлено' или 'Не отправлено'\n\n"
         info_text += "⚠️ <i>Username не найден в ваших контактах, отправка вручную</i>"
         
-        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        # Кнопки: Отправлено, Не отправлено, Вернуться
+        buttons = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Отправлено",
+                    callback_data="invite_sent_yes"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Не отправлено",
+                    callback_data="invite_sent_no"
+                )
+            ],
             [InlineKeyboardButton(
                 text="⬅️ Вернуться к списку",
                 callback_data="admin_send_invite"
             )]
         ])
         
-        await callback.message.answer(info_text, reply_markup=back_keyboard, parse_mode="HTML")
+        await callback.message.answer(info_text, reply_markup=buttons, parse_mode="HTML")
         
-        # Получаем username бота для инструкции
-        bot_username = "нашбот"  # По умолчанию
-        bot_link = WEBAPP_URL  # Fallback на приложение
-        try:
-            if bot:
-                bot_info = await bot.get_me()
-                if bot_info and bot_info.username:
-                    bot_username = f"@{bot_info.username}"
-                    bot_link = f"https://t.me/{bot_info.username}"
-        except:
-            pass
-        
-        # Объединяем текст приглашения с инструкцией и ссылкой для копирования
-        full_text_for_copy = f"{invitation_text}\n\n"
-        full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
-        
-        # Отправляем полный текст для копирования
+        # Отправляем текст сообщения для пересылки
         await callback.message.answer(
-            f"📋 <b>Текст для копирования (все в одном сообщении):</b>\n\n"
-            f"<code>{full_text_for_copy}</code>\n\n"
-            f"💡 Скопируйте весь текст выше и отправьте гостю",
+            f"📋 <b>Текст сообщения для пересылки:</b>\n\n"
+            f"<code>{full_text_for_copy}</code>",
             parse_mode="HTML"
         )
         
         # Сохраняем имя гостя в state для подтверждения отправки
         await state.update_data(guest_name_for_confirmation=guest_name)
         await state.set_state(InvitationStates.waiting_sent_confirmation)
-        
-        # Спрашиваем у админа, отправлено ли приглашение
-        confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="✅ Да, отправлено",
-                callback_data="invite_sent_yes"
-            )],
-            [InlineKeyboardButton(
-                text="❌ Нет, не отправлено",
-                callback_data="invite_sent_no"
-            )]
-        ])
-        
-        await callback.message.answer(
-            f"❓ <b>Приглашение отправлено?</b>\n\n"
-            f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
-            reply_markup=confirmation_keyboard,
-            parse_mode="HTML"
-        )
         return
     
     # ЛОГИКА 3: Если есть telegram username - присылаем deep link кнопку "Отправить автоматически"
@@ -2193,22 +2163,34 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     if not display_telegram.startswith("@"):
         display_telegram = f"@{display_telegram}"
     
+    # Объединяем текст приглашения с инструкцией и ссылкой для копирования
+    full_text_for_copy = f"{invitation_text}\n\n"
+    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
+    
+    # Информация для админа (одно сообщение со всей информацией)
     info_text = f"💌 <b>Готовое сообщение для {guest_name}</b>\n\n"
     info_text += f"📱 <b>Телеграм:</b> {display_telegram}\n\n"
     info_text += "💡 <b>Инструкция:</b>\n"
-    info_text += "1. Нажмите кнопку 'Отправить автоматически' ниже\n"
-    info_text += "2. Откроется диалог с предзаполненным текстом и ссылкой\n"
-    info_text += "3. Отправьте сообщение\n\n"
-    info_text += "✅ <i>Текст и ссылка уже подготовлены в диалоге!</i>\n\n"
-    info_text += "⚠️ <i>Если кнопка не открывает диалог, скопируйте текст ниже и отправьте вручную</i>"
+    info_text += "1. Нажмите кнопку 'Отправить автоматически' для открытия диалога с предзаполненным текстом\n"
+    info_text += "2. Или скопируйте текст ниже и отправьте вручную\n"
+    info_text += "3. После отправки нажмите 'Отправлено' или 'Не отправлено'\n\n"
     
-    # Кнопка "Отправить автоматически" с deep link
-    # Используем веб-формат, который работает и в мобильных приложениях
+    # Кнопки: Отправить автоматически, Отправлено, Не отправлено, Вернуться
     send_button = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="✅ Отправить автоматически",
-            url=deep_link  # https://t.me/username?text=... работает везде
+            url=deep_link
         )],
+        [
+            InlineKeyboardButton(
+                text="✅ Отправлено",
+                callback_data="invite_sent_yes"
+            ),
+            InlineKeyboardButton(
+                text="❌ Не отправлено",
+                callback_data="invite_sent_no"
+            )
+        ],
         [InlineKeyboardButton(
             text="⬅️ Вернуться к списку",
             callback_data="admin_send_invite"
@@ -2217,43 +2199,16 @@ async def process_guest_selection_callback(callback: CallbackQuery, state: FSMCo
     
     await callback.message.answer(info_text, reply_markup=send_button, parse_mode="HTML")
     
-    # Отправляем текст приглашения для справки (на случай если deep link не работает)
-    # Получаем username бота для инструкции (используем уже полученные выше)
-    # bot_username и bot_link уже определены выше в этой функции
-    
-    # Объединяем текст приглашения с инструкцией и ссылкой для копирования
-    full_text_for_copy = f"{invitation_text}\n\n"
-    full_text_for_copy += f"Перейдите в бота {bot_username} и нажмите старт: {bot_link}"
-    
+    # Отправляем текст приглашения для пересылки
     await callback.message.answer(
-        f"📋 <b>Текст приглашения (для справки, если deep link не работает):</b>\n\n"
-        f"<code>{full_text_for_copy}</code>\n\n"
-        f"💡 Скопируйте весь текст выше и отправьте гостю вручную, если кнопка не работает",
+        f"📋 <b>Текст сообщения для пересылки:</b>\n\n"
+        f"<code>{full_text_for_copy}</code>",
         parse_mode="HTML"
     )
     
     # Сохраняем имя гостя в state для подтверждения отправки
     await state.update_data(guest_name_for_confirmation=guest_name)
     await state.set_state(InvitationStates.waiting_sent_confirmation)
-    
-    # Спрашиваем у админа, отправлено ли приглашение
-    confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="✅ Да, отправлено",
-            callback_data="invite_sent_yes"
-        )],
-        [InlineKeyboardButton(
-            text="❌ Нет, не отправлено",
-            callback_data="invite_sent_no"
-        )]
-    ])
-    
-    await callback.message.answer(
-        f"❓ <b>Приглашение отправлено?</b>\n\n"
-        f"После отправки приглашения гостю <b>{guest_name}</b> нажмите 'Да'.",
-        reply_markup=confirmation_keyboard,
-        parse_mode="HTML"
-    )
     
     # Отправляем само сообщение с приглашением и кнопкой для пересылки
     await callback.message.answer(
