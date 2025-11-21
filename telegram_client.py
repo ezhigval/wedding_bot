@@ -85,7 +85,7 @@ async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, pho
 
 async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_file: str = "telegram_session"):
     """
-    Инициализация Telegram клиента
+    Инициализация Telegram клиента (устаревшая функция, используйте get_or_init_client)
     
     Args:
         api_id: API ID из my.telegram.org
@@ -96,11 +96,11 @@ async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_f
     Returns:
         TelegramClient или None если не удалось инициализировать
     """
+    logger.warning("init_telegram_client устарела, используйте get_or_init_client")
+    # Для обратной совместимости создаем временный клиент
     if not TELETHON_AVAILABLE:
         logger.warning("Telethon недоступен")
         return None
-    
-    global _client
     
     try:
         api_id_int = int(api_id) if api_id else None
@@ -108,20 +108,18 @@ async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_f
             logger.warning("Не указаны API_ID, API_HASH или PHONE для Telegram Client")
             return None
         
-        _client = TelegramClient(session_file, api_id_int, api_hash)
-        await _client.connect()
+        client = TelegramClient(session_file, api_id_int, api_hash)
+        await client.connect()
         
         # Проверяем, авторизован ли клиент
-        if not await _client.is_user_authorized():
+        if not await client.is_user_authorized():
             logger.warning("Telegram клиент не авторизован. Нужно отправить код подтверждения.")
-            # Отправляем код
-            await _client.send_code_request(phone)
-            # В реальном использовании нужно будет запросить код у админа
-            # Для автоматизации можно сохранить код в переменной окружения
+            await client.send_code_request(phone)
+            await client.disconnect()
             return None
         
         logger.info("Telegram клиент успешно инициализирован")
-        return _client
+        return client
         
     except Exception as e:
         logger.error(f"Ошибка инициализации Telegram клиента: {e}")
@@ -186,10 +184,19 @@ async def get_username_by_phone(phone_number: str, admin_user_id: int = None, cl
         logger.error(traceback.format_exc())
         return None
 
-async def close_client():
-    """Закрыть соединение с Telegram"""
-    global _client
-    if _client:
-        await _client.disconnect()
-        _client = None
+async def close_client(admin_user_id: int = None):
+    """Закрыть соединение с Telegram для конкретного админа или всех"""
+    global _clients
+    if admin_user_id:
+        if admin_user_id in _clients:
+            await _clients[admin_user_id].disconnect()
+            del _clients[admin_user_id]
+    else:
+        # Закрываем все клиенты
+        for client in _clients.values():
+            try:
+                await client.disconnect()
+            except:
+                pass
+        _clients.clear()
 
