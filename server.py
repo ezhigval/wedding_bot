@@ -10,9 +10,15 @@ import aiofiles
 import os
 from pathlib import Path
 
+# Импортируем бот только один раз
+# ВАЖНО: bot.py не должен запускаться напрямую в продакшене
+# Используется только server.py
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+
+# Флаг для отслеживания, запущен ли уже polling
+_polling_started = False
 
 # Настройка логирования с выводом в stdout для Render
 logging.basicConfig(
@@ -144,6 +150,9 @@ async def start_web_server():
     
     logger.info(f"🌐 Веб-сервер запущен на порту {port}")
     logger.info(f"📱 Mini App доступен по адресу: http://localhost:{port}")
+    
+    # Возвращаем runner для корректного завершения
+    return runner
 
 async def main():
     """Главная функция"""
@@ -159,7 +168,7 @@ async def main():
         set_notify_function(notify_admins)
         
         # Запуск веб-сервера
-        await start_web_server()
+        runner = await start_web_server()
         
         # Запуск бота только если есть переменная PORT (значит на сервере)
         # Это предотвращает конфликт с локальным запуском
@@ -210,6 +219,7 @@ async def main():
                     logger.error(f"   1. На Render запущено несколько экземпляров сервиса")
                     logger.error(f"   2. Используется webhook вместо polling")
                     logger.error(f"   3. Старый экземпляр все еще работает")
+                    logger.error(f"   4. Бот запускается несколько раз в одном процессе")
                     logger.error(f"   Решение: Проверьте на Render, нет ли дублирующихся сервисов")
                 return True
             
@@ -221,9 +231,40 @@ async def main():
             conflict_filter = ConflictFilter()
             aiogram_logger.addFilter(conflict_filter)
             
+            # Проверяем, не запущен ли уже polling (используем правильный способ)
+            try:
+                # Проверяем через внутренний атрибут (если доступен)
+                if hasattr(dp, '_polling') and dp._polling:
+                    logger.warning("⚠️ Polling уже запущен! Останавливаем предыдущий экземпляр...")
+                    try:
+                        await dp.stop_polling()
+                        await asyncio.sleep(2)  # Даем время на остановку
+                        logger.info("✅ Предыдущий polling остановлен")
+                    except Exception as stop_error:
+                        logger.error(f"Ошибка при остановке предыдущего polling: {stop_error}")
+            except Exception as check_error:
+                logger.debug(f"Проверка состояния polling: {check_error}")
+            
+            # Проверяем глобальный флаг
+            global _polling_started
+            if _polling_started:
+                logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Попытка запустить polling второй раз!")
+                logger.error("   Это не должно происходить. Проверьте код на наличие двойных вызовов.")
+                return
+            
+            # Добавляем задержку перед запуском, чтобы избежать конфликтов
+            await asyncio.sleep(1)
+            
             logger.info("🤖 Запуск бота (polling)...")
+            logger.info(f"🆔 Process ID при запуске polling: {os.getpid()}")
+            logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+            
+            # Устанавливаем флаг
+            _polling_started = True
             
             try:
+                # Запускаем polling (это блокирующая операция)
+                # Важно: start_polling должен быть вызван только один раз
                 await dp.start_polling(
                     bot, 
                     allowed_updates=["message", "callback_query"],
