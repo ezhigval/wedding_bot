@@ -156,8 +156,25 @@ async def start_web_server():
 
 async def main():
     """Главная функция"""
+    global _polling_started
+    
     try:
+        logger.info("=" * 60)
+        logger.info("🚀 НАЧАЛО ИНИЦИАЛИЗАЦИИ СЕРВЕРА")
+        logger.info(f"🆔 Process ID: {os.getpid()}")
+        logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+        logger.info(f"🌍 PORT: {os.getenv('PORT')}")
+        logger.info(f"🌍 RENDER: {os.getenv('RENDER')}")
+        logger.info("=" * 60)
+        
+        # Проверяем, не запущен ли уже polling (на всякий случай)
+        if _polling_started:
+            logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Polling уже был запущен!")
+            logger.error("   Это не должно происходить. Проверьте код.")
+            return
+        
         # Инициализация бота
+        logger.info("🤖 Инициализация бота...")
         bot = await init_bot()
         if bot is None:
             logger.error("❌ Не удалось инициализировать бота")
@@ -165,9 +182,11 @@ async def main():
             return
         
         # Устанавливаем функцию уведомлений в API
+        logger.info("📡 Настройка API...")
         set_notify_function(notify_admins)
         
         # Запуск веб-сервера
+        logger.info("🌐 Запуск веб-сервера...")
         runner = await start_web_server()
         
         # Запуск бота только если есть переменная PORT (значит на сервере)
