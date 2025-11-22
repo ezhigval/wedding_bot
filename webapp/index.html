@@ -343,22 +343,5 @@
     </div>
 
     <script src="app.js"></script>
-    
-    <!-- Hot reload для разработки -->
-    <script>
-        // Подключаемся к WebSocket для hot reload только на localhost
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            const ws = new WebSocket('ws://localhost:8000/reload');
-            ws.onmessage = function(event) {
-                if (event.data === 'reload') {
-                    console.log('🔄 Перезагрузка страницы...');
-                    window.location.reload();
-                }
-            };
-            ws.onerror = function(error) {
-                console.log('WebSocket для hot reload недоступен (это нормально в продакшене)');
-            };
-        }
-    </script>
 </body>
 </html>
