@@ -28,7 +28,7 @@ logger_import.info("=" * 60)
 
 try:
     logger_import.info("📥 Импорт bot.py...")
-    from bot import dp, init_bot, notify_admins
+from bot import dp, init_bot, notify_admins
     logger_import.info("✅ bot.py импортирован успешно")
     logger_import.info(f"   Dispatcher ID: {id(dp)}")
 except Exception as e:
@@ -39,7 +39,7 @@ except Exception as e:
 
 try:
     logger_import.info("📥 Импорт api.py...")
-    from api import init_api, set_notify_function
+from api import init_api, set_notify_function
     logger_import.info("✅ api.py импортирован успешно")
 except Exception as e:
     logger_import.error(f"❌ Ошибка импорта api.py: {e}")
@@ -49,7 +49,7 @@ except Exception as e:
 
 try:
     logger_import.info("📥 Импорт config.py...")
-    from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
     logger_import.info("✅ config.py импортирован успешно")
 except Exception as e:
     logger_import.error(f"❌ Ошибка импорта config.py: {e}")
@@ -258,11 +258,11 @@ async def main():
             logger.warning("⚠️ Экземпляр бота уже существует! Используем его")
             bot = _bot_instance
         else:
-            bot = await init_bot()
-            if bot is None:
-                logger.error("❌ Не удалось инициализировать бота")
-                logger.error("Проверьте переменные окружения на Render")
-                return
+        bot = await init_bot()
+        if bot is None:
+            logger.error("❌ Не удалось инициализировать бота")
+            logger.error("Проверьте переменные окружения на Render")
+            return
             _bot_instance = bot
             logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
         
@@ -430,5 +430,5 @@ if __name__ == "__main__":
     except RuntimeError:
         # Event loop не запущен - это нормально, запускаем
         logger.info("✅ Event loop не запущен, запускаем main()...")
-        asyncio.run(main())
+    asyncio.run(main())
 
