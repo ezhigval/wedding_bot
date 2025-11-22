@@ -25,6 +25,7 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
+        [InlineKeyboardButton(text="🤖 Статус бота", callback_data="admin_bot_status")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
     ])

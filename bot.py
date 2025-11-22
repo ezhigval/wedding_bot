@@ -761,6 +761,66 @@ async def cmd_admin(message: Message):
 """
     await message.answer(admin_text, reply_markup=get_admin_keyboard(), parse_mode="HTML")
 
+@dp.message(Command("bot_status"))
+async def cmd_bot_status(message: Message):
+    """Проверка статуса бота - проверяет, запущен ли только один экземпляр"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    import os
+    import psutil
+    from datetime import datetime
+    
+    status_text = "🤖 <b>Статус бота</b>\n\n"
+    
+    try:
+        # 1. Проверяем через getMe API
+        try:
+            bot_info = await bot.get_me()
+            status_text += f"✅ <b>Бот активен</b>\n"
+            status_text += f"👤 Имя: {bot_info.first_name}\n"
+            status_text += f"🆔 ID: <code>{bot_info.id}</code>\n"
+            status_text += f"📝 Username: @{bot_info.username}\n\n"
+        except Exception as e:
+            status_text += f"❌ <b>Ошибка получения информации о боте:</b>\n"
+            status_text += f"<code>{str(e)}</code>\n\n"
+            if 'Conflict' in str(e) or 'TelegramConflictError' in str(e):
+                status_text += f"🚨 <b>ОБНАРУЖЕН КОНФЛИКТ!</b>\n"
+                status_text += f"Запущено несколько экземпляров бота!\n\n"
+        
+        # 2. Информация о процессе
+        try:
+            process = psutil.Process(os.getpid())
+            status_text += f"📊 <b>Информация о процессе:</b>\n"
+            status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
+            status_text += f"⏰ Время запуска: {datetime.fromtimestamp(process.create_time()).strftime('%Y-%m-%d %H:%M:%S')}\n"
+            status_text += f"💾 Память: {process.memory_info().rss / 1024 / 1024:.2f} MB\n\n"
+        except ImportError:
+            status_text += f"⚠️ psutil не установлен, информация о процессе недоступна\n\n"
+        except Exception as e:
+            status_text += f"⚠️ Ошибка получения информации о процессе: {str(e)}\n\n"
+        
+        # 3. Проверка на Render (если доступно)
+        render_service_id = os.getenv('RENDER_SERVICE_ID', '')
+        if render_service_id:
+            status_text += f"🌐 <b>Render Service ID:</b> <code>{render_service_id}</code>\n\n"
+        
+        # 4. Рекомендации
+        status_text += f"💡 <b>Как проверить дубликаты:</b>\n"
+        status_text += f"1. Проверьте логи на наличие 'TelegramConflictError'\n"
+        status_text += f"2. На Render проверьте, нет ли нескольких сервисов с одним токеном\n"
+        status_text += f"3. Убедитесь, что не используется webhook одновременно с polling\n"
+        status_text += f"4. Проверьте, что старый экземпляр полностью остановлен\n"
+        
+    except Exception as e:
+        logger.error(f"Ошибка проверки статуса бота: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        status_text += f"❌ <b>Ошибка проверки:</b>\n<code>{str(e)}</code>"
+    
+    await message.answer(status_text, parse_mode="HTML")
+
 @dp.callback_query(F.data == "admin_guests")
 async def admin_guests_list(callback: CallbackQuery):
     """Список гостей для администратора из Google Sheets"""
