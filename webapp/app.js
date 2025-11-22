@@ -571,53 +571,6 @@ function updateMainContacts() {
 // Инициализация
 loadConfig();
 
-// Функция для проверки регистрации и отображения правильной страницы
-// Используем несколько способов получения user_id из Telegram Mini App
-async function checkAndShowPage() {
-    try {
-        // Получаем данные пользователя (несколько способов)
-        const userData = getTelegramUserId();
-        const { userId, firstName, lastName, method } = userData;
-        
-        console.log('checkAndShowPage: Telegram user data:', {
-            userId: userId,
-            firstName: firstName,
-            lastName: lastName,
-            method: method,
-            hasInitData: !!tg.initData,
-            hasInitDataUnsafe: !!tg.initDataUnsafe,
-            hasUser: !!tg.initDataUnsafe?.user
-        });
-        
-        // Проверяем регистрацию (внутри функции checkRegistration есть fallback на поиск по имени)
-        console.log('checkAndShowPage: checking registration...');
-        const result = await checkRegistration();
-        console.log('checkAndShowPage: registration result:', result);
-        
-        if (result.registered) {
-            // Пользователь зарегистрирован - показываем основную страницу
-            console.log('checkAndShowPage: user is registered, showing main page');
-            showMainPage();
-        } else if (result.needs_confirmation) {
-            // Найден по имени, нужно подтвердить личность
-            console.log('checkAndShowPage: needs confirmation for:', result.guest_name);
-            showConfirmationPage(result.guest_name, result.row);
-        } else if (result.error) {
-            // Ошибка - показываем страницу ошибки
-            console.error('checkAndShowPage: error occurred:', result.error);
-            showErrorPage();
-        } else {
-            // Пользователь не найден - показываем страницу регистрации
-            console.log('checkAndShowPage: user not found, showing registration page');
-            showRegistrationPage();
-        }
-    } catch (error) {
-        console.error('Error checking registration:', error);
-        // При ошибке показываем страницу ошибки
-        showErrorPage();
-    }
-}
-
 // Функция для показа сообщения об ошибке
 function showErrorMessage() {
     const errorMessage = document.getElementById('errorMessage');
@@ -643,194 +596,20 @@ function hideErrorMessage() {
     }
 }
 
-// Функция для показа страницы регистрации
-function showRegistrationPage() {
-    // Показываем секции регистрационной страницы
-    const registrationSections = [
-        document.querySelector('.hero-section'),
-        document.querySelector('.greeting-section'),
-        document.querySelector('.calendar-section'),
-        document.getElementById('rsvpSection'),
-        document.getElementById('registrationContactSection'),
-        document.querySelector('.closing-section')
-    ];
-    
-    registrationSections.forEach(section => {
-        if (section) section.style.display = 'block';
-    });
-    
-    // Скрываем основную страницу
-    const mainPage = document.getElementById('mainPage');
-    if (mainPage) mainPage.style.display = 'none';
-}
-
-// Функция для показа страницы подтверждения личности
-function showConfirmationPage(guestName, row) {
-    // Скрываем все секции, основную страницу и страницу ошибки
-    document.querySelectorAll('section').forEach(section => {
-        section.style.display = 'none';
-    });
-    const mainPage = document.getElementById('mainPage');
-    if (mainPage) mainPage.style.display = 'none';
-    const errorPage = document.getElementById('errorPage');
-    if (errorPage) errorPage.style.display = 'none';
-    
-    // Показываем страницу подтверждения
-    const confirmationPage = document.getElementById('confirmationPage');
-    if (confirmationPage) {
-        confirmationPage.style.display = 'block';
-        const guestNameElement = document.getElementById('confirmationGuestName');
-        if (guestNameElement) {
-            guestNameElement.textContent = guestName;
-        }
-        
-        // Сохраняем данные для подтверждения
-        const confirmYesBtn = document.getElementById('confirmYesBtn');
-        const confirmNoBtn = document.getElementById('confirmNoBtn');
-        
-        if (confirmYesBtn) {
-            confirmYesBtn.onclick = async () => {
-                await confirmIdentity(row);
-            };
-        }
-        
-        if (confirmNoBtn) {
-            confirmNoBtn.onclick = () => {
-                showRegistrationPage();
-            };
-        }
-    } else {
-        // Если страницы нет, показываем регистрацию
-        showRegistrationPage();
-    }
-}
-
-// Функция для подтверждения личности
-// Используем tg.initDataUnsafe?.user?.id для получения user_id и сохранения в таблицу
-async function confirmIdentity(row) {
-    try {
-        // Получаем user_id из Telegram Mini App
-        const user = tg.initDataUnsafe?.user;
-        const userId = user?.id;  // Telegram user_id для сохранения в столбец F
-        
-        if (!userId) {
-            console.error('confirmIdentity: userId not found in tg.initDataUnsafe?.user?.id');
-            showErrorPage();
-            return;
-        }
-        
-        // Сохраняем user_id в таблицу (столбец F)
-        const response = await fetch(`${CONFIG.apiUrl}/confirm-identity`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                row: row,
-                userId: userId  // Сохраняем user_id из Telegram в столбец F
-            })
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                // Успешно подтверждено - показываем основную страницу
-                showMainPage();
-            } else {
-                showErrorPage();
-            }
-        } else {
-            showErrorPage();
-        }
-    } catch (error) {
-        console.error('Error confirming identity:', error);
-        showErrorPage();
-    }
-}
-
-// Функция для показа страницы ошибки
-function showErrorPage() {
-    // Скрываем все секции и основную страницу
-    document.querySelectorAll('section').forEach(section => {
-        section.style.display = 'none';
-    });
-    const mainPage = document.getElementById('mainPage');
-    if (mainPage) mainPage.style.display = 'none';
-    const confirmationPage = document.getElementById('confirmationPage');
-    if (confirmationPage) confirmationPage.style.display = 'none';
-    
-    // Показываем страницу ошибки
-    const errorPage = document.getElementById('errorPage');
-    if (errorPage) {
-        errorPage.style.display = 'block';
-        
-        // Загружаем контакты
-        const errorGroomTelegram = document.getElementById('errorGroomTelegram');
-        const errorBrideTelegram = document.getElementById('errorBrideTelegram');
-        const errorGroomContact = document.getElementById('errorGroomContact');
-        const errorBrideContact = document.getElementById('errorBrideContact');
-        
-        if (errorGroomTelegram && CONFIG.groomTelegram) {
-            errorGroomTelegram.textContent = `@${CONFIG.groomTelegram}`;
-        }
-        if (errorBrideTelegram && CONFIG.brideTelegram) {
-            errorBrideTelegram.textContent = `@${CONFIG.brideTelegram}`;
-        }
-        if (errorGroomContact && CONFIG.groomTelegram) {
-            errorGroomContact.href = `https://t.me/${CONFIG.groomTelegram}`;
-        }
-        if (errorBrideContact && CONFIG.brideTelegram) {
-            errorBrideContact.href = `https://t.me/${CONFIG.brideTelegram}`;
-        }
-    } else {
-        // Если страницы нет, показываем регистрацию с сообщением
-        showRegistrationPage();
-        alert('Ой, что-то пошло не так. Пожалуйста, напишите нам.');
-    }
-}
-
 // Функция для показа основной страницы
 function showMainPage() {
-    // Скрываем секции регистрационной страницы
-    const registrationSections = [
-        document.querySelector('.hero-section'),
-        document.querySelector('.greeting-section'),
-        document.querySelector('.calendar-section'),
-        document.getElementById('rsvpSection'),
-        document.getElementById('registrationContactSection'),
-        document.querySelector('.closing-section')
-    ];
-    
-    registrationSections.forEach(section => {
-        if (section) section.style.display = 'none';
-    });
-    
-    // Показываем основную страницу
+    // Основная страница теперь общая для всех гостей
     const mainPage = document.getElementById('mainPage');
     if (mainPage) {
         mainPage.style.display = 'block';
         // Загружаем данные для основной страницы
         loadMainPageData();
     }
+    // Видимость формы RSVP управляется отдельно (логикой регистрации/отправки формы)
 }
 
-// Проверка регистрации при загрузке страницы
-checkAndShowPage();
-
-// Также проверяем при каждом открытии Mini App (когда пользователь возвращается)
-// Telegram Web App может быть открыт в фоне, поэтому проверяем при видимости страницы
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        // Страница стала видимой - проверяем регистрацию снова
-        // Если гость был удален из таблицы, покажем ошибку
-        checkAndShowPage();
-    }
-});
-
-// Проверяем при фокусе окна (если Mini App открыт в браузере)
-window.addEventListener('focus', () => {
-    checkAndShowPage();
-});
+// При загрузке показываем основную страницу всем пользователям
+showMainPage();
 
 // Обработчик формы RSVP
 document.getElementById('guestForm').addEventListener('submit', async (e) => {
@@ -959,6 +738,12 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 
                 // Переключаемся на основную страницу
                 showMainPage();
+
+                // Скрываем форму RSVP (после успешного заполнения)
+                const rsvpSection = document.getElementById('rsvpSection');
+                if (rsvpSection) {
+                    rsvpSection.style.display = 'none';
+                }
                 
                 // Прокручиваем к началу страницы
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1026,26 +811,27 @@ if (cancelInvitationBtn) {
                     localStorage.removeItem(`registered_${userId}`);
                 }
                 
-                // После отмены приглашения показываем страницу регистрации
-                await checkAndShowPage();
-                
-                // Скрываем сообщения об успехе/ошибке и показываем форму
+                // После отмены приглашения очищаем форму и снова показываем блок регистрации
                 hideSuccessMessage();
                 hideErrorMessage();
-                
-                // Очищаем форму
+
                 document.getElementById('firstName').value = '';
                 document.getElementById('lastName').value = '';
                 document.getElementById('category').value = '';
                 document.getElementById('side').value = '';
                 guests = [];
                 renderGuests();
-                
+
+                const rsvpSection = document.getElementById('rsvpSection');
+                if (rsvpSection) {
+                    rsvpSection.style.display = 'block';
+                }
+
                 // Прокручиваем к форме регистрации
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
-                
+
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
-                
+
                 // Вибрация
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('warning');
@@ -1097,26 +883,27 @@ if (mainCancelInvitationBtn) {
                     localStorage.removeItem(`registered_${userId}`);
                 }
                 
-                // После отмены приглашения показываем страницу регистрации
-                await checkAndShowPage();
-                
-                // Скрываем сообщения об успехе/ошибке и показываем форму
+                // После отмены приглашения очищаем форму и снова показываем блок регистрации
                 hideSuccessMessage();
                 hideErrorMessage();
-                
-                // Очищаем форму
+
                 document.getElementById('firstName').value = '';
                 document.getElementById('lastName').value = '';
                 document.getElementById('category').value = '';
                 document.getElementById('side').value = '';
                 guests = [];
                 renderGuests();
-                
+
+                const rsvpSection = document.getElementById('rsvpSection');
+                if (rsvpSection) {
+                    rsvpSection.style.display = 'block';
+                }
+
                 // Прокручиваем к форме регистрации
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
-                
+
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
-                
+
                 // Вибрация
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('warning');

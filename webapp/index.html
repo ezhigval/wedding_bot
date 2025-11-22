@@ -20,110 +20,8 @@
     <!-- Фон с анимацией шелковой ткани -->
     <div class="silk-background"></div>
     <div class="app-container">
-        <!-- Главная карточка с фото -->
-        <section class="hero-section">
-            <div class="photo-hero">
-                <img src="welcome_photo.jpeg" alt="Валентин и Мария" id="weddingPhoto" onerror="this.style.display='none'">
-                <div class="photo-overlay">
-                    <div class="couple-names" id="coupleNames">Валентин и Мария</div>
-                    <div class="wedding-date-hero" id="weddingDateHero">05.06.2026</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Приветствие -->
-        <section class="greeting-section">
-            <div class="section-card scroll-reveal">
-                <h2 class="section-title scroll-reveal-item">ДОРОГИЕ ГОСТИ!</h2>
-                <p class="greeting-text scroll-reveal-item">
-                    Дорогие родные и близкие! 
-
-                    Мы давно ждали момента, когда сможем разделить с вами самый важный и счастливый день в нашей жизни. Скоро состоится наша свадьба! Мы рады пригласить вас стать свидетелями этого торжества и разделить с нами самые яркие моменты!
-                </p>
-                <div class="heartbeat-line">
-                    <svg viewBox="0 0 200 20" class="heartbeat-svg">
-                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="var(--color-primary)" stroke-width="2" fill="none"/>
-                        <circle cx="100" cy="10" r="3" fill="var(--color-primary)"/>
-                    </svg>
-                </div>
-            </div>
-        </section>
-
-        <!-- Календарь и обратный отсчет -->
-        <section class="calendar-section">
-            <div class="section-card scroll-reveal">
-                <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
-                <!-- Внешний таймер MegaTimer -->
-                <div class="countdown-clock" id="countdownClock">
-                    <script src="//megatimer.ru/get/7747e73dbcadf95d77ffb904c28a7d9b.js"></script>
-                </div>
-                <div class="calendar-preview">
-                    <div class="calendar-date-full" id="calendarDateFull">Июнь 05 2026</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Форма подтверждения -->
-        <section class="rsvp-section" id="rsvpSection">
-            <div class="section-card scroll-reveal">
-                <!-- Сообщение об ошибке (если гость был удален) -->
-                <div id="errorMessage" class="error-message" style="display: none;">
-                    <p>⚠️ Кажется произошла ошибка, заполните анкету еще раз.</p>
-                </div>
-                
-                <!-- Сообщение об успешной регистрации -->
-                <div id="successMessage" class="success-message" style="display: none;">
-                    <h2 class="section-title">Спасибо!</h2>
-                    <p>Мы ждем вас на нашей свадьбе! 💕</p>
-                </div>
-                
-                <!-- Форма регистрации -->
-                <div id="registrationForm">
-                    <h2 class="section-title scroll-reveal-item">ПРИСУТСТВИЕ</h2>
-                    <p class="rsvp-text scroll-reveal-item">
-                        Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
-                        Заполните форму ниже:
-                    </p>
-                    
-                    <form id="guestForm" class="rsvp-form">
-                    <div class="form-group" id="mainGuestGroup">
-                        <label for="firstName">Имя, Фамилия</label>
-                        <input type="text" id="firstName" required minlength="2" placeholder="Имя">
-                        <input type="text" id="lastName" required minlength="2" placeholder="Фамилия">
-                        
-                        <label for="category">Родство</label>
-                        <select id="category" required class="form-select">
-                            <option value="">Выберите...</option>
-                            <option value="Семья">Семья</option>
-                            <option value="Друзья">Друзья</option>
-                            <option value="Родственники">Родственники</option>
-                        </select>
-                        
-                        <label for="side">Сторона</label>
-                        <select id="side" required class="form-select">
-                            <option value="">Выберите...</option>
-                            <option value="Жених">Жених</option>
-                            <option value="Невеста">Невеста</option>
-                            <option value="Общие">Общие</option>
-                        </select>
-                    </div>
-                    
-                    <div class="guests-list" id="guestsList"></div>
-                    
-                    <div class="form-group">
-                        <button type="button" class="btn-add-guest" id="addGuestBtn">+ Добавить гостя</button>
-                    </div>
-                    
-                    <div class="form-buttons">
-                        <button type="submit" class="btn-confirm">Подтвердить</button>
-                    </div>
-                    </form>
-                </div>
-            </div>
-        </section>
-
-        <!-- Основная страница для подтвердивших гостей -->
-        <div id="mainPage" style="display: none;">
+        <!-- Основная страница (теперь всегда основная) -->
+        <div id="mainPage" style="display: block;">
             <!-- Заголовок -->
             <section class="hero-section">
                 <div class="photo-hero">
@@ -131,6 +29,65 @@
                     <div class="photo-overlay">
                         <div class="couple-names scroll-reveal-item" id="mainCoupleNames">Валентин и Мария</div>
                         <div class="wedding-date-hero scroll-reveal-item" id="mainWeddingDate">05 июня 2026</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Форма подтверждения присутствия (перенесена со страницы регистрации) -->
+            <section class="rsvp-section" id="rsvpSection">
+                <div class="section-card scroll-reveal">
+                    <!-- Сообщение об ошибке (если гость был удален) -->
+                    <div id="errorMessage" class="error-message" style="display: none;">
+                        <p>⚠️ Кажется произошла ошибка, заполните анкету еще раз.</p>
+                    </div>
+                    
+                    <!-- Сообщение об успешной регистрации -->
+                    <div id="successMessage" class="success-message" style="display: none;">
+                        <h2 class="section-title">Спасибо!</h2>
+                        <p>Мы ждем вас на нашей свадьбе! 💕</p>
+                    </div>
+                    
+                    <!-- Форма регистрации -->
+                    <div id="registrationForm">
+                        <h2 class="section-title scroll-reveal-item">ПРИСУТСТВИЕ</h2>
+                        <p class="rsvp-text scroll-reveal-item">
+                            Пожалуйста, подтвердите ваше присутствие на нашем празднике. 
+                            Заполните форму ниже:
+                        </p>
+                        
+                        <form id="guestForm" class="rsvp-form">
+                            <div class="form-group" id="mainGuestGroup">
+                                <label for="firstName">Имя, Фамилия</label>
+                                <input type="text" id="firstName" required minlength="2" placeholder="Имя">
+                                <input type="text" id="lastName" required minlength="2" placeholder="Фамилия">
+                                
+                                <label for="category">Родство</label>
+                                <select id="category" required class="form-select">
+                                    <option value="">Выберите...</option>
+                                    <option value="Семья">Семья</option>
+                                    <option value="Друзья">Друзья</option>
+                                    <option value="Родственники">Родственники</option>
+                                </select>
+                                
+                                <label for="side">Сторона</label>
+                                <select id="side" required class="form-select">
+                                    <option value="">Выберите...</option>
+                                    <option value="Жених">Жених</option>
+                                    <option value="Невеста">Невеста</option>
+                                    <option value="Общие">Общие</option>
+                                </select>
+                            </div>
+                            
+                            <div class="guests-list" id="guestsList"></div>
+                            
+                            <div class="form-group">
+                                <button type="button" class="btn-add-guest" id="addGuestBtn">+ Добавить гостя</button>
+                            </div>
+                            
+                            <div class="form-buttons">
+                                <button type="submit" class="btn-confirm">Подтвердить</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </section>
@@ -277,69 +234,6 @@
             </section>
         </div>
 
-        <!-- Связаться с нами (для регистрационной страницы) -->
-        <section class="contact-section" id="registrationContactSection">
-            <div class="section-card scroll-reveal">
-                <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
-                <div class="contact-list">
-                    <a href="#" class="contact-item" id="groomContact">
-                        <span class="contact-name">Валентин</span>
-                        <span class="contact-telegram" id="groomTelegram">@ezhigval</span>
-                    </a>
-                    <a href="#" class="contact-item" id="brideContact">
-                        <span class="contact-name">Мария</span>
-                        <span class="contact-telegram" id="brideTelegram">@mrfilmpro</span>
-                    </a>
-                </div>
-                <div class="cancel-section" id="cancelSection" style="display: none;">
-                    <button type="button" class="btn-cancel" id="cancelInvitationBtn">Не смогу прийти</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Заключение -->
-        <section class="closing-section">
-            <div class="section-card scroll-reveal">
-                <p class="closing-text scroll-reveal-item">До скорой встречи</p>
-                <div class="couple-names-final scroll-reveal-item" id="coupleNamesFinal">Валентин и Мария</div>
-                <div class="heartbeat-line">
-                    <svg viewBox="0 0 200 20" class="heartbeat-svg">
-                        <path d="M0,10 Q50,5 100,10 T200,10" stroke="var(--color-primary)" stroke-width="2" fill="none"/>
-                        <circle cx="100" cy="10" r="3" fill="var(--color-primary)"/>
-                    </svg>
-                </div>
-            </div>
-        </section>
-    </div>
-
-    <!-- Страница подтверждения личности -->
-    <div id="confirmationPage" class="confirmation-page" style="display: none;">
-        <div class="section-card">
-            <h2 class="section-title">ПОДТВЕРЖДЕНИЕ ЛИЧНОСТИ</h2>
-            <p class="confirmation-text">Вы <span id="confirmationGuestName"></span>?</p>
-            <div class="confirmation-buttons">
-                <button type="button" class="btn-primary" id="confirmYesBtn">Да, это я</button>
-                <button type="button" class="btn-secondary" id="confirmNoBtn">Нет, это не я</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Страница ошибки -->
-    <div id="errorPage" class="error-page" style="display: none;">
-        <div class="section-card">
-            <h2 class="section-title">ОЙ, ЧТО-ТО ПОШЛО НЕ ТАК</h2>
-            <p class="error-text">Произошла ошибка. Пожалуйста, напишите нам, и мы поможем вам.</p>
-            <div class="contact-list">
-                <a href="#" class="contact-item" id="errorGroomContact">
-                    <span class="contact-name">Валентин</span>
-                    <span class="contact-telegram" id="errorGroomTelegram">@ezhigval</span>
-                </a>
-                <a href="#" class="contact-item" id="errorBrideContact">
-                    <span class="contact-name">Мария</span>
-                    <span class="contact-telegram" id="errorBrideTelegram">@mrfilmpro</span>
-                </a>
-            </div>
-        </div>
     </div>
 
     <script src="app.js"></script>
