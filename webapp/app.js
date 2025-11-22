@@ -864,16 +864,54 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
         return;
     }
     
-    // Получаем данные пользователя из Telegram
-    const user = tg.initDataUnsafe?.user;
-    const userId = user?.id;
-    const username = user?.username;
+    // Получаем данные пользователя из Telegram (несколько способов)
+    const userData = getTelegramUserId();
+    let userId = userData.userId;
+    let firstNameFromTelegram = userData.firstName;
+    let lastNameFromTelegram = userData.lastName;
+    
+    // Если userId не найден, пробуем получить из initData через сервер
+    if (!userId && userData.initData) {
+        try {
+            const response = await fetch(`${CONFIG.apiUrl}/parse-init-data`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ initData: userData.initData })
+            });
+            
+            if (response.ok) {
+                const parsed = await response.json();
+                if (parsed.userId) {
+                    userId = parsed.userId;
+                    firstNameFromTelegram = parsed.firstName || firstNameFromTelegram;
+                    lastNameFromTelegram = parsed.lastName || lastNameFromTelegram;
+                    localStorage.setItem('telegram_user_id', userId.toString());
+                }
+            }
+        } catch (error) {
+            console.error('Error parsing initData:', error);
+        }
+    }
+    
+    // Если все еще нет userId, пробуем из localStorage
+    if (!userId) {
+        const savedUserId = localStorage.getItem('telegram_user_id');
+        if (savedUserId) {
+            userId = parseInt(savedUserId);
+            console.log('Using userId from localStorage:', userId);
+        }
+    }
     
     if (!userId) {
         tg.showAlert('Ошибка: не удалось получить данные пользователя. Пожалуйста, откройте приложение через Telegram.');
         console.error('User ID not found in Telegram data');
         return;
     }
+    
+    const user = tg.initDataUnsafe?.user;
+    const username = user?.username || '';
     
     // Подготавливаем список всех гостей
     // Для дополнительных гостей используем category и side основного гостя
