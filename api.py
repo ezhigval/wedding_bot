@@ -96,29 +96,32 @@ async def get_config(request):
 async def check_registration(request):
     """
     Проверить, зарегистрирован ли пользователь
-    Логика:
-    1. Сначала проверяем по user_id в столбце F
-    2. Если не найден, проверяем по имени/фамилии из Telegram
-    3. Если найден по имени - возвращаем информацию для подтверждения
+    user_id получается из tg.initDataUnsafe?.user?.id в Mini App
+    
+    Логика проверки:
+    1. Сначала проверяем по user_id в столбце F таблицы Google Sheets
+    2. Если не найден по user_id, проверяем по имени/фамилии из Telegram
+    3. Если найден по имени - возвращаем информацию для подтверждения личности
     """
     try:
+        # user_id получается из tg.initDataUnsafe?.user?.id в JavaScript
         user_id = request.query.get('userId')
         first_name = request.query.get('firstName', '')
         last_name = request.query.get('lastName', '')
         
-        logger.info(f"check_registration: received request - userId: {user_id}, firstName: {first_name}, lastName: {last_name}")
+        logger.info(f"check_registration: received request - userId: {user_id} (from tg.initDataUnsafe?.user?.id), firstName: {first_name}, lastName: {last_name}")
         
         if not user_id:
-            logger.warning("check_registration: userId not provided in request")
+            logger.warning("check_registration: userId not provided in request (tg.initDataUnsafe?.user?.id is empty)")
             return web.json_response({
                 'registered': False,
                 'error': 'user_id_required'
             }, status=400)
         
         user_id = int(user_id)
-        logger.info(f"check_registration: checking user_id {user_id}, name: {first_name} {last_name}")
+        logger.info(f"check_registration: checking user_id {user_id} (from Telegram) against column F in Google Sheets")
         
-        # 1. Проверяем по user_id
+        # 1. Проверяем по user_id в столбце F таблицы
         registered = await check_guest_registration(user_id)
         if registered:
             logger.info(f"check_registration: user_id {user_id} found and registered")

@@ -263,21 +263,24 @@ function updateGuest(guestId, field, value) {
 }
 
 // Проверка, зарегистрирован ли пользователь
+// Используем tg.initDataUnsafe?.user?.id для получения user_id из Telegram Mini App
 async function checkRegistration() {
+    // Получаем данные пользователя из Telegram Web App
     const user = tg.initDataUnsafe?.user;
-    const userId = user?.id;
+    const userId = user?.id;  // Telegram user_id - уникальный идентификатор пользователя
     const firstName = user?.first_name || '';
     const lastName = user?.last_name || '';
     
     if (!userId) {
-        console.log('checkRegistration: userId not found');
+        console.log('checkRegistration: userId not found in tg.initDataUnsafe?.user?.id');
         return { registered: false, error: 'no_user_id' };
     }
     
     try {
-        // Передаем userId, firstName и lastName для поиска
+        // Передаем userId из Telegram для сравнения с таблицей (столбец F)
+        // Также передаем firstName и lastName для поиска по имени, если user_id не найден
         const params = new URLSearchParams({
-            userId: userId,
+            userId: userId,  // Сравниваем с user_id в столбце F таблицы
             firstName: firstName,
             lastName: lastName
         });
@@ -475,15 +478,16 @@ function updateMainContacts() {
 loadConfig();
 
 // Функция для проверки регистрации и отображения правильной страницы
+// Используем tg.initDataUnsafe?.user?.id для получения user_id и сравнения с таблицей
 async function checkAndShowPage() {
     try {
-        // Получаем данные пользователя из Telegram Web App
+        // Получаем user_id из Telegram Mini App через tg.initDataUnsafe?.user?.id
         const user = tg.initDataUnsafe?.user;
-        const userId = user?.id;
+        const userId = user?.id;  // Telegram user_id для сравнения с таблицей (столбец F)
         const firstName = user?.first_name || '';
         const lastName = user?.last_name || '';
         
-        console.log('checkAndShowPage: Telegram user data:', {
+        console.log('checkAndShowPage: Telegram user data from tg.initDataUnsafe?.user:', {
             userId: userId,
             firstName: firstName,
             lastName: lastName,
@@ -492,13 +496,13 @@ async function checkAndShowPage() {
         });
         
         if (!userId) {
-            console.warn('checkAndShowPage: userId not available, showing registration page');
-            // Если нет userId, показываем страницу регистрации
+            console.warn('checkAndShowPage: userId not available from tg.initDataUnsafe?.user?.id, showing registration page');
+            // Если нет userId из Telegram, показываем страницу регистрации
             showRegistrationPage();
             return;
         }
         
-        // Проверяем текущий статус регистрации
+        // Проверяем регистрацию: сначала по user_id (столбец F), потом по имени/фамилии
         console.log('checkAndShowPage: checking registration for userId:', userId);
         const result = await checkRegistration();
         console.log('checkAndShowPage: registration result:', result);
@@ -615,16 +619,20 @@ function showConfirmationPage(guestName, row) {
 }
 
 // Функция для подтверждения личности
+// Используем tg.initDataUnsafe?.user?.id для получения user_id и сохранения в таблицу
 async function confirmIdentity(row) {
     try {
+        // Получаем user_id из Telegram Mini App
         const user = tg.initDataUnsafe?.user;
-        const userId = user?.id;
+        const userId = user?.id;  // Telegram user_id для сохранения в столбец F
         
         if (!userId) {
+            console.error('confirmIdentity: userId not found in tg.initDataUnsafe?.user?.id');
             showErrorPage();
             return;
         }
         
+        // Сохраняем user_id в таблицу (столбец F)
         const response = await fetch(`${CONFIG.apiUrl}/confirm-identity`, {
             method: 'POST',
             headers: {
@@ -632,7 +640,7 @@ async function confirmIdentity(row) {
             },
             body: JSON.stringify({
                 row: row,
-                userId: userId
+                userId: userId  // Сохраняем user_id из Telegram в столбец F
             })
         });
         
