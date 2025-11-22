@@ -769,7 +769,6 @@ async def cmd_bot_status(message: Message):
         return
     
     import os
-    import psutil
     from datetime import datetime
     
     status_text = "🤖 <b>Статус бота</b>\n\n"
@@ -790,16 +789,17 @@ async def cmd_bot_status(message: Message):
                 status_text += f"Запущено несколько экземпляров бота!\n\n"
         
         # 2. Информация о процессе
+        status_text += f"📊 <b>Информация о процессе:</b>\n"
+        status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
         try:
+            import psutil
             process = psutil.Process(os.getpid())
-            status_text += f"📊 <b>Информация о процессе:</b>\n"
-            status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
             status_text += f"⏰ Время запуска: {datetime.fromtimestamp(process.create_time()).strftime('%Y-%m-%d %H:%M:%S')}\n"
             status_text += f"💾 Память: {process.memory_info().rss / 1024 / 1024:.2f} MB\n\n"
         except ImportError:
-            status_text += f"⚠️ psutil не установлен, информация о процессе недоступна\n\n"
+            status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
         except Exception as e:
-            status_text += f"⚠️ Ошибка получения информации о процессе: {str(e)}\n\n"
+            status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
         
         # 3. Проверка на Render (если доступно)
         render_service_id = os.getenv('RENDER_SERVICE_ID', '')
