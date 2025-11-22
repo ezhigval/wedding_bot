@@ -312,6 +312,36 @@
         </section>
     </div>
 
+    <!-- Страница подтверждения личности -->
+    <div id="confirmationPage" class="confirmation-page" style="display: none;">
+        <div class="section-card">
+            <h2 class="section-title">ПОДТВЕРЖДЕНИЕ ЛИЧНОСТИ</h2>
+            <p class="confirmation-text">Вы <span id="confirmationGuestName"></span>?</p>
+            <div class="confirmation-buttons">
+                <button type="button" class="btn-primary" id="confirmYesBtn">Да, это я</button>
+                <button type="button" class="btn-secondary" id="confirmNoBtn">Нет, это не я</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Страница ошибки -->
+    <div id="errorPage" class="error-page" style="display: none;">
+        <div class="section-card">
+            <h2 class="section-title">ОЙ, ЧТО-ТО ПОШЛО НЕ ТАК</h2>
+            <p class="error-text">Произошла ошибка. Пожалуйста, напишите нам, и мы поможем вам.</p>
+            <div class="contact-list">
+                <a href="#" class="contact-item" id="errorGroomContact">
+                    <span class="contact-name">Валентин</span>
+                    <span class="contact-telegram" id="errorGroomTelegram">@ezhigval</span>
+                </a>
+                <a href="#" class="contact-item" id="errorBrideContact">
+                    <span class="contact-name">Мария</span>
+                    <span class="contact-telegram" id="errorBrideTelegram">@mrfilmpro</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
     
     <!-- Hot reload для разработки -->

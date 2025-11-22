@@ -266,30 +266,38 @@ function updateGuest(guestId, field, value) {
 async function checkRegistration() {
     const user = tg.initDataUnsafe?.user;
     const userId = user?.id;
+    const firstName = user?.first_name || '';
+    const lastName = user?.last_name || '';
     
     if (!userId) {
         console.log('checkRegistration: userId not found');
-        return false;
+        return { registered: false, error: 'no_user_id' };
     }
     
     try {
-        const url = `${CONFIG.apiUrl}/check?userId=${userId}`;
+        // Передаем userId, firstName и lastName для поиска
+        const params = new URLSearchParams({
+            userId: userId,
+            firstName: firstName,
+            lastName: lastName
+        });
+        const url = `${CONFIG.apiUrl}/check?${params}`;
         console.log('checkRegistration: fetching', url);
         const response = await fetch(url);
         
         if (response.ok) {
             const data = await response.json();
             console.log('checkRegistration: response data', data);
-            return data.registered || false;
+            return data;
         } else {
             console.error('checkRegistration: response error', response.status, response.statusText);
-            // При любой ошибке (включая 404) считаем, что гость не зарегистрирован
-            return false;
+            // При ошибке сервера показываем страницу ошибки
+            return { registered: false, error: 'server_error' };
         }
     } catch (error) {
         console.error('Error checking registration:', error);
-        // При ошибке считаем, что гость не найден
-        return false;
+        // При ошибке сети показываем страницу ошибки
+        return { registered: false, error: 'network_error' };
     }
 }
 
@@ -479,29 +487,25 @@ async function checkAndShowPage() {
         }
         
         // Проверяем текущий статус регистрации
-        const registered = await checkRegistration();
+        const result = await checkRegistration();
         
-        if (registered) {
+        if (result.registered) {
             // Пользователь зарегистрирован - показываем основную страницу
             showMainPage();
+        } else if (result.needs_confirmation) {
+            // Найден по имени, нужно подтвердить личность
+            showConfirmationPage(result.guest_name, result.row);
+        } else if (result.error) {
+            // Ошибка - показываем страницу ошибки
+            showErrorPage();
         } else {
-            // Пользователь не зарегистрирован - показываем страницу регистрации
+            // Пользователь не найден - показываем страницу регистрации
             showRegistrationPage();
-            
-            // Проверяем, был ли пользователь ранее зарегистрирован (из localStorage)
-            const wasRegistered = localStorage.getItem(`registered_${userId}`) === 'true';
-            
-            // Если пользователь был зарегистрирован, но теперь не найден - показываем ошибку
-            if (wasRegistered) {
-                showErrorMessage();
-            } else {
-                hideErrorMessage();
-            }
         }
     } catch (error) {
         console.error('Error checking registration:', error);
-        // При ошибке показываем страницу регистрации
-        showRegistrationPage();
+        // При ошибке показываем страницу ошибки
+        showErrorPage();
     }
 }
 
@@ -549,6 +553,100 @@ function showRegistrationPage() {
     // Скрываем основную страницу
     const mainPage = document.getElementById('mainPage');
     if (mainPage) mainPage.style.display = 'none';
+}
+
+// Функция для показа страницы подтверждения личности
+function showConfirmationPage(guestName, row) {
+    // Скрываем все секции
+    document.querySelectorAll('section').forEach(section => {
+        section.style.display = 'none';
+    });
+    
+    // Показываем страницу подтверждения
+    const confirmationPage = document.getElementById('confirmationPage');
+    if (confirmationPage) {
+        confirmationPage.style.display = 'block';
+        const guestNameElement = document.getElementById('confirmationGuestName');
+        if (guestNameElement) {
+            guestNameElement.textContent = guestName;
+        }
+        
+        // Сохраняем данные для подтверждения
+        const confirmYesBtn = document.getElementById('confirmYesBtn');
+        const confirmNoBtn = document.getElementById('confirmNoBtn');
+        
+        if (confirmYesBtn) {
+            confirmYesBtn.onclick = async () => {
+                await confirmIdentity(row);
+            };
+        }
+        
+        if (confirmNoBtn) {
+            confirmNoBtn.onclick = () => {
+                showRegistrationPage();
+            };
+        }
+    } else {
+        // Если страницы нет, показываем регистрацию
+        showRegistrationPage();
+    }
+}
+
+// Функция для подтверждения личности
+async function confirmIdentity(row) {
+    try {
+        const user = tg.initDataUnsafe?.user;
+        const userId = user?.id;
+        
+        if (!userId) {
+            showErrorPage();
+            return;
+        }
+        
+        const response = await fetch(`${CONFIG.apiUrl}/confirm-identity`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                row: row,
+                userId: userId
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                // Успешно подтверждено - показываем основную страницу
+                showMainPage();
+            } else {
+                showErrorPage();
+            }
+        } else {
+            showErrorPage();
+        }
+    } catch (error) {
+        console.error('Error confirming identity:', error);
+        showErrorPage();
+    }
+}
+
+// Функция для показа страницы ошибки
+function showErrorPage() {
+    // Скрываем все секции
+    document.querySelectorAll('section').forEach(section => {
+        section.style.display = 'none';
+    });
+    
+    // Показываем страницу ошибки
+    const errorPage = document.getElementById('errorPage');
+    if (errorPage) {
+        errorPage.style.display = 'block';
+    } else {
+        // Если страницы нет, показываем регистрацию с сообщением
+        showRegistrationPage();
+        alert('Ой, что-то пошло не так. Пожалуйста, напишите нам.');
+    }
 }
 
 // Функция для показа основной страницы

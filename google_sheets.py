@@ -1156,3 +1156,120 @@ def _delete_guest_from_sheets_sync(user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+async def find_guest_by_name(first_name: str, last_name: str) -> Optional[Dict]:
+    """
+    Найти гостя по имени и фамилии (без user_id)
+    
+    Args:
+        first_name: Имя
+        last_name: Фамилия
+        
+    Returns:
+        Словарь с информацией о госте или None если не найден
+        {'first_name': str, 'last_name': str, 'row': int, 'user_id': str}
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return None
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _find_guest_by_name_sync, first_name, last_name)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка поиска гостя по имени: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
+    """Синхронная функция для поиска гостя по имени"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        all_values = worksheet.get_all_values()
+        
+        # Ищем по имени и фамилии (столбец A)
+        full_name = f"{first_name} {last_name}".strip()
+        
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 0:
+                existing_name = row[0].strip() if row[0] else ""
+                confirmation = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C
+                
+                # Проверяем совпадение имени (без учета регистра) и подтверждение
+                if existing_name.lower() == full_name.lower() and confirmation.upper() == "ДА":
+                    user_id = row[5].strip() if len(row) > 5 and row[5] else ""  # Столбец F
+                    
+                    # Парсим имя и фамилию
+                    name_parts = existing_name.split(maxsplit=1)
+                    found_first_name = name_parts[0] if name_parts else first_name
+                    found_last_name = name_parts[1] if len(name_parts) > 1 else last_name
+                    
+                    logger.info(f"Найден гость по имени: {full_name} (строка {row_idx}, user_id: {user_id})")
+                    return {
+                        'first_name': found_first_name,
+                        'last_name': found_last_name,
+                        'row': row_idx,
+                        'user_id': user_id
+                    }
+        
+        logger.info(f"Гость {full_name} не найден по имени")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка поиска гостя по имени: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+async def update_guest_user_id(row: int, user_id: int) -> bool:
+    """
+    Обновить user_id для существующего гостя
+    
+    Args:
+        row: Номер строки в Google Sheets
+        user_id: Telegram user_id
+        
+    Returns:
+        True если успешно обновлено
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _update_guest_user_id_sync, row, user_id)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка обновления user_id гостя: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
+    """Синхронная функция для обновления user_id"""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        # Обновляем столбец F (индекс 6) - user_id
+        worksheet.update_cell(row, 6, str(user_id))
+        
+        logger.info(f"Обновлен user_id для строки {row}: {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка обновления user_id: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False

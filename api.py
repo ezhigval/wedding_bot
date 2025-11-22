@@ -15,7 +15,8 @@ from config import BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGR
 from google_sheets import (
     add_guest_to_sheets, cancel_invitation, get_timeline,
     check_guest_registration, get_all_guests_from_sheets, 
-    get_guests_count_from_sheets, cancel_guest_registration_by_user_id
+    get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
+    find_guest_by_name, update_guest_user_id
 )
 import traceback
 import logging
@@ -72,6 +73,7 @@ async def init_api():
     api.router.add_get('/guests', get_guests_list)
     api.router.add_get('/stats', get_stats)
     api.router.add_get('/timeline', get_timeline_endpoint)
+    api.router.add_post('/confirm-identity', confirm_identity)
     
     return api
 
@@ -92,29 +94,121 @@ async def get_config(request):
         return web.json_response({'error': str(e)}, status=500)
 
 async def check_registration(request):
-    """Проверить, зарегистрирован ли пользователь"""
+    """
+    Проверить, зарегистрирован ли пользователь
+    Логика:
+    1. Сначала проверяем по user_id в столбце F
+    2. Если не найден, проверяем по имени/фамилии из Telegram
+    3. Если найден по имени - возвращаем информацию для подтверждения
+    """
     try:
         user_id = request.query.get('userId')
+        first_name = request.query.get('firstName', '')
+        last_name = request.query.get('lastName', '')
+        
         if not user_id:
             logger.info("check_registration: userId not provided")
-            return web.json_response({'registered': False})
+            return web.json_response({
+                'registered': False,
+                'error': 'user_id_required'
+            }, status=400)
         
         user_id = int(user_id)
-        logger.info(f"check_registration: checking user_id {user_id}")
-        registered = await check_guest_registration(user_id)
-        logger.info(f"check_registration: user_id {user_id} registered={registered}")
+        logger.info(f"check_registration: checking user_id {user_id}, name: {first_name} {last_name}")
         
+        # 1. Проверяем по user_id
+        registered = await check_guest_registration(user_id)
+        if registered:
+            logger.info(f"check_registration: user_id {user_id} found and registered")
+            return web.json_response({
+                'registered': True
+            })
+        
+        # 2. Если не найден по user_id, проверяем по имени/фамилии
+        if first_name and last_name:
+            guest_info = await find_guest_by_name(first_name, last_name)
+            if guest_info:
+                # Найден по имени, но user_id не совпадает или отсутствует
+                if not guest_info.get('user_id'):
+                    # user_id отсутствует - нужно подтвердить и сохранить
+                    logger.info(f"check_registration: guest found by name but no user_id, needs confirmation")
+                    return web.json_response({
+                        'registered': False,
+                        'needs_confirmation': True,
+                        'guest_name': f"{guest_info['first_name']} {guest_info['last_name']}",
+                        'row': guest_info['row']
+                    })
+                elif guest_info.get('user_id') != str(user_id):
+                    # user_id не совпадает - возможно другой пользователь
+                    logger.warning(f"check_registration: guest found by name but user_id mismatch: {guest_info.get('user_id')} != {user_id}")
+                    return web.json_response({
+                        'registered': False,
+                        'needs_confirmation': True,
+                        'guest_name': f"{guest_info['first_name']} {guest_info['last_name']}",
+                        'row': guest_info['row']
+                    })
+        
+        # Не найден ни по user_id, ни по имени
+        logger.info(f"check_registration: user_id {user_id} not found")
         return web.json_response({
-            'registered': registered
+            'registered': False
         })
+        
     except ValueError as e:
         logger.error(f"Error in check_registration: invalid user_id format: {e}")
-        return web.json_response({'registered': False})
+        return web.json_response({
+            'registered': False,
+            'error': 'invalid_user_id'
+        }, status=400)
     except Exception as e:
         logger.error(f"Error in check_registration: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return web.json_response({'registered': False})
+        return web.json_response({
+            'registered': False,
+            'error': 'server_error'
+        }, status=500)
+
+async def confirm_identity(request):
+    """Подтвердить личность и сохранить user_id"""
+    try:
+        data = await request.json()
+        row = data.get('row')
+        user_id = data.get('userId')
+        
+        if not row or not user_id:
+            return web.json_response({
+                'success': False,
+                'error': 'missing_data'
+            }, status=400)
+        
+        user_id = int(user_id)
+        row = int(row)
+        
+        logger.info(f"confirm_identity: updating row {row} with user_id {user_id}")
+        
+        result = await update_guest_user_id(row, user_id)
+        
+        if result:
+            logger.info(f"confirm_identity: successfully updated user_id for row {row}")
+            return web.json_response({
+                'success': True
+            })
+        else:
+            logger.error(f"confirm_identity: failed to update user_id for row {row}")
+            return web.json_response({
+                'success': False,
+                'error': 'update_failed'
+            }, status=500)
+            
+    except Exception as e:
+        logger.error(f"Error in confirm_identity: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return web.json_response({
+            'success': False,
+            'error': 'server_error'
+        }, status=500)
 
 def verify_telegram_webapp_data(init_data):
     """Проверка подлинности данных от Telegram"""
