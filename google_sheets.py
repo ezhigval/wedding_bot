@@ -1205,7 +1205,7 @@ def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
                 
                 # Проверяем совпадение имени (без учета регистра) и подтверждение
                 if existing_name.lower() == full_name.lower() and confirmation.upper() == "ДА":
-                    user_id = row[5].strip() if len(row) > 5 and row[5] else ""  # Столбец F
+                    user_id = row[5].strip() if len(row) > 5 and row[5] else ""  # Столбец F (индекс 5)
                     
                     # Парсим имя и фамилию
                     name_parts = existing_name.split(maxsplit=1)
@@ -1263,7 +1263,7 @@ def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
         worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
         
-        # Обновляем столбец F (индекс 6) - user_id
+        # Обновляем столбец F (индекс 6, так как update_cell использует 1-based индексы) - user_id
         worksheet.update_cell(row, 6, str(user_id))
         
         logger.info(f"Обновлен user_id для строки {row}: {user_id}")
