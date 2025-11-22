@@ -22,14 +22,8 @@ def get_registration_keyboard():
 def get_admin_keyboard():
     """Клавиатура для администратора"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="🔄 Обновить Mini App", callback_data="admin_reload")],
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
-        [InlineKeyboardButton(text="👤 Управление именами", callback_data="admin_names")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
-        [InlineKeyboardButton(text="📱 Обновить номера → username", callback_data="admin_update_phones")],
-        [InlineKeyboardButton(text="🔐 Авторизовать Telegram Client", callback_data="admin_auth_telegram")],
-        [InlineKeyboardButton(text="🗑️ Удалить гостя", callback_data="admin_delete_guest")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
