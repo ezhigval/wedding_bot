@@ -469,14 +469,6 @@ loadConfig();
 // Функция для проверки регистрации и отображения правильной страницы
 async function checkAndShowPage() {
     try {
-        // ⚠️ ВАЖНО: УДАЛИТЬ ПЕРЕД МЕРДЖЕМ В MAIN! ⚠️
-        // Для локальной разработки: на localhost всегда показываем основную страницу
-        // ЭТО ДЫРА В БЕЗОПАСНОСТИ - НЕ ОСТАВЛЯТЬ В ПРОДАКШЕНЕ!
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            showMainPage();
-            return;
-        }
-        
         const user = tg.initDataUnsafe?.user;
         const userId = user?.id;
         
