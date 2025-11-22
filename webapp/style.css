@@ -728,6 +728,12 @@ body {
     margin-bottom: 20px;
 }
 
+/* Текст под заголовком "ПРИСУТСТВИЕ" — делаем заметно меньше */
+.rsvp-text {
+    font-size: 14px;
+    line-height: 1.4;
+}
+
 /* Countdown Clock */
 .countdown-clock {
     display: flex;
@@ -904,6 +910,11 @@ body {
     margin-top: 30px;
 }
 
+/* Кремовый фон для блока присутствия */
+.rsvp-section .section-card {
+    background: var(--color-cream);
+}
+
 .form-group {
     margin-bottom: 25px;
 }
@@ -926,6 +937,7 @@ body {
     font-size: 20px;
     font-family: inherit;
     transition: border-color 0.3s;
+    background: var(--color-cream);
 }
 
 .form-group input[type="text"]:focus,
