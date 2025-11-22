@@ -106,8 +106,10 @@ async def check_registration(request):
         first_name = request.query.get('firstName', '')
         last_name = request.query.get('lastName', '')
         
+        logger.info(f"check_registration: received request - userId: {user_id}, firstName: {first_name}, lastName: {last_name}")
+        
         if not user_id:
-            logger.info("check_registration: userId not provided")
+            logger.warning("check_registration: userId not provided in request")
             return web.json_response({
                 'registered': False,
                 'error': 'user_id_required'

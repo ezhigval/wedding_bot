@@ -477,29 +477,47 @@ loadConfig();
 // Функция для проверки регистрации и отображения правильной страницы
 async function checkAndShowPage() {
     try {
+        // Получаем данные пользователя из Telegram Web App
         const user = tg.initDataUnsafe?.user;
         const userId = user?.id;
+        const firstName = user?.first_name || '';
+        const lastName = user?.last_name || '';
+        
+        console.log('checkAndShowPage: Telegram user data:', {
+            userId: userId,
+            firstName: firstName,
+            lastName: lastName,
+            hasInitData: !!tg.initDataUnsafe,
+            hasUser: !!user
+        });
         
         if (!userId) {
+            console.warn('checkAndShowPage: userId not available, showing registration page');
             // Если нет userId, показываем страницу регистрации
             showRegistrationPage();
             return;
         }
         
         // Проверяем текущий статус регистрации
+        console.log('checkAndShowPage: checking registration for userId:', userId);
         const result = await checkRegistration();
+        console.log('checkAndShowPage: registration result:', result);
         
         if (result.registered) {
             // Пользователь зарегистрирован - показываем основную страницу
+            console.log('checkAndShowPage: user is registered, showing main page');
             showMainPage();
         } else if (result.needs_confirmation) {
             // Найден по имени, нужно подтвердить личность
+            console.log('checkAndShowPage: needs confirmation for:', result.guest_name);
             showConfirmationPage(result.guest_name, result.row);
         } else if (result.error) {
             // Ошибка - показываем страницу ошибки
+            console.error('checkAndShowPage: error occurred:', result.error);
             showErrorPage();
         } else {
             // Пользователь не найден - показываем страницу регистрации
+            console.log('checkAndShowPage: user not found, showing registration page');
             showRegistrationPage();
         }
     } catch (error) {
@@ -557,10 +575,14 @@ function showRegistrationPage() {
 
 // Функция для показа страницы подтверждения личности
 function showConfirmationPage(guestName, row) {
-    // Скрываем все секции
+    // Скрываем все секции, основную страницу и страницу ошибки
     document.querySelectorAll('section').forEach(section => {
         section.style.display = 'none';
     });
+    const mainPage = document.getElementById('mainPage');
+    if (mainPage) mainPage.style.display = 'none';
+    const errorPage = document.getElementById('errorPage');
+    if (errorPage) errorPage.style.display = 'none';
     
     // Показываем страницу подтверждения
     const confirmationPage = document.getElementById('confirmationPage');
@@ -633,15 +655,38 @@ async function confirmIdentity(row) {
 
 // Функция для показа страницы ошибки
 function showErrorPage() {
-    // Скрываем все секции
+    // Скрываем все секции и основную страницу
     document.querySelectorAll('section').forEach(section => {
         section.style.display = 'none';
     });
+    const mainPage = document.getElementById('mainPage');
+    if (mainPage) mainPage.style.display = 'none';
+    const confirmationPage = document.getElementById('confirmationPage');
+    if (confirmationPage) confirmationPage.style.display = 'none';
     
     // Показываем страницу ошибки
     const errorPage = document.getElementById('errorPage');
     if (errorPage) {
         errorPage.style.display = 'block';
+        
+        // Загружаем контакты
+        const errorGroomTelegram = document.getElementById('errorGroomTelegram');
+        const errorBrideTelegram = document.getElementById('errorBrideTelegram');
+        const errorGroomContact = document.getElementById('errorGroomContact');
+        const errorBrideContact = document.getElementById('errorBrideContact');
+        
+        if (errorGroomTelegram && CONFIG.groomTelegram) {
+            errorGroomTelegram.textContent = `@${CONFIG.groomTelegram}`;
+        }
+        if (errorBrideTelegram && CONFIG.brideTelegram) {
+            errorBrideTelegram.textContent = `@${CONFIG.brideTelegram}`;
+        }
+        if (errorGroomContact && CONFIG.groomTelegram) {
+            errorGroomContact.href = `https://t.me/${CONFIG.groomTelegram}`;
+        }
+        if (errorBrideContact && CONFIG.brideTelegram) {
+            errorBrideContact.href = `https://t.me/${CONFIG.brideTelegram}`;
+        }
     } else {
         // Если страницы нет, показываем регистрацию с сообщением
         showRegistrationPage();
