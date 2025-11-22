@@ -1137,6 +1137,71 @@ async def use_code_auth_callback(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
 
+@dp.callback_query(F.data == "admin_bot_status")
+async def admin_bot_status(callback: CallbackQuery):
+    """Проверка статуса бота через админ-меню"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    import os
+    from datetime import datetime
+    
+    status_text = "🤖 <b>Статус бота</b>\n\n"
+    
+    try:
+        # 1. Проверяем через getMe API
+        try:
+            bot_info = await bot.get_me()
+            status_text += f"✅ <b>Бот активен</b>\n"
+            status_text += f"👤 Имя: {bot_info.first_name}\n"
+            status_text += f"🆔 ID: <code>{bot_info.id}</code>\n"
+            status_text += f"📝 Username: @{bot_info.username}\n\n"
+        except Exception as e:
+            status_text += f"❌ <b>Ошибка получения информации о боте:</b>\n"
+            status_text += f"<code>{str(e)}</code>\n\n"
+            if 'Conflict' in str(e) or 'TelegramConflictError' in str(e):
+                status_text += f"🚨 <b>ОБНАРУЖЕН КОНФЛИКТ!</b>\n"
+                status_text += f"Запущено несколько экземпляров бота!\n\n"
+        
+        # 2. Информация о процессе
+        status_text += f"📊 <b>Информация о процессе:</b>\n"
+        status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
+        try:
+            import psutil
+            process = psutil.Process(os.getpid())
+            status_text += f"⏰ Время запуска: {datetime.fromtimestamp(process.create_time()).strftime('%Y-%m-%d %H:%M:%S')}\n"
+            status_text += f"💾 Память: {process.memory_info().rss / 1024 / 1024:.2f} MB\n\n"
+        except ImportError:
+            status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
+        except Exception as e:
+            status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
+        
+        # 3. Проверка на Render (если доступно)
+        render_service_id = os.getenv('RENDER_SERVICE_ID', '')
+        if render_service_id:
+            status_text += f"🌐 <b>Render Service ID:</b> <code>{render_service_id}</code>\n\n"
+        
+        # 4. Рекомендации
+        status_text += f"💡 <b>Как проверить дубликаты:</b>\n"
+        status_text += f"1. Проверьте логи на наличие 'TelegramConflictError'\n"
+        status_text += f"2. На Render проверьте, нет ли нескольких сервисов с одним токеном\n"
+        status_text += f"3. Убедитесь, что не используется webhook одновременно с polling\n"
+        status_text += f"4. Проверьте, что старый экземпляр полностью остановлен\n"
+        
+    except Exception as e:
+        logger.error(f"Ошибка проверки статуса бота: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        status_text += f"❌ <b>Ошибка проверки:</b>\n<code>{str(e)}</code>"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(status_text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню админа"""
