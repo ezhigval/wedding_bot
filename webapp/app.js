@@ -30,7 +30,7 @@ function initRingLoader() {
     if (typeof lottie === 'undefined') {
         console.error('Lottie library not loaded');
         // Fallback: показываем сайт через 3 секунды
-        setTimeout(() => {
+    setTimeout(() => {
             ringLoader.classList.add('hidden');
             if (appContainer) {
                 appContainer.classList.add('visible');
@@ -71,7 +71,7 @@ function initRingLoader() {
         ringLoader.classList.add('hidden');
         if (appContainer) {
             appContainer.classList.add('visible');
-            setTimeout(() => {
+    setTimeout(() => {
                 appContainer.style.transition = 'opacity 0.8s ease-in';
                 appContainer.style.opacity = '1';
             }, 50);
@@ -267,15 +267,23 @@ async function checkRegistration() {
     const user = tg.initDataUnsafe?.user;
     const userId = user?.id;
     
-    if (!userId) return false;
+    if (!userId) {
+        console.log('checkRegistration: userId not found');
+        return false;
+    }
     
     try {
-        const response = await fetch(`${CONFIG.apiUrl}/check?userId=${userId}`);
+        const url = `${CONFIG.apiUrl}/check?userId=${userId}`;
+        console.log('checkRegistration: fetching', url);
+        const response = await fetch(url);
+        
         if (response.ok) {
             const data = await response.json();
+            console.log('checkRegistration: response data', data);
             return data.registered || false;
-        } else if (response.status === 404) {
-            // Гость не найден (возможно, был удален из таблицы)
+        } else {
+            console.error('checkRegistration: response error', response.status, response.statusText);
+            // При любой ошибке (включая 404) считаем, что гость не зарегистрирован
             return false;
         }
     } catch (error) {
@@ -283,8 +291,6 @@ async function checkRegistration() {
         // При ошибке считаем, что гость не найден
         return false;
     }
-    
-    return false;
 }
 
 // Функция для показа сообщения об успешной регистрации

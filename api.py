@@ -96,14 +96,20 @@ async def check_registration(request):
     try:
         user_id = request.query.get('userId')
         if not user_id:
+            logger.info("check_registration: userId not provided")
             return web.json_response({'registered': False})
         
         user_id = int(user_id)
+        logger.info(f"check_registration: checking user_id {user_id}")
         registered = await check_guest_registration(user_id)
+        logger.info(f"check_registration: user_id {user_id} registered={registered}")
         
         return web.json_response({
             'registered': registered
         })
+    except ValueError as e:
+        logger.error(f"Error in check_registration: invalid user_id format: {e}")
+        return web.json_response({'registered': False})
     except Exception as e:
         logger.error(f"Error in check_registration: {e}")
         import traceback

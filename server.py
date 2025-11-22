@@ -60,11 +60,19 @@ async def serve_static(request):
                 # Не возвращаем 404, продолжаем поиск в webapp/
         
         # Если это директория или файл не существует, возвращаем index.html
-        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie'):
+        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie' and path != 'ring_animation.json'):
             file_path = Path(WEBAPP_PATH) / 'index.html'
         
+        # Если index.html не существует, это критическая ошибка
         if not file_path.exists():
             logger.error(f"File not found: {file_path}")
+            # Для index.html возвращаем базовую HTML страницу вместо 404
+            if path == '' or path == 'index.html' or file_path.name == 'index.html':
+                return Response(
+                    text='<html><body><h1>Application Error</h1><p>Main page not found. Please contact administrator.</p></body></html>',
+                    content_type='text/html',
+                    status=500
+                )
             return Response(text='File not found', status=404)
         
         # Определяем content-type
