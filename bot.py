@@ -2327,7 +2327,24 @@ async def group_list_members(callback: CallbackQuery):
 
 async def init_bot():
     """Инициализация бота"""
-    global bot
+    global bot, _bot_initialized
+    
+    # Проверка: бот не должен инициализироваться дважды
+    if _bot_initialized:
+        logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Бот уже инициализирован!")
+        logger.error(f"   Process ID: {os.getpid()}")
+        logger.error("   init_bot() вызывается второй раз")
+        if bot is not None:
+            logger.warning("   Возвращаем существующий экземпляр бота")
+            return bot
+        else:
+            raise RuntimeError("Бот уже инициализирован, но экземпляр отсутствует!")
+    
+    logger.info("=" * 60)
+    logger.info("🤖 НАЧАЛО ИНИЦИАЛИЗАЦИИ БОТА")
+    logger.info(f"🆔 Process ID: {os.getpid()}")
+    logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+    logger.info("=" * 60)
     
     # Проверка и очистка токена
     token = BOT_TOKEN.strip().strip('"').strip("'") if BOT_TOKEN else ""
@@ -2345,12 +2362,23 @@ async def init_bot():
         logger.error("Токен должен быть в формате: 1234567890:ABC...")
         return None
     
+    # Проверяем, не создан ли уже бот
+    if bot is not None:
+        logger.warning("⚠️ Бот уже создан! Возвращаем существующий экземпляр")
+        _bot_initialized = True
+        return bot
+    
     # Создаем бота с очищенным токеном
+    logger.info("🔧 Создание экземпляра Bot...")
     try:
         bot = Bot(token=token)
         logger.info("✅ Бот создан успешно")
+        _bot_initialized = True
+        logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
     except Exception as e:
         logger.error(f"❌ Ошибка при создании бота: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
     
     # Telegram Client API теперь инициализируется индивидуально для каждого админа
