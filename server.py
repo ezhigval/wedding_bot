@@ -13,12 +13,51 @@ from pathlib import Path
 # Импортируем бот только один раз
 # ВАЖНО: bot.py не должен запускаться напрямую в продакшене
 # Используется только server.py
-from bot import dp, init_bot, notify_admins
-from api import init_api, set_notify_function
-from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
 
-# Флаг для отслеживания, запущен ли уже polling
+# Флаги для отслеживания состояния (защита от дублирования)
 _polling_started = False
+_server_initialized = False
+_bot_instance = None
+
+logger_import = logging.getLogger(__name__)
+logger_import.info("=" * 60)
+logger_import.info("📦 ИМПОРТ МОДУЛЕЙ")
+logger_import.info(f"🆔 Process ID: {os.getpid()}")
+logger_import.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+logger_import.info("=" * 60)
+
+try:
+    logger_import.info("📥 Импорт bot.py...")
+    from bot import dp, init_bot, notify_admins
+    logger_import.info("✅ bot.py импортирован успешно")
+    logger_import.info(f"   Dispatcher ID: {id(dp)}")
+except Exception as e:
+    logger_import.error(f"❌ Ошибка импорта bot.py: {e}")
+    import traceback
+    logger_import.error(traceback.format_exc())
+    raise
+
+try:
+    logger_import.info("📥 Импорт api.py...")
+    from api import init_api, set_notify_function
+    logger_import.info("✅ api.py импортирован успешно")
+except Exception as e:
+    logger_import.error(f"❌ Ошибка импорта api.py: {e}")
+    import traceback
+    logger_import.error(traceback.format_exc())
+    raise
+
+try:
+    logger_import.info("📥 Импорт config.py...")
+    from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+    logger_import.info("✅ config.py импортирован успешно")
+except Exception as e:
+    logger_import.error(f"❌ Ошибка импорта config.py: {e}")
+    import traceback
+    logger_import.error(traceback.format_exc())
+    raise
+
+logger_import.info("✅ Все модули импортированы успешно")
 
 # Настройка логирования с выводом в stdout для Render
 logging.basicConfig(
@@ -156,16 +195,27 @@ async def start_web_server():
 
 async def main():
     """Главная функция"""
-    global _polling_started
+    global _polling_started, _server_initialized, _bot_instance
     
     try:
+        # Проверка: main() не должен вызываться дважды
+        if _server_initialized:
+            logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: main() уже был вызван!")
+            logger.error(f"   Process ID: {os.getpid()}")
+            logger.error("   Это означает двойной запуск сервера")
+            return
+        
         logger.info("=" * 60)
         logger.info("🚀 НАЧАЛО ИНИЦИАЛИЗАЦИИ СЕРВЕРА")
         logger.info(f"🆔 Process ID: {os.getpid()}")
         logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
         logger.info(f"🌍 PORT: {os.getenv('PORT')}")
         logger.info(f"🌍 RENDER: {os.getenv('RENDER')}")
+        logger.info(f"📦 Dispatcher ID: {id(dp)}")
         logger.info("=" * 60)
+        
+        # Устанавливаем флаг инициализации
+        _server_initialized = True
         
         # Проверяем, не запущен ли уже polling (на всякий случай)
         if _polling_started:
@@ -173,13 +223,29 @@ async def main():
             logger.error("   Это не должно происходить. Проверьте код.")
             return
         
+        # Проверяем состояние Dispatcher
+        logger.info("🔍 Проверка состояния Dispatcher...")
+        try:
+            if hasattr(dp, '_polling') and dp._polling:
+                logger.warning("⚠️ Обнаружен активный polling в Dispatcher!")
+                logger.warning("   Это может означать, что бот уже запущен")
+        except Exception as check_error:
+            logger.debug(f"Проверка Dispatcher: {check_error}")
+        logger.info("✅ Dispatcher проверен")
+        
         # Инициализация бота
         logger.info("🤖 Инициализация бота...")
-        bot = await init_bot()
-        if bot is None:
-            logger.error("❌ Не удалось инициализировать бота")
-            logger.error("Проверьте переменные окружения на Render")
-            return
+        if _bot_instance is not None:
+            logger.warning("⚠️ Экземпляр бота уже существует! Используем его")
+            bot = _bot_instance
+        else:
+            bot = await init_bot()
+            if bot is None:
+                logger.error("❌ Не удалось инициализировать бота")
+                logger.error("Проверьте переменные окружения на Render")
+                return
+            _bot_instance = bot
+            logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
         
         # Устанавливаем функцию уведомлений в API
         logger.info("📡 Настройка API...")
@@ -269,17 +335,46 @@ async def main():
             if _polling_started:
                 logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Попытка запустить polling второй раз!")
                 logger.error("   Это не должно происходить. Проверьте код на наличие двойных вызовов.")
+                logger.error(f"   Process ID: {os.getpid()}")
+                logger.error(f"   Dispatcher ID: {id(dp)}")
+                logger.error(f"   Bot ID: {id(bot)}")
+                return
+            
+            # Проверяем состояние Dispatcher еще раз
+            logger.info("🔍 Финальная проверка Dispatcher перед запуском polling...")
+            try:
+                if hasattr(dp, '_polling') and dp._polling:
+                    logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Polling уже активен в Dispatcher!")
+                    logger.error("   Останавливаем перед повторным запуском...")
+                    try:
+                        await dp.stop_polling()
+                        await asyncio.sleep(2)
+                        logger.info("✅ Предыдущий polling остановлен")
+                    except Exception as stop_error:
+                        logger.error(f"Ошибка при остановке: {stop_error}")
+            except Exception as check_error:
+                logger.debug(f"Проверка Dispatcher: {check_error}")
+            
+            # Проверяем, что бот существует
+            if bot is None:
+                logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Бот не инициализирован!")
                 return
             
             # Добавляем задержку перед запуском, чтобы избежать конфликтов
+            logger.info("⏳ Задержка 1 секунда перед запуском polling...")
             await asyncio.sleep(1)
             
-            logger.info("🤖 Запуск бота (polling)...")
-            logger.info(f"🆔 Process ID при запуске polling: {os.getpid()}")
+            logger.info("=" * 60)
+            logger.info("🤖 ЗАПУСК БОТА (POLLING)")
+            logger.info(f"🆔 Process ID: {os.getpid()}")
             logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+            logger.info(f"📦 Dispatcher ID: {id(dp)}")
+            logger.info(f"🤖 Bot ID: {id(bot)}")
+            logger.info("=" * 60)
             
             # Устанавливаем флаг
             _polling_started = True
+            logger.info("✅ Флаг _polling_started установлен")
             
             try:
                 # Запускаем polling (это блокирующая операция)

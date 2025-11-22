@@ -27,8 +27,21 @@ from telegram_client import init_telegram_client, get_username_by_phone, get_or_
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация диспетчера
-dp = Dispatcher(storage=MemoryStorage())
+# Флаги для отслеживания инициализации (защита от дублирования)
+_dispatcher_created = False
+_bot_initialized = False
+
+# Инициализация диспетчера (только один раз)
+if _dispatcher_created:
+    logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Dispatcher уже создан!")
+    logger.error(f"   Process ID: {os.getpid()}")
+    logger.error("   Это означает, что bot.py импортируется дважды")
+    raise RuntimeError("Dispatcher уже создан! Проверьте импорты.")
+else:
+    logger.info(f"✅ Создание Dispatcher (Process ID: {os.getpid()})")
+    dp = Dispatcher(storage=MemoryStorage())
+    _dispatcher_created = True
+    logger.info("✅ Dispatcher создан успешно")
 
 # Бот будет создан в init_bot() после проверки токена
 bot = None
