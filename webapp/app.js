@@ -909,10 +909,11 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 const data = await response.json();
                 
                 // Сохраняем информацию о регистрации в localStorage
-                const user = tg.initDataUnsafe?.user;
-                const userId = user?.id;
+                const userData = getTelegramUserId();
+                const userId = userData.userId || userId; // Используем userId из формы, если есть
                 if (userId) {
                     localStorage.setItem(`registered_${userId}`, 'true');
+                    localStorage.setItem('telegram_user_id', userId.toString());
                 }
                 
                 // Скрываем сообщение об ошибке, если оно было показано
