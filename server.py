@@ -26,38 +26,11 @@ logger_import.info(f"🆔 Process ID: {os.getpid()}")
 logger_import.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
 logger_import.info("=" * 60)
 
-try:
-    logger_import.info("📥 Импорт bot.py...")
 from bot import dp, init_bot, notify_admins
-    logger_import.info("✅ bot.py импортирован успешно")
-    logger_import.info(f"   Dispatcher ID: {id(dp)}")
-except Exception as e:
-    logger_import.error(f"❌ Ошибка импорта bot.py: {e}")
-    import traceback
-    logger_import.error(traceback.format_exc())
-    raise
-
-try:
-    logger_import.info("📥 Импорт api.py...")
 from api import init_api, set_notify_function
-    logger_import.info("✅ api.py импортирован успешно")
-except Exception as e:
-    logger_import.error(f"❌ Ошибка импорта api.py: {e}")
-    import traceback
-    logger_import.error(traceback.format_exc())
-    raise
-
-try:
-    logger_import.info("📥 Импорт config.py...")
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
-    logger_import.info("✅ config.py импортирован успешно")
-except Exception as e:
-    logger_import.error(f"❌ Ошибка импорта config.py: {e}")
-    import traceback
-    logger_import.error(traceback.format_exc())
-    raise
 
-logger_import.info("✅ Все модули импортированы успешно")
+logger_import.info("✅ Модули bot, api и config импортированы успешно")
 
 # Настройка логирования с выводом в stdout для Render
 logging.basicConfig(
@@ -258,11 +231,11 @@ async def main():
             logger.warning("⚠️ Экземпляр бота уже существует! Используем его")
             bot = _bot_instance
         else:
-        bot = await init_bot()
-        if bot is None:
-            logger.error("❌ Не удалось инициализировать бота")
-            logger.error("Проверьте переменные окружения на Render")
-            return
+            bot = await init_bot()
+            if bot is None:
+                logger.error("❌ Не удалось инициализировать бота")
+                logger.error("Проверьте переменные окружения на Render")
+                return
             _bot_instance = bot
             logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
         
