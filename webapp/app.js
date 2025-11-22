@@ -262,20 +262,108 @@ function updateGuest(guestId, field, value) {
     }
 }
 
-// Проверка, зарегистрирован ли пользователь
-// Используем tg.initDataUnsafe?.user?.id для получения user_id из Telegram Mini App
-async function checkRegistration() {
-    // Получаем данные пользователя из Telegram Web App
-    const user = tg.initDataUnsafe?.user;
-    const userId = user?.id;  // Telegram user_id - уникальный идентификатор пользователя
-    const firstName = user?.first_name || '';
-    const lastName = user?.last_name || '';
+// Функция для получения user_id из Telegram Mini App (несколько способов)
+function getTelegramUserId() {
+    let userId = null;
+    let firstName = '';
+    let lastName = '';
     
+    // Способ 1: Через initDataUnsafe (самый простой)
+    const user = tg.initDataUnsafe?.user;
+    if (user?.id) {
+        userId = user.id;
+        firstName = user.first_name || '';
+        lastName = user.last_name || '';
+        console.log('getTelegramUserId: found via initDataUnsafe', { userId, firstName, lastName });
+        return { userId, firstName, lastName, method: 'initDataUnsafe' };
+    }
+    
+    // Способ 2: Через initData (нужно отправить на сервер для парсинга)
+    const initData = tg.initData;
+    if (initData) {
+        console.log('getTelegramUserId: initData available, will parse on server');
+        // Вернем initData для парсинга на сервере
+        return { userId: null, firstName: '', lastName: '', initData, method: 'initData' };
+    }
+    
+    // Способ 3: Из localStorage (если был сохранен ранее)
+    const savedUserId = localStorage.getItem('telegram_user_id');
+    if (savedUserId) {
+        console.log('getTelegramUserId: found in localStorage', savedUserId);
+        return { userId: parseInt(savedUserId), firstName: '', lastName: '', method: 'localStorage' };
+    }
+    
+    console.warn('getTelegramUserId: no user_id found by any method');
+    return { userId: null, firstName: '', lastName: '', method: 'none' };
+}
+
+// Проверка, зарегистрирован ли пользователь
+// Используем несколько способов получения user_id из Telegram Mini App
+async function checkRegistration() {
+    // Получаем данные пользователя из Telegram Web App (несколько способов)
+    const userData = getTelegramUserId();
+    const { userId, firstName, lastName, initData, method } = userData;
+    
+    console.log('checkRegistration: user data method:', method, { userId, firstName, lastName, hasInitData: !!initData });
+    
+    // Если есть initData, отправляем его на сервер для парсинга
+    if (initData && !userId) {
+        try {
+            const response = await fetch(`${CONFIG.apiUrl}/parse-init-data`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ initData })
+            });
+            
+            if (response.ok) {
+                const parsed = await response.json();
+                if (parsed.userId) {
+                    // Сохраняем в localStorage для будущего использования
+                    localStorage.setItem('telegram_user_id', parsed.userId.toString());
+                    return await checkRegistrationWithUserId(parsed.userId, parsed.firstName || '', parsed.lastName || '');
+                }
+            }
+        } catch (error) {
+            console.error('Error parsing initData:', error);
+        }
+    }
+    
+    // Если нет userId, но есть имя/фамилия - пробуем поиск только по имени
+    if (!userId && firstName && lastName) {
+        console.log('checkRegistration: no userId, trying search by name only');
+        try {
+            const params = new URLSearchParams({
+                firstName: firstName,
+                lastName: lastName,
+                searchByNameOnly: 'true'
+            });
+            const url = `${CONFIG.apiUrl}/check?${params}`;
+            const response = await fetch(url);
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('checkRegistration: response by name only', data);
+                return data;
+            }
+        } catch (error) {
+            console.error('Error checking by name only:', error);
+        }
+    }
+    
+    // Если нет userId вообще - возвращаем ошибку
     if (!userId) {
-        console.log('checkRegistration: userId not found in tg.initDataUnsafe?.user?.id');
+        console.log('checkRegistration: userId not found by any method');
         return { registered: false, error: 'no_user_id' };
     }
     
+    // Если userId есть - проверяем регистрацию
+    return await checkRegistrationWithUserId(userId, firstName, lastName);
+}
+
+// Вспомогательная функция для проверки регистрации с известным userId
+async function checkRegistrationWithUserId(userId, firstName, lastName) {
     try {
         // Передаем userId из Telegram для сравнения с таблицей (столбец F)
         // Также передаем firstName и lastName для поиска по имени, если user_id не найден
@@ -285,15 +373,21 @@ async function checkRegistration() {
             lastName: lastName
         });
         const url = `${CONFIG.apiUrl}/check?${params}`;
-        console.log('checkRegistration: fetching', url);
+        console.log('checkRegistrationWithUserId: fetching', url);
         const response = await fetch(url);
         
         if (response.ok) {
             const data = await response.json();
-            console.log('checkRegistration: response data', data);
+            console.log('checkRegistrationWithUserId: response data', data);
+            
+            // Если регистрация успешна, сохраняем userId в localStorage
+            if (data.registered && userId) {
+                localStorage.setItem('telegram_user_id', userId.toString());
+            }
+            
             return data;
         } else {
-            console.error('checkRegistration: response error', response.status, response.statusText);
+            console.error('checkRegistrationWithUserId: response error', response.status, response.statusText);
             // При ошибке сервера показываем страницу ошибки
             return { registered: false, error: 'server_error' };
         }
@@ -478,32 +572,25 @@ function updateMainContacts() {
 loadConfig();
 
 // Функция для проверки регистрации и отображения правильной страницы
-// Используем tg.initDataUnsafe?.user?.id для получения user_id и сравнения с таблицей
+// Используем несколько способов получения user_id из Telegram Mini App
 async function checkAndShowPage() {
     try {
-        // Получаем user_id из Telegram Mini App через tg.initDataUnsafe?.user?.id
-        const user = tg.initDataUnsafe?.user;
-        const userId = user?.id;  // Telegram user_id для сравнения с таблицей (столбец F)
-        const firstName = user?.first_name || '';
-        const lastName = user?.last_name || '';
+        // Получаем данные пользователя (несколько способов)
+        const userData = getTelegramUserId();
+        const { userId, firstName, lastName, method } = userData;
         
-        console.log('checkAndShowPage: Telegram user data from tg.initDataUnsafe?.user:', {
+        console.log('checkAndShowPage: Telegram user data:', {
             userId: userId,
             firstName: firstName,
             lastName: lastName,
-            hasInitData: !!tg.initDataUnsafe,
-            hasUser: !!user
+            method: method,
+            hasInitData: !!tg.initData,
+            hasInitDataUnsafe: !!tg.initDataUnsafe,
+            hasUser: !!tg.initDataUnsafe?.user
         });
         
-        if (!userId) {
-            console.warn('checkAndShowPage: userId not available from tg.initDataUnsafe?.user?.id, showing registration page');
-            // Если нет userId из Telegram, показываем страницу регистрации
-            showRegistrationPage();
-            return;
-        }
-        
-        // Проверяем регистрацию: сначала по user_id (столбец F), потом по имени/фамилии
-        console.log('checkAndShowPage: checking registration for userId:', userId);
+        // Проверяем регистрацию (внутри функции checkRegistration есть fallback на поиск по имени)
+        console.log('checkAndShowPage: checking registration...');
         const result = await checkRegistration();
         console.log('checkAndShowPage: registration result:', result);
         
