@@ -307,5 +307,14 @@ async def main():
         raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Проверяем, не запущен ли уже event loop
+    try:
+        loop = asyncio.get_running_loop()
+        logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Event loop уже запущен!")
+        logger.error("   Это может означать, что server.py импортируется в другом контексте")
+        logger.error("   Process ID: %s", os.getpid())
+    except RuntimeError:
+        # Event loop не запущен - это нормально, запускаем
+        logger.info("✅ Event loop не запущен, запускаем main()...")
+        asyncio.run(main())
 
