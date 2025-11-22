@@ -33,6 +33,17 @@ tmp_*/
 # Документация
 *.md
 !README.md
+!DOCKER_DEPLOY.md
+
+# Старые/неиспользуемые файлы
+Procfile
+runtime.txt
+run.sh
+database.py
+webapp_api.py
+example_message.txt
+ENV_VARS_COPY.txt
+webapp/LOTTIE_SETUP.md
 
 # Локальные файлы
 dev_server.py

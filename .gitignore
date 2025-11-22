@@ -21,6 +21,20 @@ env/
 dev_server.py
 .dev-reminder.md
 
+# Логи
+*.log
+server.log
+
+# Временные файлы
+tmp_*/
+*.tmp
+
+# Старые/неиспользуемые файлы
+database.py
+webapp_api.py
+example_message.txt
+ENV_VARS_COPY.txt
+
 # Документация и временные файлы
 webapp/LOTTIE_SETUP.md
 

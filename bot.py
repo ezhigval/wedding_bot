@@ -33,11 +33,7 @@ dp = Dispatcher(storage=MemoryStorage())
 # Бот будет создан в init_bot() после проверки токена
 bot = None
 
-# Состояния для регистрации (больше не используются, оставлены для совместимости)
-class RegistrationStates(StatesGroup):
-    waiting_first_name = State()
-    waiting_last_name = State()
-    confirming = State()
+# RegistrationStates удален - больше не используется (регистрация через Mini App)
 
 # Состояния для рассылки приглашений
 class InvitationStates(StatesGroup):
