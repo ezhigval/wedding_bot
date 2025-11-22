@@ -27,21 +27,8 @@ from telegram_client import init_telegram_client, get_username_by_phone, get_or_
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Флаги для отслеживания инициализации (защита от дублирования)
-_dispatcher_created = False
-_bot_initialized = False
-
-# Инициализация диспетчера (только один раз)
-if _dispatcher_created:
-    logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Dispatcher уже создан!")
-    logger.error(f"   Process ID: {os.getpid()}")
-    logger.error("   Это означает, что bot.py импортируется дважды")
-    raise RuntimeError("Dispatcher уже создан! Проверьте импорты.")
-else:
-    logger.info(f"✅ Создание Dispatcher (Process ID: {os.getpid()})")
+# Инициализация диспетчера
 dp = Dispatcher(storage=MemoryStorage())
-    _dispatcher_created = True
-    logger.info("✅ Dispatcher создан успешно")
 
 # Бот будет создан в init_bot() после проверки токена
 bot = None
@@ -813,7 +800,7 @@ async def cmd_bot_status(message: Message):
             status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
         except Exception as e:
             status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
-    
+        
         # 3. Проверка на Render (если доступно)
         render_service_id = os.getenv('RENDER_SERVICE_ID', '')
         if render_service_id:
@@ -843,8 +830,8 @@ async def admin_guests_list(callback: CallbackQuery):
     
     try:
         guests = await get_all_guests_from_sheets()
-    
-    if not guests:
+        
+        if not guests:
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
             ])
@@ -854,13 +841,13 @@ async def admin_guests_list(callback: CallbackQuery):
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
-        await callback.answer()
-        return
-    
-    guests_text = "📋 <b>Список всех гостей:</b>\n\n"
-    for i, guest in enumerate(guests, 1):
-        first_name = guest.get('first_name', '')
-        last_name = guest.get('last_name', '')
+            await callback.answer()
+            return
+        
+        guests_text = "📋 <b>Список всех гостей:</b>\n\n"
+        for i, guest in enumerate(guests, 1):
+            first_name = guest.get('first_name', '')
+            last_name = guest.get('last_name', '')
             category = guest.get('category', '')
             side = guest.get('side', '')
             user_id = guest.get('user_id', '')
@@ -876,27 +863,27 @@ async def admin_guests_list(callback: CallbackQuery):
                 guest_line += f" [ID: {user_id}]"
             
             guests_text += guest_line + "\n"
-    
-    guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
-    
-    # Добавляем кнопку "Вернуться"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
+        
+        guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
+        
+        # Добавляем кнопку "Вернуться"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        
+        await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка получения списка гостей: {e}")
         import traceback
         logger.error(traceback.format_exc())
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    await callback.message.answer(
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
             "❌ Ошибка при получении списка гостей. Попробуйте позже.",
             reply_markup=keyboard
-    )
+        )
         await callback.answer()
 
 # Команды name_mapping удалены - все данные теперь в Google Sheets
@@ -1150,92 +1137,6 @@ async def use_code_auth_callback(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
 
-# Защита от двойной обработки callback
-_processed_callbacks = set()
-
-@dp.callback_query(F.data == "admin_bot_status")
-async def admin_bot_status(callback: CallbackQuery):
-    """Проверка статуса бота через админ-меню"""
-    # Защита от двойной обработки
-    callback_id = f"{callback.from_user.id}_{callback.data}_{callback.id}"
-    if callback_id in _processed_callbacks:
-        logger.warning(f"⚠️ Callback уже обработан: {callback_id}")
-        await callback.answer("Уже обрабатывается...", show_alert=False)
-        return
-    
-    _processed_callbacks.add(callback_id)
-    # Очищаем старые записи (оставляем только последние 100)
-    if len(_processed_callbacks) > 100:
-        _processed_callbacks.clear()
-    
-    try:
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-        # Отвечаем на callback сразу, чтобы избежать повторной обработки
-    await callback.answer()
-
-        import os
-        from datetime import datetime
-        
-        status_text = "🤖 <b>Статус бота</b>\n\n"
-        
-        try:
-            # 1. Проверяем через getMe API
-            try:
-                bot_info = await bot.get_me()
-                status_text += f"✅ <b>Бот активен</b>\n"
-                status_text += f"👤 Имя: {bot_info.first_name}\n"
-                status_text += f"🆔 ID: <code>{bot_info.id}</code>\n"
-                status_text += f"📝 Username: @{bot_info.username}\n\n"
-            except Exception as e:
-                status_text += f"❌ <b>Ошибка получения информации о боте:</b>\n"
-                status_text += f"<code>{str(e)}</code>\n\n"
-                if 'Conflict' in str(e) or 'TelegramConflictError' in str(e):
-                    status_text += f"🚨 <b>ОБНАРУЖЕН КОНФЛИКТ!</b>\n"
-                    status_text += f"Запущено несколько экземпляров бота!\n\n"
-            
-            # 2. Информация о процессе
-            status_text += f"📊 <b>Информация о процессе:</b>\n"
-            status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
-            try:
-                import psutil
-                process = psutil.Process(os.getpid())
-                status_text += f"⏰ Время запуска: {datetime.fromtimestamp(process.create_time()).strftime('%Y-%m-%d %H:%M:%S')}\n"
-                status_text += f"💾 Память: {process.memory_info().rss / 1024 / 1024:.2f} MB\n\n"
-            except ImportError:
-                status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
-            except Exception as e:
-                status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
-            
-            # 3. Проверка на Render (если доступно)
-            render_service_id = os.getenv('RENDER_SERVICE_ID', '')
-            if render_service_id:
-                status_text += f"🌐 <b>Render Service ID:</b> <code>{render_service_id}</code>\n\n"
-            
-            # 4. Рекомендации
-            status_text += f"💡 <b>Как проверить дубликаты:</b>\n"
-            status_text += f"1. Проверьте логи на наличие 'TelegramConflictError'\n"
-            status_text += f"2. На Render проверьте, нет ли нескольких сервисов с одним токеном\n"
-            status_text += f"3. Убедитесь, что не используется webhook одновременно с polling\n"
-            status_text += f"4. Проверьте, что старый экземпляр полностью остановлен\n"
-            
-    except Exception as e:
-            logger.error(f"Ошибка проверки статуса бота: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-            status_text += f"❌ <b>Ошибка проверки:</b>\n<code>{str(e)}</code>"
-        
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-        await callback.message.answer(status_text, reply_markup=keyboard, parse_mode="HTML")
-    finally:
-        # Удаляем из обработанных после завершения (с задержкой для защиты от повторных запросов)
-        pass  # Оставляем в множестве для защиты от повторной обработки
-
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню админа"""
@@ -1246,12 +1147,12 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     # Очищаем состояние при возврате в меню
     await state.clear()
     
-        await callback.message.answer(
+    await callback.message.answer(
         "👋 <b>Главное меню</b>\n\n"
         "Выберите действие:",
         reply_markup=get_admin_keyboard(),
-            parse_mode="HTML"
-        )
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_send_invite")
@@ -2348,24 +2249,7 @@ async def group_list_members(callback: CallbackQuery):
 
 async def init_bot():
     """Инициализация бота"""
-    global bot, _bot_initialized
-    
-    # Проверка: бот не должен инициализироваться дважды
-    if _bot_initialized:
-        logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Бот уже инициализирован!")
-        logger.error(f"   Process ID: {os.getpid()}")
-        logger.error("   init_bot() вызывается второй раз")
-        if bot is not None:
-            logger.warning("   Возвращаем существующий экземпляр бота")
-            return bot
-        else:
-            raise RuntimeError("Бот уже инициализирован, но экземпляр отсутствует!")
-    
-    logger.info("=" * 60)
-    logger.info("🤖 НАЧАЛО ИНИЦИАЛИЗАЦИИ БОТА")
-    logger.info(f"🆔 Process ID: {os.getpid()}")
-    logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
-    logger.info("=" * 60)
+    global bot
     
     # Проверка и очистка токена
     token = BOT_TOKEN.strip().strip('"').strip("'") if BOT_TOKEN else ""
@@ -2383,23 +2267,12 @@ async def init_bot():
         logger.error("Токен должен быть в формате: 1234567890:ABC...")
         return None
     
-    # Проверяем, не создан ли уже бот
-    if bot is not None:
-        logger.warning("⚠️ Бот уже создан! Возвращаем существующий экземпляр")
-        _bot_initialized = True
-        return bot
-    
     # Создаем бота с очищенным токеном
-    logger.info("🔧 Создание экземпляра Bot...")
     try:
         bot = Bot(token=token)
         logger.info("✅ Бот создан успешно")
-        _bot_initialized = True
-        logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
     except Exception as e:
         logger.error(f"❌ Ошибка при создании бота: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
         return None
     
     # Telegram Client API теперь инициализируется индивидуально для каждого админа
@@ -2418,19 +2291,14 @@ async def init_bot():
     return bot
 
 async def main():
-    """Главная функция (для запуска только бота) - используется только для локальной разработки"""
-    # Эта функция используется только если bot.py запускается напрямую
-    # В продакшене используется server.py
+    """Главная функция (для запуска только бота)"""
     bot_instance = await init_bot()
     if bot_instance is None:
         logger.error("❌ Не удалось инициализировать бота")
         return
     logger.info("🚀 Бот запущен и готов к работе!")
-    logger.warning("⚠️ ВНИМАНИЕ: Используется прямой запуск bot.py. Для продакшена используйте server.py")
     await dp.start_polling(bot_instance)
 
 if __name__ == "__main__":
-    # Запуск только для локальной разработки
-    # В продакшене используется server.py
     asyncio.run(main())
 
