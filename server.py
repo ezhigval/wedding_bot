@@ -226,9 +226,28 @@ async def main():
         # Проверяем состояние Dispatcher
         logger.info("🔍 Проверка состояния Dispatcher...")
         try:
-            if hasattr(dp, '_polling') and dp._polling:
+            # Проверяем различные атрибуты, которые могут указывать на активный polling
+            polling_active = False
+            if hasattr(dp, '_polling'):
+                polling_active = bool(dp._polling)
+                if polling_active:
+                    logger.warning(f"⚠️ dp._polling = {dp._polling}")
+            
+            # Проверяем другие возможные индикаторы
+            if hasattr(dp, '_running') and dp._running:
+                polling_active = True
+                logger.warning(f"⚠️ dp._running = {dp._running}")
+            
+            if polling_active:
                 logger.warning("⚠️ Обнаружен активный polling в Dispatcher!")
-                logger.warning("   Это может означать, что бот уже запущен")
+                logger.warning("   Пытаемся остановить...")
+                try:
+                    await dp.stop_polling()
+                    await asyncio.sleep(1)
+                    logger.info("✅ Polling остановлен")
+                except Exception as stop_error:
+                    logger.warning(f"⚠️ Не удалось остановить polling: {stop_error}")
+                    logger.warning("   Возможно, polling не был запущен")
         except Exception as check_error:
             logger.debug(f"Проверка Dispatcher: {check_error}")
         logger.info("✅ Dispatcher проверен")
@@ -316,20 +335,6 @@ async def main():
             conflict_filter = ConflictFilter()
             aiogram_logger.addFilter(conflict_filter)
             
-            # Проверяем, не запущен ли уже polling (используем правильный способ)
-            try:
-                # Проверяем через внутренний атрибут (если доступен)
-                if hasattr(dp, '_polling') and dp._polling:
-                    logger.warning("⚠️ Polling уже запущен! Останавливаем предыдущий экземпляр...")
-                    try:
-                        await dp.stop_polling()
-                        await asyncio.sleep(2)  # Даем время на остановку
-                        logger.info("✅ Предыдущий polling остановлен")
-                    except Exception as stop_error:
-                        logger.error(f"Ошибка при остановке предыдущего polling: {stop_error}")
-            except Exception as check_error:
-                logger.debug(f"Проверка состояния polling: {check_error}")
-            
             # Проверяем глобальный флаг
             if _polling_started:
                 logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Попытка запустить polling второй раз!")
@@ -339,18 +344,33 @@ async def main():
                 logger.error(f"   Bot ID: {id(bot)}")
                 return
             
-            # Проверяем состояние Dispatcher еще раз
+            # Финальная проверка состояния Dispatcher перед запуском
             logger.info("🔍 Финальная проверка Dispatcher перед запуском polling...")
+            polling_detected = False
             try:
+                # Проверяем все возможные индикаторы активного polling
                 if hasattr(dp, '_polling') and dp._polling:
-                    logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Polling уже активен в Dispatcher!")
-                    logger.error("   Останавливаем перед повторным запуском...")
+                    polling_detected = True
+                    logger.warning(f"⚠️ dp._polling = {dp._polling}")
+                
+                if hasattr(dp, '_running') and dp._running:
+                    polling_detected = True
+                    logger.warning(f"⚠️ dp._running = {dp._running}")
+                
+                if polling_detected:
+                    logger.warning("⚠️ Обнаружен возможный активный polling")
+                    logger.warning("   Пытаемся безопасно остановить...")
                     try:
+                        # Пытаемся остановить только если действительно запущен
                         await dp.stop_polling()
                         await asyncio.sleep(2)
-                        logger.info("✅ Предыдущий polling остановлен")
+                        logger.info("✅ Polling остановлен (если был запущен)")
                     except Exception as stop_error:
-                        logger.error(f"Ошибка при остановке: {stop_error}")
+                        # Если ошибка "Polling is not started" - это нормально
+                        if "not started" in str(stop_error).lower():
+                            logger.info("ℹ️ Polling не был запущен (это нормально)")
+                        else:
+                            logger.warning(f"⚠️ Ошибка при остановке: {stop_error}")
             except Exception as check_error:
                 logger.debug(f"Проверка Dispatcher: {check_error}")
             
