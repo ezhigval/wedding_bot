@@ -278,7 +278,7 @@ body {
     /* 1.2-1.8s (40-60%): Падает как тор (вращаясь в 3D) */
     60% {
         transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
-    }
+}
     /* 1.8-2.2s (60-73%): Лежит (небольшое покачивание) */
     66% {
         transform: translateX(-5px) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
