@@ -76,6 +76,15 @@ async def serve_static(request):
             else:
                 logger.warning(f"Lottie file not found: {lottie_path}")
                 # Не возвращаем 404, продолжаем поиск в webapp/
+
+        # Специальная обработка для видео ring_v2.mp4 из res/
+        if path == 'ring_v2.mp4' or path == 'res/ring_v2.mp4' or path.endswith('/ring_v2.mp4'):
+            video_path = Path('res') / 'ring_v2.mp4'
+            if video_path.exists():
+                file_path = video_path
+            else:
+                logger.warning(f"Ring video not found: {video_path}")
+                return Response(text='Video not found', status=404)
         
         # Если это директория или файл не существует, возвращаем index.html
         if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie' and path != 'ring_animation.json'):
@@ -105,6 +114,10 @@ async def serve_static(request):
             content_type = 'image/png'
         elif path.endswith('.svg'):
             content_type = 'image/svg+xml'
+        elif path.endswith('.mp4'):
+            content_type = 'video/mp4'
+        elif path.endswith('.webm'):
+            content_type = 'video/webm'
         elif path.endswith('.lottie') or path.endswith('.json'):
             # Lottie файлы могут быть в формате .lottie (бинарный) или .json
             # Для .lottie используем application/octet-stream, для .json - application/json

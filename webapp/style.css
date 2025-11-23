@@ -98,6 +98,16 @@ body {
     pointer-events: all;
 }
 
+/* Видеозаставка с кольцом */
+.ring-video {
+    max-width: 80vw;
+    max-height: 80vh;
+    border-radius: 24px;
+    box-shadow: 0 8px 24px var(--color-shadow-black);
+    object-fit: contain;
+    background: #000;
+}
+
 .ring-loader.hidden {
     opacity: 0;
     pointer-events: none;

@@ -3,75 +3,32 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Анимация загрузки с обручальным кольцом (Lottie)
+// Анимация загрузки с обручальным кольцом (видео ring_v2, Lottie как fallback)
 function initRingLoader() {
     const ringLoader = document.getElementById('ringLoader');
     const lottieContainer = document.getElementById('lottieContainer');
+    const ringVideo = document.getElementById('ringVideo');
     const appContainer = document.querySelector('.app-container');
     const silkBackground = document.querySelector('.silk-background');
     
-    if (!ringLoader || !lottieContainer) {
-        // Если по какой-то причине загрузчика нет, просто показываем содержимое
-        if (appContainer) appContainer.classList.add('visible');
-        if (silkBackground) silkBackground.style.opacity = '1';
-        initScrollReveal();
-        return;
-    }
-
-    // Изначально скрываем сайт
-    if (appContainer) {
-        appContainer.style.opacity = '0';
-    }
-    if (silkBackground) {
-        silkBackground.style.opacity = '0';
-    }
-
-    // Проверяем наличие Lottie
-    if (typeof lottie === 'undefined') {
-        console.error('Lottie library not loaded');
-        // Fallback: показываем сайт через 3 секунды
-    setTimeout(() => {
-            ringLoader.classList.add('hidden');
+    // Функция показа основного содержимого
+    function showApp() {
+        if (!ringLoader) {
             if (appContainer) {
                 appContainer.classList.add('visible');
-                setTimeout(() => {
-                    appContainer.style.transition = 'opacity 0.8s ease-in';
-                    appContainer.style.opacity = '1';
-                }, 50);
+                appContainer.style.opacity = '1';
             }
             if (silkBackground) {
-                setTimeout(() => {
-                    silkBackground.style.transition = 'opacity 0.8s ease-in';
-                    silkBackground.style.opacity = '1';
-                }, 50);
+                silkBackground.style.opacity = '1';
             }
             initScrollReveal();
-        }, 3000);
-        return;
-    }
+            return;
+        }
 
-    // Загружаем Lottie анимацию из ring_animation.json
-    const animationPath = 'ring_animation.json';
-    
-    const anim = lottie.loadAnimation({
-        container: lottieContainer,
-        renderer: 'svg', // или 'canvas' для лучшей производительности
-        loop: false,
-        autoplay: true,
-        path: animationPath
-    });
-
-    // Обработка событий анимации
-    anim.addEventListener('data_ready', () => {
-        console.log('Lottie animation loaded');
-    });
-
-    anim.addEventListener('complete', () => {
-        // Анимация завершена, скрываем загрузчик и показываем сайт
         ringLoader.classList.add('hidden');
         if (appContainer) {
             appContainer.classList.add('visible');
-    setTimeout(() => {
+            setTimeout(() => {
                 appContainer.style.transition = 'opacity 0.8s ease-in';
                 appContainer.style.opacity = '1';
             }, 50);
@@ -83,29 +40,104 @@ function initRingLoader() {
             }, 50);
         }
         initScrollReveal();
-    });
+    }
 
-    // Fallback: если анимация не загрузилась за 5 секунд, показываем сайт
-    setTimeout(() => {
-        if (!ringLoader.classList.contains('hidden')) {
-            console.warn('Lottie animation timeout, showing site');
-            ringLoader.classList.add('hidden');
-            if (appContainer) {
-                appContainer.classList.add('visible');
-                setTimeout(() => {
-                    appContainer.style.transition = 'opacity 0.8s ease-in';
-                    appContainer.style.opacity = '1';
-                }, 50);
+    // Если по какой-то причине контейнера загрузчика нет — просто показываем сайт
+    if (!ringLoader) {
+        showApp();
+        return;
+    }
+
+    // Изначально скрываем сайт
+    if (appContainer) {
+        appContainer.style.opacity = '0';
+    }
+    if (silkBackground) {
+        silkBackground.style.opacity = '0';
+    }
+
+    // Если есть видео с кольцом — используем его как основной лоадер
+    if (ringVideo) {
+        try {
+            ringVideo.currentTime = 0;
+
+            const onVideoEnd = () => {
+                ringVideo.removeEventListener('ended', onVideoEnd);
+                showApp();
+            };
+
+            ringVideo.addEventListener('ended', onVideoEnd);
+
+            // На всякий случай ставим таймаут, чтобы не зависнуть, если видео не завершится
+            setTimeout(() => {
+                if (!ringLoader.classList.contains('hidden')) {
+                    showApp();
+                }
+            }, 6000);
+
+            const playPromise = ringVideo.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.catch(err => {
+                    console.warn('Не удалось автоматически воспроизвести видео, fallback на Lottie/простой показ:', err);
+                    initLottieOrFallback();
+                });
             }
-            if (silkBackground) {
-                setTimeout(() => {
-                    silkBackground.style.transition = 'opacity 0.8s ease-in';
-                    silkBackground.style.opacity = '1';
-                }, 50);
-            }
-            initScrollReveal();
+            return;
+        } catch (e) {
+            console.warn('Ошибка при запуске видео лоадера, fallback на Lottie/простой показ:', e);
+            initLottieOrFallback();
+            return;
         }
-    }, 5000);
+    }
+
+    // Дальше — старая логика: сначала пытаемся использовать Lottie, потом простой таймер
+    function initLottieOrFallback() {
+        // Проверяем наличие Lottie
+        if (typeof lottie === 'undefined') {
+            console.error('Lottie library not loaded');
+            // Fallback: показываем сайт через 3 секунды
+            setTimeout(showApp, 3000);
+            return;
+        }
+
+        // Если нет контейнера для Lottie — просто показываем сайт
+        if (!lottieContainer) {
+            setTimeout(showApp, 300);
+            return;
+        }
+
+        // Загружаем Lottie анимацию из ring_animation.json
+        const animationPath = 'ring_animation.json';
+        
+        const anim = lottie.loadAnimation({
+            container: lottieContainer,
+            renderer: 'svg', // или 'canvas' для лучшей производительности
+            loop: false,
+            autoplay: true,
+            path: animationPath
+        });
+
+        // Обработка событий анимации
+        anim.addEventListener('data_ready', () => {
+            console.log('Lottie animation loaded');
+        });
+
+        anim.addEventListener('complete', () => {
+            // Анимация завершена, скрываем загрузчик и показываем сайт
+            showApp();
+        });
+
+        // Fallback: если анимация не загрузилась за 5 секунд, показываем сайт
+        setTimeout(() => {
+            if (!ringLoader.classList.contains('hidden')) {
+                console.warn('Lottie animation timeout, showing site');
+                showApp();
+            }
+        }, 5000);
+    }
+
+    // Стартуем Lottie/фоллбек, если видео не используется
+    initLottieOrFallback();
 }
 
 // Запускаем анимацию конверта при загрузке DOM
