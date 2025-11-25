@@ -10,13 +10,14 @@ from datetime import datetime
 import hashlib
 import hmac
 import urllib.parse
+import asyncio
 
 from config import BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
 from google_sheets import (
     add_guest_to_sheets, cancel_invitation, get_timeline,
     check_guest_registration, get_all_guests_from_sheets, 
     get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    find_guest_by_name, update_guest_user_id
+    find_guest_by_name, update_guest_user_id, find_duplicate_guests
 )
 import traceback
 import logging
@@ -35,6 +36,56 @@ async def notify_admins(message_text):
     """Отправка уведомления админам"""
     if _notify_admins_func:
         await _notify_admins_func(message_text)
+
+
+async def scan_guests_for_duplicates_and_notify():
+    """
+    Одноразовая проверка гостей на возможную двойную регистрацию при старте сервера.
+    """
+    try:
+        duplicates = await find_duplicate_guests()
+        dup_by_user_id = duplicates.get("by_user_id") or []
+        dup_by_name = duplicates.get("by_name") or []
+
+        if not dup_by_user_id and not dup_by_name:
+            logger.info("Проверка гостей на дубликаты: дубликаты не найдены")
+            return
+
+        lines = []
+        lines.append("⚠️ <b>Проведена проверка гостей</b>")
+        lines.append("Обнаружены возможные двойные регистрации в Google Sheets.\n")
+
+        if dup_by_user_id:
+            lines.append("<b>Дубли по user_id:</b>")
+            for item in dup_by_user_id:
+                uid = item.get("user_id")
+                rows = item.get("rows", [])
+                lines.append(f"\nuser_id <code>{uid}</code>:")
+                for info in rows:
+                    lines.append(
+                        f"• строка {info.get('row')}: {info.get('full_name')} "
+                        f"(user_id={info.get('user_id') or '—'})"
+                    )
+
+        if dup_by_name:
+            lines.append("\n<b>Дубли по имени/фамилии (с учётом возможной перестановки):</b>")
+            for group in dup_by_name:
+                for info in group:
+                    lines.append(
+                        f"• строка {info.get('row')}: {info.get('full_name')} "
+                        f"(user_id={info.get('user_id') or '—'})"
+                    )
+                lines.append("")  # пустая строка между группами
+
+        lines.append(
+            "\nПроверьте вкладку 'Список гостей' в Google Sheets и при необходимости "
+            "объедините или удалите дубли вручную."
+        )
+
+        await notify_admins("\n".join(lines))
+    except Exception as e:
+        logger.error(f"Ошибка при проверке гостей на дубликаты: {e}")
+        logger.error(traceback.format_exc())
 
 async def init_api():
     """Инициализация API"""
@@ -75,6 +126,9 @@ async def init_api():
     api.router.add_get('/timeline', get_timeline_endpoint)
     api.router.add_post('/confirm-identity', confirm_identity)
     api.router.add_post('/parse-init-data', parse_init_data)
+    
+    # Запускаем фоновую проверку гостей на дубликаты сразу после старта API
+    asyncio.create_task(scan_guests_for_duplicates_and_notify())
     
     return api
 
@@ -240,25 +294,24 @@ async def check_registration(request):
         if first_name and last_name:
             guest_info = await find_guest_by_name(first_name, last_name)
             if guest_info:
-                # Найден по имени, но user_id не совпадает или отсутствует
-                if not guest_info.get('user_id'):
-                    # user_id отсутствует - нужно подтвердить и сохранить
-                    logger.info(f"check_registration: guest found by name but no user_id, needs confirmation")
-                    return web.json_response({
-                        'registered': False,
-                        'needs_confirmation': True,
-                        'guest_name': f"{guest_info['first_name']} {guest_info['last_name']}",
-                        'row': guest_info['row']
-                    })
-                elif guest_info.get('user_id') != str(user_id):
-                    # user_id не совпадает - возможно другой пользователь
-                    logger.warning(f"check_registration: guest found by name but user_id mismatch: {guest_info.get('user_id')} != {user_id}")
-                    return web.json_response({
-                        'registered': False,
-                        'needs_confirmation': True,
-                        'guest_name': f"{guest_info['first_name']} {guest_info['last_name']}",
-                        'row': guest_info['row']
-                    })
+                # Найден по имени — считаем пользователя зарегистрированным
+                # и при необходимости синхронизируем user_id в таблице гостей
+                try:
+                    stored_user_id = guest_info.get('user_id')
+                    row = guest_info.get('row')
+                    if row and (not stored_user_id or stored_user_id != str(user_id)):
+                        logger.info(
+                            f"check_registration: обновляем user_id в Google Sheets "
+                            f"для строки {row}: {stored_user_id} -> {user_id}"
+                        )
+                        await update_guest_user_id(row, user_id)
+                except Exception as sync_error:
+                    logger.error(f"check_registration: ошибка синхронизации user_id по имени: {sync_error}")
+                    logger.error(traceback.format_exc())
+                
+                return web.json_response({
+                    'registered': True
+                })
         
         # Не найден ни по user_id, ни по имени
         logger.info(f"check_registration: user_id {user_id} not found")

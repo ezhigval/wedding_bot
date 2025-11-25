@@ -1184,7 +1184,10 @@ async def find_guest_by_name(first_name: str, last_name: str) -> Optional[Dict]:
         return None
 
 def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
-    """Синхронная функция для поиска гостя по имени"""
+    """Синхронная функция для поиска гостя по имени.
+    
+    Учитывает возможную перестановку имени и фамилии местами.
+    """
     try:
         client = get_google_sheets_client()
         if not client:
@@ -1197,22 +1200,26 @@ def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
         
         # Ищем по имени и фамилии (столбец A)
         full_name = f"{first_name} {last_name}".strip()
+        alt_full_name = f"{last_name} {first_name}".strip()
+        full_name_lower = full_name.lower()
+        alt_full_name_lower = alt_full_name.lower()
         
         for row_idx, row in enumerate(all_values, start=1):
             if len(row) > 0:
                 existing_name = row[0].strip() if row[0] else ""
                 confirmation = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C
                 
-                # Проверяем совпадение имени (без учета регистра) и подтверждение
-                if existing_name.lower() == full_name.lower() and confirmation.upper() == "ДА":
+                # Проверяем совпадение имени (в обоих порядках, без учета регистра) и подтверждение
+                existing_lower = existing_name.lower()
+                if existing_lower in (full_name_lower, alt_full_name_lower) and confirmation.upper() == "ДА":
                     user_id = row[5].strip() if len(row) > 5 and row[5] else ""  # Столбец F (индекс 5)
                     
-                    # Парсим имя и фамилию
+                    # Парсим имя и фамилию из существующей строки
                     name_parts = existing_name.split(maxsplit=1)
                     found_first_name = name_parts[0] if name_parts else first_name
                     found_last_name = name_parts[1] if len(name_parts) > 1 else last_name
                     
-                    logger.info(f"Найден гость по имени: {full_name} (строка {row_idx}, user_id: {user_id})")
+                    logger.info(f"Найден гость по имени: {existing_name} (строка {row_idx}, user_id: {user_id})")
                     return {
                         'first_name': found_first_name,
                         'last_name': found_last_name,
@@ -1220,13 +1227,112 @@ def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
                         'user_id': user_id
                     }
         
-        logger.info(f"Гость {full_name} не найден по имени")
+        logger.info(f"Гость {full_name} / {alt_full_name} не найден по имени")
         return None
     except Exception as e:
         logger.error(f"Ошибка поиска гостя по имени: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return None
+
+
+async def find_duplicate_guests() -> Dict[str, List[Dict]]:
+    """
+    Поиск возможных дубликатов гостей:
+    - по совпадающему user_id (столбец F)
+    - по совпадающим имени/фамилии, с учетом возможной перестановки местами.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, поиск дубликатов невозможен")
+        return {"by_user_id": [], "by_name": []}
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _find_duplicate_guests_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка поиска дубликатов гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"by_user_id": [], "by_name": []}
+
+
+def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
+    """Синхронная функция для поиска дубликатов гостей в основной таблице."""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return {"by_user_id": [], "by_name": []}
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        all_values = worksheet.get_all_values()
+        
+        by_user_id: Dict[str, List[Dict]] = {}
+        by_name_key: Dict[str, List[Dict]] = {}
+        
+        for row_idx, row in enumerate(all_values, start=1):
+            if not row or len(row) == 0:
+                continue
+            
+            full_name = row[0].strip() if row[0] else ""
+            if not full_name:
+                continue
+            
+            # Столбец C — подтверждение "ДА"/"НЕТ"
+            confirmation = row[2].strip().upper() if len(row) > 2 and row[2] else ""
+            if confirmation != "ДА":
+                # Интересуют только подтверждённые гости
+                continue
+            
+            user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            
+            # Разбираем имя и фамилию для нормализации (учитываем возможную перестановку)
+            parts = full_name.split()
+            first = parts[0] if parts else ""
+            last = " ".join(parts[1:]) if len(parts) > 1 else ""
+            
+            if first and last:
+                key_parts = sorted([first.lower(), last.lower()])
+                name_key = "|".join(key_parts)
+            else:
+                name_key = full_name.lower()
+            
+            info = {
+                "row": row_idx,
+                "full_name": full_name,
+                "user_id": user_id,
+            }
+            
+            if user_id:
+                by_user_id.setdefault(user_id, []).append(info)
+            by_name_key.setdefault(name_key, []).append(info)
+        
+        dup_by_user_id = [
+            {"user_id": uid, "rows": rows}
+            for uid, rows in by_user_id.items()
+            if len(rows) > 1
+        ]
+        
+        dup_by_name = [
+            rows for key, rows in by_name_key.items() if len(rows) > 1
+        ]
+        
+        if dup_by_user_id or dup_by_name:
+            logger.warning(
+                f"Найдены возможные дубликаты гостей: "
+                f"{len(dup_by_user_id)} по user_id, {len(dup_by_name)} по имени"
+            )
+        else:
+            logger.info("Дубликаты гостей не обнаружены")
+        
+        return {"by_user_id": dup_by_user_id, "by_name": dup_by_name}
+    except Exception as e:
+        logger.error(f"Ошибка при поиске дубликатов гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"by_user_id": [], "by_name": []}
 
 async def update_guest_user_id(row: int, user_id: int) -> bool:
     """
