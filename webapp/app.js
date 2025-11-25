@@ -9,36 +9,56 @@ function initRingLoader() {
     const lottieContainer = document.getElementById('lottieContainer');
     const appContainer = document.querySelector('.app-container');
     const silkBackground = document.querySelector('.silk-background');
+    const htmlEl = document.documentElement;
+    const bodyEl = document.body;
     
     // Функция показа основного содержимого
     function showApp() {
         if (!ringLoader) {
-    if (appContainer) {
+            if (appContainer) {
                 appContainer.classList.add('visible');
                 appContainer.style.opacity = '1';
-    }
-    if (silkBackground) {
+            }
+            if (silkBackground) {
                 silkBackground.style.opacity = '1';
+            }
+            // Разрешаем вертикальный скролл после появления сайта
+            if (htmlEl) {
+                htmlEl.style.overflowY = 'auto';
+                htmlEl.style.overflowX = 'hidden';
+            }
+            if (bodyEl) {
+                bodyEl.style.overflowY = 'auto';
+                bodyEl.style.overflowX = 'hidden';
             }
             initScrollReveal();
             return;
-    }
+        }
 
-            ringLoader.classList.add('hidden');
-            if (appContainer) {
-                appContainer.classList.add('visible');
-                setTimeout(() => {
-                    appContainer.style.transition = 'opacity 0.8s ease-in';
-                    appContainer.style.opacity = '1';
-                }, 50);
-            }
-            if (silkBackground) {
-                setTimeout(() => {
-                    silkBackground.style.transition = 'opacity 0.8s ease-in';
-                    silkBackground.style.opacity = '1';
-                }, 50);
-            }
-            initScrollReveal();
+        ringLoader.classList.add('hidden');
+        if (appContainer) {
+            appContainer.classList.add('visible');
+            setTimeout(() => {
+                appContainer.style.transition = 'opacity 0.8s ease-in';
+                appContainer.style.opacity = '1';
+            }, 50);
+        }
+        if (silkBackground) {
+            setTimeout(() => {
+                silkBackground.style.transition = 'opacity 0.8s ease-in';
+                silkBackground.style.opacity = '1';
+            }, 50);
+        }
+        // Разрешаем вертикальный скролл после появления сайта
+        if (htmlEl) {
+            htmlEl.style.overflowY = 'auto';
+            htmlEl.style.overflowX = 'hidden';
+        }
+        if (bodyEl) {
+            bodyEl.style.overflowY = 'auto';
+            bodyEl.style.overflowX = 'hidden';
+        }
+        initScrollReveal();
     }
 
     // Если по какой-то причине контейнера загрузчика нет — просто показываем сайт
@@ -53,6 +73,13 @@ function initRingLoader() {
     }
     if (silkBackground) {
         silkBackground.style.opacity = '0';
+    }
+    // Во время анимации блокируем скролл полностью
+    if (htmlEl) {
+        htmlEl.style.overflow = 'hidden';
+    }
+    if (bodyEl) {
+        bodyEl.style.overflow = 'hidden';
     }
 
     // Основная логика: сначала пытаемся использовать Lottie, потом простой таймер
