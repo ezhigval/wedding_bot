@@ -3,11 +3,10 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Анимация загрузки с обручальным кольцом (видео ring_v2, Lottie как fallback)
+// Анимация загрузки с обручальным кольцом (Lottie rings.json)
 function initRingLoader() {
     const ringLoader = document.getElementById('ringLoader');
     const lottieContainer = document.getElementById('lottieContainer');
-    const ringVideo = document.getElementById('ringVideo');
     const appContainer = document.querySelector('.app-container');
     const silkBackground = document.querySelector('.silk-background');
     
@@ -56,41 +55,7 @@ function initRingLoader() {
         silkBackground.style.opacity = '0';
     }
 
-    // Если есть видео с кольцом — используем его как основной лоадер
-    if (ringVideo) {
-        try {
-            ringVideo.currentTime = 0;
-
-            const onVideoEnd = () => {
-                ringVideo.removeEventListener('ended', onVideoEnd);
-                showApp();
-            };
-
-            ringVideo.addEventListener('ended', onVideoEnd);
-
-            // На всякий случай ставим таймаут, чтобы не зависнуть, если видео не завершится
-            setTimeout(() => {
-                if (!ringLoader.classList.contains('hidden')) {
-                    showApp();
-                }
-            }, 6000);
-
-            const playPromise = ringVideo.play();
-            if (playPromise && typeof playPromise.then === 'function') {
-                playPromise.catch(err => {
-                    console.warn('Не удалось автоматически воспроизвести видео, fallback на Lottie/простой показ:', err);
-                    initLottieOrFallback();
-                });
-            }
-            return;
-        } catch (e) {
-            console.warn('Ошибка при запуске видео лоадера, fallback на Lottie/простой показ:', e);
-            initLottieOrFallback();
-            return;
-        }
-    }
-
-    // Дальше — старая логика: сначала пытаемся использовать Lottie, потом простой таймер
+    // Основная логика: сначала пытаемся использовать Lottie, потом простой таймер
     function initLottieOrFallback() {
         // Проверяем наличие Lottie
         if (typeof lottie === 'undefined') {
@@ -136,7 +101,7 @@ function initRingLoader() {
         }, 5000);
     }
 
-    // Стартуем Lottie/фоллбек, если видео не используется
+    // Стартуем Lottie/фоллбек
     initLottieOrFallback();
 }
 

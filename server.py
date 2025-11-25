@@ -77,15 +77,6 @@ async def serve_static(request):
                 logger.warning(f"Lottie file not found: {lottie_path}")
                 # Не возвращаем 404, продолжаем поиск в webapp/
 
-        # Специальная обработка для видео ring_v2.mp4 из res/
-        if path == 'ring_v2.mp4' or path == 'res/ring_v2.mp4' or path.endswith('/ring_v2.mp4'):
-            video_path = Path('res') / 'ring_v2.mp4'
-            if video_path.exists():
-                file_path = video_path
-            else:
-                logger.warning(f"Ring video not found: {video_path}")
-                return Response(text='Video not found', status=404)
-
         # Специальная обработка для Lottie JSON rings.json из res/
         if path == 'rings.json' or path == 'res/rings.json' or path.endswith('/rings.json'):
             rings_json_path = Path('res') / 'rings.json'
