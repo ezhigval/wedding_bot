@@ -428,35 +428,26 @@ function hideSuccessMessage() {
     }
 }
 
-// Инициализация состояния блока RSVP в зависимости от того,
-// регистрировался ли пользователь ранее (по данным localStorage)
+// Инициализация состояния блока RSVP:
+// при каждом открытии обращаемся к серверу и сверяем user_id с Google Sheets
 async function initRsvpForCurrentUser() {
     const rsvpSection = document.getElementById('rsvpSection');
     if (!rsvpSection) return;
 
-    // Получаем userId так же, как при отправке формы
-    const userData = getTelegramUserId();
-    let userId = userData.userId;
-    if (!userId) {
-        const savedUserId = localStorage.getItem('telegram_user_id');
-        if (savedUserId) {
-            userId = parseInt(savedUserId);
+    try {
+        const status = await checkRegistration();
+        // Серверная истина: зарегистрирован ли пользователь в таблице гостей
+        isUserRegistered = !!(status && status.registered);
+
+        if (isUserRegistered) {
+            setupAddGuestOnlyView();
+        } else {
+            setupFullRsvpView();
         }
-    }
-
-    if (!userId) {
-        // Не удалось определить пользователя — показываем обычную анкету
-        setupFullRsvpView();
-        return;
-    }
-
-    const localKey = `registered_${userId}`;
-    const registeredLocal = localStorage.getItem(localKey) === 'true';
-    isUserRegistered = registeredLocal;
-
-    if (isUserRegistered) {
-        setupAddGuestOnlyView();
-    } else {
+    } catch (e) {
+        console.error('initRsvpForCurrentUser: error while checking registration status:', e);
+        // На всякий случай показываем полную анкету, если проверка не удалась
+        isUserRegistered = false;
         setupFullRsvpView();
     }
 }
