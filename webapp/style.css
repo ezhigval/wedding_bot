@@ -735,6 +735,7 @@ body {
 .rsvp-text {
     font-size: 14px;
     line-height: 1.4;
+    color: var(--color-primary);
 }
 
 /* Countdown Clock */
