@@ -106,8 +106,8 @@ function initRingLoader() {
             return;
         }
 
-        // Загружаем Lottie анимацию из ring_animation.json
-        const animationPath = 'ring_animation.json';
+        // Загружаем Lottie анимацию из нового файла rings.json (лежит в res/)
+        const animationPath = 'rings.json';
         
         const anim = lottie.loadAnimation({
             container: lottieContainer,

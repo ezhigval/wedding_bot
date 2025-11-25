@@ -68,7 +68,7 @@ async def serve_static(request):
                 logger.warning(f"Photo not found: {WEBAPP_PHOTO_PATH}")
                 return Response(text='Photo not found', status=404)
         
-        # Специальная обработка для Lottie файла из res/
+        # Специальная обработка для Lottie файла из res/ (старый формат .lottie)
         if path == 'ring_animation.lottie' or path == 'res/ring_animation.lottie' or path.endswith('/ring_animation.lottie'):
             lottie_path = Path('res/ring_animation.lottie')
             if lottie_path.exists():
@@ -85,9 +85,24 @@ async def serve_static(request):
             else:
                 logger.warning(f"Ring video not found: {video_path}")
                 return Response(text='Video not found', status=404)
+
+        # Специальная обработка для Lottie JSON rings.json из res/
+        if path == 'rings.json' or path == 'res/rings.json' or path.endswith('/rings.json'):
+            rings_json_path = Path('res') / 'rings.json'
+            if rings_json_path.exists():
+                file_path = rings_json_path
+            else:
+                logger.warning(f"Lottie JSON not found: {rings_json_path}")
+                return Response(text='Lottie JSON not found', status=404)
         
         # Если это директория или файл не существует, возвращаем index.html
-        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie' and path != 'ring_animation.json'):
+        if file_path.is_dir() or (not file_path.exists()
+                                  and path != 'welcome_photo.jpeg'
+                                  and path != 'ring_animation.lottie'
+                                  and path != 'res/ring_animation.lottie'
+                                  and path != 'ring_animation.json'
+                                  and path != 'rings.json'
+                                  and path != 'res/rings.json'):
             file_path = Path(WEBAPP_PATH) / 'index.html'
         
         # Если index.html не существует, это критическая ошибка
