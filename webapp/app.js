@@ -13,32 +13,32 @@ function initRingLoader() {
     // Функция показа основного содержимого
     function showApp() {
         if (!ringLoader) {
-            if (appContainer) {
+    if (appContainer) {
                 appContainer.classList.add('visible');
                 appContainer.style.opacity = '1';
-            }
-            if (silkBackground) {
+    }
+    if (silkBackground) {
                 silkBackground.style.opacity = '1';
             }
             initScrollReveal();
             return;
-        }
+    }
 
-        ringLoader.classList.add('hidden');
-        if (appContainer) {
-            appContainer.classList.add('visible');
-            setTimeout(() => {
-                appContainer.style.transition = 'opacity 0.8s ease-in';
-                appContainer.style.opacity = '1';
-            }, 50);
-        }
-        if (silkBackground) {
-            setTimeout(() => {
-                silkBackground.style.transition = 'opacity 0.8s ease-in';
-                silkBackground.style.opacity = '1';
-            }, 50);
-        }
-        initScrollReveal();
+            ringLoader.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('visible');
+                setTimeout(() => {
+                    appContainer.style.transition = 'opacity 0.8s ease-in';
+                    appContainer.style.opacity = '1';
+                }, 50);
+            }
+            if (silkBackground) {
+                setTimeout(() => {
+                    silkBackground.style.transition = 'opacity 0.8s ease-in';
+                    silkBackground.style.opacity = '1';
+                }, 50);
+            }
+            initScrollReveal();
     }
 
     // Если по какой-то причине контейнера загрузчика нет — просто показываем сайт
@@ -73,32 +73,39 @@ function initRingLoader() {
 
         // Загружаем Lottie анимацию из нового файла rings.json (лежит в res/)
         const animationPath = 'rings.json';
-        
-        const anim = lottie.loadAnimation({
-            container: lottieContainer,
-            renderer: 'svg', // или 'canvas' для лучшей производительности
-            loop: false,
-            autoplay: true,
-            path: animationPath
-        });
+    
+    const anim = lottie.loadAnimation({
+        container: lottieContainer,
+        renderer: 'svg', // или 'canvas' для лучшей производительности
+        loop: false,
+        autoplay: true,
+        path: animationPath
+    });
 
-        // Обработка событий анимации
-        anim.addEventListener('data_ready', () => {
-            console.log('Lottie animation loaded');
-        });
+    // Обработка событий анимации
+    anim.addEventListener('data_ready', () => {
+        console.log('Lottie animation loaded');
+    });
 
-        anim.addEventListener('complete', () => {
-            // Анимация завершена, скрываем загрузчик и показываем сайт
+        // Если данные не загрузились — сразу показываем сайт
+        anim.addEventListener('data_failed', () => {
+            console.error('Lottie animation data_failed, showing site');
             showApp();
         });
 
-        // Fallback: если анимация не загрузилась за 5 секунд, показываем сайт
-        setTimeout(() => {
-            if (!ringLoader.classList.contains('hidden')) {
-                console.warn('Lottie animation timeout, showing site');
+    anim.addEventListener('complete', () => {
+        // Анимация завершена, скрываем загрузчик и показываем сайт
+            showApp();
+        });
+
+        // Жёсткий таймаут: через ~3 секунды обязательно показываем сайт,
+        // даже если анимация зависла или не успела загрузиться
+    setTimeout(() => {
+        if (!ringLoader.classList.contains('hidden')) {
+            console.warn('Lottie animation timeout, showing site');
                 showApp();
             }
-        }, 5000);
+        }, 3000);
     }
 
     // Стартуем Lottie/фоллбек
@@ -767,8 +774,8 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
         if (!category || !side) {
             tg.showAlert('Пожалуйста, выберите Родство и Сторону для основного гостя');
             return;
-        }
-    } else {
+            }
+        } else {
         // Пользователь уже зарегистрирован: основные данные берем из localStorage,
         // форму используем только для добавления дополнительных гостей
         const storedFirst = localStorage.getItem('main_guest_first_name');
@@ -802,22 +809,6 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
     }
     const categoryValue = mainCategory;
     const sideValue = mainSide;
-    
-    if (!category || !side) {
-        tg.showAlert('Пожалуйста, выберите Родство и Сторону для основного гостя');
-        return;
-    }
-    
-    // Валидация дополнительных гостей
-    const invalidGuests = guests.filter(g => 
-        !g.firstName.trim() || g.firstName.trim().length < 2 ||
-        !g.lastName.trim() || g.lastName.trim().length < 2
-    );
-    
-    if (invalidGuests.length > 0) {
-        tg.showAlert('Пожалуйста, заполните имя и фамилию для всех дополнительных гостей');
-        return;
-    }
     
     // Получаем данные пользователя из Telegram (несколько способов)
     const userData = getTelegramUserId();
@@ -933,23 +924,26 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                     tg.HapticFeedback.notificationOccurred('success');
                 }
             } else {
-            // Пытаемся получить детали ошибки
-            let errorMessage = 'Ошибка при регистрации';
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-                console.error('Server error:', errorData);
-            } catch (e) {
-                console.error('Response status:', response.status, response.statusText);
+                // Пытаемся получить детали ошибки
+                let errorMessage = 'Ошибка при регистрации';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                    console.error('Server error:', errorData);
+                } catch (e) {
+                    console.error('Response status:', response.status, response.statusText);
+                }
+                throw new Error(errorMessage);
             }
-            throw new Error(errorMessage);
+        } catch (error) {
+            console.error('Error details:', error);
+            console.error('Error stack:', error.stack);
+            const baseMessage = error.message && typeof error.message === 'string'
+                ? error.message
+                : 'Ошибка при отправке данных.';
+            const finalMessage = `${baseMessage}\n\nФорма не отправилась.\nПожалуйста, обновите или перезагрузите приложение и попробуйте ещё раз.`;
+            tg.showAlert(finalMessage);
         }
-    } catch (error) {
-        console.error('Error details:', error);
-        console.error('Error stack:', error.stack);
-        const errorMessage = error.message || 'Ошибка при отправке данных. Попробуйте позже.';
-        tg.showAlert(errorMessage);
-    }
 });
 
 // Кнопка добавления гостя
@@ -994,7 +988,7 @@ if (cancelInvitationBtn) {
                 // После отмены приглашения очищаем форму и снова показываем блок регистрации
                 hideSuccessMessage();
                 hideErrorMessage();
-
+                
                 document.getElementById('firstName').value = '';
                 document.getElementById('lastName').value = '';
                 document.getElementById('category').value = '';
@@ -1006,12 +1000,12 @@ if (cancelInvitationBtn) {
                 if (rsvpSection) {
                     rsvpSection.style.display = 'block';
                 }
-
+                
                 // Прокручиваем к форме регистрации
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
-
+                
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
-
+                
                 // Вибрация
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('warning');
@@ -1066,7 +1060,7 @@ if (mainCancelInvitationBtn) {
                 // После отмены приглашения очищаем форму и снова показываем блок регистрации
                 hideSuccessMessage();
                 hideErrorMessage();
-
+                
                 document.getElementById('firstName').value = '';
                 document.getElementById('lastName').value = '';
                 document.getElementById('category').value = '';
@@ -1078,12 +1072,12 @@ if (mainCancelInvitationBtn) {
                 if (rsvpSection) {
                     rsvpSection.style.display = 'block';
                 }
-
+                
                 // Прокручиваем к форме регистрации
                 document.getElementById('rsvpSection').scrollIntoView({ behavior: 'smooth' });
-
+                
                 tg.showAlert('Приглашение отменено. Вы можете заполнить форму заново.');
-
+                
                 // Вибрация
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('warning');
