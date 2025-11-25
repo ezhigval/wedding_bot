@@ -60,8 +60,8 @@ function initRingLoader() {
         // Проверяем наличие Lottie
         if (typeof lottie === 'undefined') {
             console.error('Lottie library not loaded');
-            // Fallback: показываем сайт через 3 секунды
-            setTimeout(showApp, 3000);
+            // Fallback: показываем сайт через 5 секунд
+            setTimeout(showApp, 5000);
             return;
         }
 
@@ -98,14 +98,14 @@ function initRingLoader() {
             showApp();
         });
 
-        // Жёсткий таймаут: через ~3 секунды обязательно показываем сайт,
+        // Жёсткий таймаут: через ~5 секунд обязательно показываем сайт,
         // даже если анимация зависла или не успела загрузиться
     setTimeout(() => {
         if (!ringLoader.classList.contains('hidden')) {
             console.warn('Lottie animation timeout, showing site');
                 showApp();
             }
-        }, 3000);
+        }, 5000);
     }
 
     // Стартуем Lottie/фоллбек
@@ -790,11 +790,8 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
             mainSide = storedSide;
         }
 
-        // В режиме "добавить гостя" требуем хотя бы одного дополнительного гостя
-        if (guests.length === 0) {
-            tg.showAlert('Пожалуйста, добавьте хотя бы одного дополнительного гостя');
-            return;
-        }
+        // В режиме "добавить гостя" дополнительные гости опциональны:
+        // пользователь может добавить их сразу или вернуться позже.
     }
 
     // Валидация дополнительных гостей (в обоих режимах)
