@@ -125,14 +125,14 @@ function initRingLoader() {
             showApp();
         });
 
-        // Жёсткий таймаут: через ~5 секунд обязательно показываем сайт,
+        // Жёсткий таймаут: через ~7 секунд обязательно показываем сайт,
         // даже если анимация зависла или не успела загрузиться
     setTimeout(() => {
         if (!ringLoader.classList.contains('hidden')) {
             console.warn('Lottie animation timeout, showing site');
                 showApp();
             }
-        }, 5000);
+        }, 7000);
     }
 
     // Стартуем Lottie/фоллбек
