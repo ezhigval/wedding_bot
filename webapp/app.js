@@ -128,6 +128,9 @@ if (document.readyState === 'loading') {
 let guests = [];
 let maxGuests = 9;
 
+// Флаг: пользователь уже зарегистрирован (по данным localStorage)
+let isUserRegistered = false;
+
 // Добавление гостя
 function addGuest() {
     if (guests.length >= maxGuests) {
@@ -294,7 +297,7 @@ function getTelegramUserId() {
     return { userId: null, firstName: '', lastName: '', method: 'none' };
 }
 
-// Проверка, зарегистрирован ли пользователь
+// Проверка, зарегистрирован ли пользователь через API
 // Используем несколько способов получения user_id из Telegram Mini App
 async function checkRegistration() {
     // Получаем данные пользователя из Telegram Web App (несколько способов)
@@ -423,6 +426,139 @@ function hideSuccessMessage() {
     if (registrationForm) {
         registrationForm.style.display = 'block';
     }
+}
+
+// Инициализация состояния блока RSVP в зависимости от того,
+// регистрировался ли пользователь ранее (по данным localStorage)
+async function initRsvpForCurrentUser() {
+    const rsvpSection = document.getElementById('rsvpSection');
+    if (!rsvpSection) return;
+
+    // Получаем userId так же, как при отправке формы
+    const userData = getTelegramUserId();
+    let userId = userData.userId;
+    if (!userId) {
+        const savedUserId = localStorage.getItem('telegram_user_id');
+        if (savedUserId) {
+            userId = parseInt(savedUserId);
+        }
+    }
+
+    if (!userId) {
+        // Не удалось определить пользователя — показываем обычную анкету
+        setupFullRsvpView();
+        return;
+    }
+
+    const localKey = `registered_${userId}`;
+    const registeredLocal = localStorage.getItem(localKey) === 'true';
+    isUserRegistered = registeredLocal;
+
+    if (isUserRegistered) {
+        setupAddGuestOnlyView();
+    } else {
+        setupFullRsvpView();
+    }
+}
+
+// Полная анкета "Присутствие" (для тех, кто еще не регистрировался)
+function setupFullRsvpView() {
+    const rsvpSection = document.getElementById('rsvpSection');
+    if (!rsvpSection) return;
+
+    rsvpSection.style.display = 'block';
+
+    const titleEl = rsvpSection.querySelector('.section-title');
+    if (titleEl) {
+        titleEl.textContent = 'ПРИСУТСТВИЕ';
+    }
+
+    const textEl = rsvpSection.querySelector('.rsvp-text');
+    if (textEl) {
+        textEl.textContent = 'Пожалуйста, подтвердите ваше присутствие на нашем празднике. Заполните форму ниже:';
+    }
+
+    const mainGuestGroup = document.getElementById('mainGuestGroup');
+    if (mainGuestGroup) {
+        mainGuestGroup.style.display = 'block';
+    }
+
+    const successMessage = document.getElementById('successMessage');
+    const registrationForm = document.getElementById('registrationForm');
+    if (successMessage) {
+        successMessage.style.display = 'none';
+    }
+    if (registrationForm) {
+        registrationForm.style.display = 'block';
+    }
+
+    // Сбрасываем поля основной анкеты
+    const firstNameInput = document.getElementById('firstName');
+    const lastNameInput = document.getElementById('lastName');
+    const categorySelect = document.getElementById('category');
+    const sideSelect = document.getElementById('side');
+    if (firstNameInput) firstNameInput.value = '';
+    if (lastNameInput) lastNameInput.value = '';
+    if (categorySelect) categorySelect.value = '';
+    if (sideSelect) sideSelect.value = '';
+
+    // Сбрасываем дополнительных гостей
+    guests = [];
+    renderGuests();
+}
+
+// Режим "Добавить дополнительного гостя" для уже зарегистрированных
+function setupAddGuestOnlyView() {
+    const rsvpSection = document.getElementById('rsvpSection');
+    if (!rsvpSection) return;
+
+    rsvpSection.style.display = 'block';
+
+    const titleEl = rsvpSection.querySelector('.section-title');
+    if (titleEl) {
+        titleEl.textContent = 'ДОБАВИТЬ ДОПОЛНИТЕЛЬНОГО ГОСТЯ';
+    }
+
+    const textEl = rsvpSection.querySelector('.rsvp-text');
+    if (textEl) {
+        textEl.textContent = 'Вы уже подтвердили своё присутствие. Если вы приходите не один, добавьте дополнительных гостей ниже.';
+    }
+
+    const mainGuestGroup = document.getElementById('mainGuestGroup');
+    const firstNameInput = document.getElementById('firstName');
+    const lastNameInput = document.getElementById('lastName');
+    const categorySelect = document.getElementById('category');
+    const sideSelect = document.getElementById('side');
+
+    // Восстанавливаем данные основного гостя из localStorage (если есть)
+    const storedFirst = localStorage.getItem('main_guest_first_name');
+    const storedLast = localStorage.getItem('main_guest_last_name');
+    const storedCat = localStorage.getItem('main_guest_category');
+    const storedSide = localStorage.getItem('main_guest_side');
+
+    if (storedFirst && firstNameInput) firstNameInput.value = storedFirst;
+    if (storedLast && lastNameInput) lastNameInput.value = storedLast;
+    if (storedCat && categorySelect) categorySelect.value = storedCat;
+    if (storedSide && sideSelect) sideSelect.value = storedSide;
+
+    // Если у нас есть все данные по основному гостю — скрываем блок его полей,
+    // но сами инпуты остаются в DOM и будут отправлены на сервер
+    if (storedFirst && storedLast && storedCat && storedSide && mainGuestGroup) {
+        mainGuestGroup.style.display = 'none';
+    }
+
+    const successMessage = document.getElementById('successMessage');
+    const registrationForm = document.getElementById('registrationForm');
+    if (successMessage) {
+        successMessage.style.display = 'none';
+    }
+    if (registrationForm) {
+        registrationForm.style.display = 'block';
+    }
+
+    // Очищаем список дополнительных гостей в интерфейсе
+    guests = [];
+    renderGuests();
 }
 
 // Загрузка данных для основной страницы
@@ -607,22 +743,74 @@ function showMainPage() {
 
 // При загрузке показываем основную страницу всем пользователям
 showMainPage();
+// Инициализируем состояние блока RSVP (полная анкета или "добавить гостя")
+initRsvpForCurrentUser();
 
 // Обработчик формы RSVP
 document.getElementById('guestForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const firstName = document.getElementById('firstName').value.trim();
-    const lastName = document.getElementById('lastName').value.trim();
+    const firstNameInput = document.getElementById('firstName');
+    const lastNameInput = document.getElementById('lastName');
+    const categorySelect = document.getElementById('category');
+    const sideSelect = document.getElementById('side');
+
+    let firstName = firstNameInput ? firstNameInput.value.trim() : '';
+    let lastName = lastNameInput ? lastNameInput.value.trim() : '';
+    let category = categorySelect ? categorySelect.value : '';
+    let side = sideSelect ? sideSelect.value : '';
+
+    // Основные данные гостя в запросе (для уже зарегистрированных берем из localStorage)
+    let mainFirstName = firstName;
+    let mainLastName = lastName;
+    let mainCategory = category;
+    let mainSide = side;
+
+    if (!isUserRegistered) {
+        // Полная регистрация: проверяем основные поля
+        if (firstName.length < 2 || lastName.length < 2) {
+            tg.showAlert('Пожалуйста, введите корректные имя и фамилию');
+            return;
+        }
+        
+        if (!category || !side) {
+            tg.showAlert('Пожалуйста, выберите Родство и Сторону для основного гостя');
+            return;
+        }
+    } else {
+        // Пользователь уже зарегистрирован: основные данные берем из localStorage,
+        // форму используем только для добавления дополнительных гостей
+        const storedFirst = localStorage.getItem('main_guest_first_name');
+        const storedLast = localStorage.getItem('main_guest_last_name');
+        const storedCat = localStorage.getItem('main_guest_category');
+        const storedSide = localStorage.getItem('main_guest_side');
+
+        if (storedFirst && storedLast && storedCat && storedSide) {
+            mainFirstName = storedFirst;
+            mainLastName = storedLast;
+            mainCategory = storedCat;
+            mainSide = storedSide;
+        }
+
+        // В режиме "добавить гостя" требуем хотя бы одного дополнительного гостя
+        if (guests.length === 0) {
+            tg.showAlert('Пожалуйста, добавьте хотя бы одного дополнительного гостя');
+            return;
+        }
+    }
+
+    // Валидация дополнительных гостей (в обоих режимах)
+    const invalidGuests = guests.filter(g => 
+        !g.firstName.trim() || g.firstName.trim().length < 2 ||
+        !g.lastName.trim() || g.lastName.trim().length < 2
+    );
     
-    if (firstName.length < 2 || lastName.length < 2) {
-        tg.showAlert('Пожалуйста, введите корректные имя и фамилию');
+    if (invalidGuests.length > 0) {
+        tg.showAlert('Пожалуйста, заполните имя и фамилию для всех дополнительных гостей');
         return;
     }
-    
-    // Получаем данные основного гостя
-    const category = document.getElementById('category').value;
-    const side = document.getElementById('side').value;
+    const categoryValue = mainCategory;
+    const sideValue = mainSide;
     
     if (!category || !side) {
         tg.showAlert('Пожалуйста, выберите Родство и Сторону для основного гостя');
@@ -692,12 +880,12 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
     // Подготавливаем список всех гостей
     // Для дополнительных гостей используем category и side основного гостя
     const allGuests = [
-        { firstName, lastName, category, side },
+        { firstName: mainFirstName, lastName: mainLastName, category: categoryValue, side: sideValue },
         ...guests.map(g => ({ 
             firstName: g.firstName.trim(), 
             lastName: g.lastName.trim(),
-            category: category,  // Используем category основного гостя
-            side: side,  // Используем side основного гостя
+            category: categoryValue,  // Используем category основного гостя
+            side: sideValue,  // Используем side основного гостя
             telegram: g.telegram ? g.telegram.trim().replace('@', '') : ''  // Telegram username (опционально)
         }))
     ];
@@ -723,11 +911,16 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 const data = await response.json();
                 
                 // Сохраняем информацию о регистрации в localStorage
-                const userData = getTelegramUserId();
-                const userId = userData.userId || userId; // Используем userId из формы, если есть
-                if (userId) {
-                    localStorage.setItem(`registered_${userId}`, 'true');
-                    localStorage.setItem('telegram_user_id', userId.toString());
+                const userDataAfter = getTelegramUserId();
+                const effectiveUserId = userDataAfter.userId || userId; // Используем userId из формы, если есть
+                if (effectiveUserId) {
+                    localStorage.setItem(`registered_${effectiveUserId}`, 'true');
+                    localStorage.setItem('telegram_user_id', effectiveUserId.toString());
+                    // Сохраняем данные основного гостя для будущего режима "добавить гостя"
+                    localStorage.setItem('main_guest_first_name', mainFirstName);
+                    localStorage.setItem('main_guest_last_name', mainLastName);
+                    localStorage.setItem('main_guest_category', categoryValue || '');
+                    localStorage.setItem('main_guest_side', sideValue || '');
                 }
                 
                 // Скрываем сообщение об ошибке, если оно было показано
@@ -735,12 +928,11 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 
                 // Переключаемся на основную страницу
                 showMainPage();
-
-                // Скрываем форму RSVP (после успешного заполнения)
-                const rsvpSection = document.getElementById('rsvpSection');
-                if (rsvpSection) {
-                    rsvpSection.style.display = 'none';
-                }
+                
+                // После успешной регистрации помечаем пользователя как зарегистрированного
+                isUserRegistered = true;
+                // И переключаем блок на режим "добавить дополнительного гостя"
+                setupAddGuestOnlyView();
                 
                 // Прокручиваем к началу страницы
                 window.scrollTo({ top: 0, behavior: 'smooth' });
