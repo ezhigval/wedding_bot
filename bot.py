@@ -46,6 +46,15 @@ class GroupManagementStates(StatesGroup):
     waiting_add_member = State()
     waiting_remove_member = State()
 
+# Состояния для рассылки в личные сообщения
+class BroadcastStates(StatesGroup):
+    waiting_text = State()
+    waiting_photo = State()
+    waiting_button_choice = State()
+    waiting_custom_button_text = State()
+    waiting_custom_button_url = State()
+    waiting_confirm = State()
+
 # Состояния для удаления гостя
 
 # Состояния для авторизации Telegram Client
@@ -349,6 +358,23 @@ async def notify_admins(message_text):
             logger.error(f"Ошибка отправки уведомления админу {admin_id}: {e}")
             import traceback
             logger.error(traceback.format_exc())
+
+async def get_broadcast_recipients() -> list[int]:
+    """
+    Получить список получателей рассылки в ЛС.
+    Используем всех гостей из Google Sheets, у которых есть user_id и подтверждение.
+    """
+    guests = await get_all_guests_from_sheets()
+    user_ids: set[int] = set()
+    for guest in guests:
+        uid = guest.get('user_id')
+        if not uid:
+            continue
+        try:
+            user_ids.add(int(uid))
+        except (TypeError, ValueError):
+            continue
+    return list(user_ids)
 
 @dp.message(Command("set_me_admins"))
 async def cmd_set_me_admins(message: Message):
@@ -760,6 +786,348 @@ async def cmd_admin(message: Message):
 Используйте кнопки ниже для управления:
 """
     await message.answer(admin_text, reply_markup=get_admin_keyboard(), parse_mode="HTML")
+
+
+# ========== РАССЫЛКА В ЛИЧНЫЕ СООБЩЕНИЯ ==========
+
+@dp.callback_query(F.data == "admin_broadcast_dm")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    """Старт сценария рассылки в личные сообщения"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.answer()
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await callback.message.answer(
+        "📨 <b>Рассылка в личные сообщения</b>\n\n"
+        f"Получателей (по базе гостей): <b>{total}</b>\n\n"
+        "1️⃣ Отправьте текст сообщения, которое получат гости.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_text)
+
+
+@dp.message(BroadcastStates.waiting_text)
+async def broadcast_set_text(message: Message, state: FSMContext):
+    """Получаем текст рассылки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Текст пустой. Пожалуйста, отправьте текст сообщения.")
+        return
+
+    await state.update_data(broadcast_text=text)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➡️ Без картинки", callback_data="broadcast_no_photo")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await message.answer(
+        "🖼 <b>Шаг 2.</b> Теперь отправьте <b>фото</b> для рассылки "
+        "или нажмите «Без картинки».",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_photo)
+
+
+@dp.message(BroadcastStates.waiting_photo)
+async def broadcast_set_photo(message: Message, state: FSMContext):
+    """Получаем фото для рассылки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    if not message.photo:
+        await message.answer("❌ Это не фото. Пожалуйста, отправьте изображение или нажмите «Без картинки».")
+        return
+
+    photo = message.photo[-1]  # самое большое
+    await state.update_data(broadcast_photo_id=photo.file_id)
+
+    await ask_broadcast_button_choice(message, state)
+
+
+@dp.callback_query(F.data == "broadcast_no_photo")
+async def broadcast_no_photo(callback: CallbackQuery, state: FSMContext):
+    """Админ выбрал вариант без картинки"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+    # Явно очищаем фото
+    data = await state.get_data()
+    data.pop("broadcast_photo_id", None)
+    await state.update_data(**data)
+
+    await ask_broadcast_button_choice(callback.message, state)
+
+
+async def ask_broadcast_button_choice(target_message: Message, state: FSMContext):
+    """Попросить выбрать кнопку для сообщения"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔘 Без кнопки", callback_data="broadcast_btn_none")],
+        [InlineKeyboardButton(text="💒 Открыть мини-эпп", callback_data="broadcast_btn_miniapp")],
+        [InlineKeyboardButton(text="💬 Открыть общий чат", callback_data="broadcast_btn_group")],
+        [InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_btn_custom")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await target_message.answer(
+        "🔗 <b>Шаг 3.</b> Добавить к сообщению кнопку?\n\n"
+        "• «Открыть мини-эпп» — кнопка запуска Mini App\n"
+        "• «Открыть общий чат» — кнопка с ссылкой на свадебный чат\n"
+        "• «Добавить свою кнопку» — задать любой текст и ссылку\n"
+        "• «Без кнопки» — отправить только текст (и фото, если выбрали)",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_button_choice)
+
+
+@dp.callback_query(F.data.in_(["broadcast_btn_none", "broadcast_btn_miniapp", "broadcast_btn_group", "broadcast_btn_custom"]))
+async def broadcast_button_choice(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора варианта кнопки"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    choice = callback.data
+    await callback.answer()
+
+    if choice == "broadcast_btn_none":
+        await state.update_data(button_type="none")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_miniapp":
+        await state.update_data(button_type="miniapp")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_group":
+        await state.update_data(button_type="group")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_custom":
+        await state.update_data(button_type="custom")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "✏️ Введите <b>текст кнопки</b> (например: «Открыть сайт»):",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await state.set_state(BroadcastStates.waiting_custom_button_text)
+
+
+@dp.message(BroadcastStates.waiting_custom_button_text)
+async def broadcast_custom_button_text(message: Message, state: FSMContext):
+    """Получаем текст пользовательской кнопки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Текст кнопки пустой. Пожалуйста, отправьте текст.")
+        return
+
+    await state.update_data(custom_button_text=text)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+    await message.answer(
+        "🔗 Теперь отправьте <b>ссылку для кнопки</b> (начинается с http:// или https:// или tg://):",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_custom_button_url)
+
+
+@dp.message(BroadcastStates.waiting_custom_button_url)
+async def broadcast_custom_button_url(message: Message, state: FSMContext):
+    """Получаем URL для пользовательской кнопки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    url = (message.text or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://") or url.startswith("tg://")):
+        await message.answer("❌ Неверный формат URL. Ссылка должна начинаться с http://, https:// или tg://")
+        return
+
+    await state.update_data(custom_button_url=url)
+    await show_broadcast_preview(message, state)
+
+
+async def build_broadcast_reply_markup(data: dict) -> InlineKeyboardMarkup | None:
+    """Построить InlineKeyboardMarkup для рассылки по данным state"""
+    button_type = data.get("button_type", "none")
+
+    if button_type == "miniapp":
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💒 Открыть приглашение",
+                web_app=WebAppInfo(url=WEBAPP_URL)
+            )]
+        ])
+
+    if button_type == "group" and GROUP_LINK:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💬 Открыть свадебный чат",
+                url=GROUP_LINK
+            )]
+        ])
+
+    if button_type == "custom":
+        text = data.get("custom_button_text")
+        url = data.get("custom_button_url")
+        if text and url:
+            return InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=text,
+                    url=url
+                )]
+            ])
+
+    return None
+
+
+async def show_broadcast_preview(target_message: Message, state: FSMContext):
+    """Показать админу превью рассылки и спросить подтверждение"""
+    data = await state.get_data()
+    text = data.get("broadcast_text", "")
+    photo_id = data.get("broadcast_photo_id")
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    markup = await build_broadcast_reply_markup(data)
+
+    # Превью сообщения
+    try:
+        if photo_id:
+            await target_message.answer_photo(
+                photo=photo_id,
+                caption=text,
+                reply_markup=markup
+            )
+        else:
+            await target_message.answer(
+                text,
+                reply_markup=markup
+            )
+    except Exception as e:
+        logger.error(f"Ошибка отправки превью рассылки админу: {e}")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Отправить всем гостям", callback_data="broadcast_send_confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await target_message.answer(
+        "📨 <b>Проверьте сообщение выше.</b>\n\n"
+        f"Оно будет отправлено в ЛС всем гостям из базы, у кого есть user_id.\n"
+        f"Планируется отправка: <b>{total}</b> получателям.\n\n"
+        "Если всё верно — нажмите «Отправить всем гостям».",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_confirm)
+
+
+@dp.callback_query(F.data == "broadcast_send_confirm")
+async def broadcast_send_confirm(callback: CallbackQuery, state: FSMContext):
+    """Фактическая отправка рассылки всем гостям"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    data = await state.get_data()
+    text = data.get("broadcast_text", "")
+    photo_id = data.get("broadcast_photo_id")
+    markup = await build_broadcast_reply_markup(data)
+
+    if not text:
+        await callback.answer("❌ Нет текста сообщения", show_alert=True)
+        await state.clear()
+        return
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    if total == 0:
+        await callback.message.answer(
+            "⚠️ В базе гостей пока нет ни одного user_id, рассылать некому.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    await callback.answer()
+    await callback.message.answer(
+        f"🚀 Начинаю рассылку для <b>{total}</b> получателей…",
+        parse_mode="HTML"
+    )
+
+    sent = 0
+    failed = 0
+
+    for uid in recipients:
+        try:
+            if photo_id:
+                await bot.send_photo(
+                    chat_id=uid,
+                    photo=photo_id,
+                    caption=text,
+                    reply_markup=markup
+                )
+            else:
+                await bot.send_message(
+                    chat_id=uid,
+                    text=text,
+                    reply_markup=markup
+                )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.error(f"Ошибка отправки рассылки пользователю {uid}: {e}")
+        # Небольшая пауза, чтобы не упереться в лимиты
+        await asyncio.sleep(0.05)
+
+    await state.clear()
+
+    await callback.message.answer(
+        "✅ <b>Рассылка завершена.</b>\n\n"
+        f"Успешно отправлено: <b>{sent}</b>\n"
+        f"С ошибкой: <b>{failed}</b>",
+        parse_mode="HTML"
+    )
 
 @dp.message(Command("bot_status"))
 async def cmd_bot_status(message: Message):
