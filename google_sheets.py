@@ -1309,12 +1309,41 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
                 by_user_id.setdefault(user_id, []).append(info)
             by_name_key.setdefault(name_key, []).append(info)
         
-        dup_by_user_id = [
-            {"user_id": uid, "rows": rows}
-            for uid, rows in by_user_id.items()
-            if len(rows) > 1
-        ]
+        # Дубликаты по user_id.
+        # Новая логика: один и тот же user_id может принадлежать основному гостю
+        # и его дополнительным гостям БЕЗ собственного Telegram — это нормально.
+        # Проблемой считаем только случаи, когда у ОДНОГО user_id
+        # несколько строк с ОДНИМ И ТЕМ ЖЕ именем/фамилией (с учётом перестановки).
+        dup_by_user_id = []
+        for uid, rows in by_user_id.items():
+            if len(rows) <= 1:
+                continue
+
+            # Группируем строки по нормализованному имени (учёт перестановки Имя/Фамилия)
+            name_groups: dict[str, list[dict]] = {}
+            for info in rows:
+                full_name = (info.get("full_name") or "").strip()
+                parts = full_name.split()
+                first = parts[0] if parts else ""
+                last = " ".join(parts[1:]) if len(parts) > 1 else ""
+                if first and last:
+                    key_parts = sorted([first.lower(), last.lower()])
+                    name_key = "|".join(key_parts)
+                else:
+                    name_key = full_name.lower()
+                name_groups.setdefault(name_key, []).append(info)
+
+            # Собираем только те строки, где для одного user_id
+            # одно и то же нормализованное имя встречается более одного раза
+            problem_rows: list[dict] = []
+            for group_rows in name_groups.values():
+                if len(group_rows) > 1:
+                    problem_rows.extend(group_rows)
+
+            if problem_rows:
+                dup_by_user_id.append({"user_id": uid, "rows": problem_rows})
         
+        # Дубликаты по имени (независимо от user_id) оставляем как есть
         dup_by_name = [
             rows for key, rows in by_name_key.items() if len(rows) > 1
         ]
