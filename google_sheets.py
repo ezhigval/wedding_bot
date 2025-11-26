@@ -4,7 +4,7 @@
 import os
 import json
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -1408,3 +1408,130 @@ def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+
+# ========== СЕРВИСНЫЕ ФУНКЦИИ ДЛЯ АДМИНА (СПИСОК ГОСТЕЙ И ПЕРЕСТАНОВКА ИМЯ/ФАМИЛИЯ) ==========
+
+def _list_confirmed_guests_sync() -> List[Dict]:
+    """
+    Синхронная функция: получить список всех подтверждённых гостей.
+
+    Возвращает список словарей:
+    [{'row': int, 'full_name': str}, ...]
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+
+        all_values = worksheet.get_all_values()
+
+        guests: List[Dict] = []
+        for row_idx, row in enumerate(all_values, start=1):
+            if not row or len(row) == 0:
+                continue
+
+            full_name = row[0].strip() if row[0] else ""
+            if not full_name:
+                continue
+
+            # Столбец C — подтверждение "ДА"/"НЕТ"
+            confirmation = row[2].strip().upper() if len(row) > 2 and row[2] else ""
+            if confirmation != "ДА":
+                continue
+
+            guests.append({
+                "row": row_idx,
+                "full_name": full_name,
+            })
+
+        return guests
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка подтверждённых гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+def _swap_guest_name_order_sync(row_index: int) -> Tuple[str, str]:
+    """
+    Синхронная функция: поменять местами Имя и Фамилию в первой колонке для заданной строки.
+
+    Возвращает кортеж (old_full_name, new_full_name).
+    Если изменить не удалось, возвращает ("", "").
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return "", ""
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+
+        cell = worksheet.cell(row_index, 1)
+        old_full_name = (cell.value or "").strip()
+        if not old_full_name:
+            return "", ""
+
+        parts = old_full_name.split()
+        if len(parts) < 2:
+            # Одно слово — нечего переставлять
+            return old_full_name, old_full_name
+
+        first = parts[0]
+        last = " ".join(parts[1:])
+
+        new_full_name = f"{last} {first}".strip()
+        worksheet.update_cell(row_index, 1, new_full_name)
+
+        logger.info(
+            f"Переставлены Имя/Фамилия в строке {row_index}: "
+            f"'{old_full_name}' -> '{new_full_name}'"
+        )
+        return old_full_name, new_full_name
+    except Exception as e:
+        logger.error(f"Ошибка при перестановке Имя/Фамилия в строке {row_index}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return "", ""
+
+
+async def list_confirmed_guests() -> List[Dict]:
+    """
+    Асинхронная обёртка для получения списка подтверждённых гостей.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, список подтверждённых гостей недоступен")
+        return []
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _list_confirmed_guests_sync)
+    except Exception as e:
+        logger.error(f"Ошибка (async) при получении списка подтверждённых гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+async def swap_guest_name_order(row_index: int) -> Tuple[str, str]:
+    """
+    Асинхронная обёртка для перестановки Имя/Фамилия для одной строки.
+
+    Возвращает (old_full_name, new_full_name).
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, перестановка Имя/Фамилия невозможна")
+        return "", ""
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _swap_guest_name_order_sync, row_index)
+    except Exception as e:
+        logger.error(f"Ошибка (async) при перестановке Имя/Фамилия: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return "", ""

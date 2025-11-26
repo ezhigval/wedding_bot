@@ -267,11 +267,11 @@ function renderGuests() {
             </div>
             <div class="guest-item-fields">
                 <div class="form-group">
-                    <label>Имя, Фамилия</label>
-                    <input type="text" placeholder="Имя" value="${guest.firstName}" 
-                           onchange="updateGuest(${guest.id}, 'firstName', this.value)">
+                    <label>Фамилия, Имя</label>
                     <input type="text" placeholder="Фамилия" value="${guest.lastName}" 
                            onchange="updateGuest(${guest.id}, 'lastName', this.value)">
+                    <input type="text" placeholder="Имя" value="${guest.firstName}" 
+                           onchange="updateGuest(${guest.id}, 'firstName', this.value)">
                 </div>
                 <div class="form-group">
                     <label>Telegram (username)</label>

@@ -12,14 +12,26 @@ import json
 import os
 from utils import format_wedding_date
 from keyboards import (
-    get_invitation_keyboard, get_admin_keyboard, 
+    get_invitation_keyboard,
+    get_admin_keyboard,
     get_group_management_keyboard,
-    get_guests_selection_keyboard, get_invitation_dialog_keyboard
+    get_guests_selection_keyboard,
+    get_invitation_dialog_keyboard,
+    build_guest_swap_page,
 )
 from google_sheets import (
-    get_invitations_list, normalize_telegram_id, get_admins_list, save_admin_to_sheets,
-    get_all_guests_from_sheets, get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    delete_guest_from_sheets, update_invitation_user_id, mark_invitation_as_sent
+    get_invitations_list,
+    normalize_telegram_id,
+    get_admins_list,
+    save_admin_to_sheets,
+    get_all_guests_from_sheets,
+    get_guests_count_from_sheets,
+    cancel_guest_registration_by_user_id,
+    delete_guest_from_sheets,
+    update_invitation_user_id,
+    mark_invitation_as_sent,
+    list_confirmed_guests,
+    swap_guest_name_order,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 
@@ -1253,6 +1265,127 @@ async def admin_guests_list(callback: CallbackQuery):
             reply_markup=keyboard
         )
         await callback.answer()
+
+
+@dp.callback_query(F.data == "admin_fix_names")
+async def admin_fix_names(callback: CallbackQuery):
+    """Режим: исправление порядка Имя/Фамилия для гостей"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    guests = await list_confirmed_guests()
+    if not guests:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "📋 <b>Исправление Имя/Фамилия</b>\n\n"
+            "Пока нет ни одного подтверждённого гостя.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+
+    keyboard = build_guest_swap_page(guests, page=0)
+    await callback.message.answer(
+        "🔁 <b>Исправление Имя/Фамилия</b>\n\n"
+        "Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n"
+        "Если нажать ещё раз — порядок вернётся обратно.\n\n"
+        "Строка в списке соответствует строке в вкладке «Список гостей».",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@dp.callback_query(F.data.startswith("fixnames_page:"))
+async def admin_fix_names_page(callback: CallbackQuery):
+    """Пагинация списка гостей для исправления Имя/Фамилия"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    try:
+        _, page_str = callback.data.split(":", 1)
+        page = int(page_str)
+    except Exception:
+        page = 0
+
+    guests = await list_confirmed_guests()
+    if not guests:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.edit_text(
+            "📋 <b>Исправление Имя/Фамилия</b>\n\n"
+            "Пока нет ни одного подтверждённого гостя.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+
+    keyboard = build_guest_swap_page(guests, page=page)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    except Exception:
+        # Если не получилось обновить только клавиатуру — перерисуем целиком
+        await callback.message.edit_text(
+            "🔁 <b>Исправление Имя/Фамилия</b>\n\n"
+            "Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n"
+            "Если нажать ещё раз — порядок вернётся обратно.\n\n"
+            "Строка в списке соответствует строке в вкладке «Список гостей».",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+
+@dp.callback_query(F.data.startswith("swapname:"))
+async def admin_swap_guest_name(callback: CallbackQuery):
+    """Перестановка Имя/Фамилия для конкретного гостя"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    try:
+        _, row_str, page_str = callback.data.split(":")
+        row_index = int(row_str)
+        page = int(page_str)
+    except Exception:
+        await callback.message.answer(
+            "❌ Неверные данные для изменения имени. Попробуйте ещё раз.",
+            parse_mode="HTML"
+        )
+        return
+
+    old_name, new_name = await swap_guest_name_order(row_index)
+
+    if not old_name and not new_name:
+        await callback.message.answer(
+            "❌ Не удалось изменить имя гостя. Проверьте Google Sheets и попробуйте ещё раз.",
+            parse_mode="HTML"
+        )
+        return
+
+    guests = await list_confirmed_guests()
+    keyboard = build_guest_swap_page(guests, page=page)
+
+    text = (
+        "✅ <b>Имя гостя обновлено в Google Sheets:</b>\n"
+        f"<code>{old_name}</code> → <code>{new_name}</code>\n\n"
+        "Можно продолжать исправлять имена."
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
 
 # Команды name_mapping удалены - все данные теперь в Google Sheets
 
