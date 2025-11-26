@@ -23,10 +23,18 @@ from config import (
     SEATING_API_TOKEN,
 )
 from google_sheets import (
-    add_guest_to_sheets, cancel_invitation, get_timeline,
-    check_guest_registration, get_all_guests_from_sheets, 
-    get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    find_guest_by_name, update_guest_user_id, find_duplicate_guests
+    add_guest_to_sheets,
+    cancel_invitation,
+    get_timeline,
+    check_guest_registration,
+    get_all_guests_from_sheets,
+    get_guests_count_from_sheets,
+    cancel_guest_registration_by_user_id,
+    find_guest_by_name,
+    update_guest_user_id,
+    find_duplicate_guests,
+    ping_admin_sheet,
+    write_ping_to_admin_sheet,
 )
 import seating_sync
 import traceback
@@ -352,14 +360,14 @@ async def ping_from_sheets(request: web.Request):
     logger.info(f"[ping_from_sheets] event={event}")
 
     try:
-        # 1. Ping Google Sheets
-        latency_ms = await seating_sync.ping_admin_sheet()
+        # 1. Ping Google Sheets (лист "Админ бота")
+        latency_ms = await ping_admin_sheet()
         status = "OK" if latency_ms >= 0 else "ERROR"
         if latency_ms < 0:
             latency_ms = -1
 
         # 2. Запись результата в таблицу
-        await seating_sync.write_ping_to_admin_sheet(
+        await write_ping_to_admin_sheet(
             source="sheets",
             latency_ms=latency_ms,
             status=status,
