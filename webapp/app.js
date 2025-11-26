@@ -432,6 +432,13 @@ async function checkRegistrationWithUserId(userId, firstName, lastName) {
     }
 }
 
+// Управление видимостью блока "СВАДЕБНЫЙ ЧАТ"
+function updateGroupSectionVisibility(isRegistered) {
+    const groupSection = document.getElementById('groupSection');
+    if (!groupSection) return;
+    groupSection.style.display = isRegistered ? 'block' : 'none';
+}
+
 // Функция для показа сообщения об успешной регистрации
 function showSuccessMessage() {
     const successMessage = document.getElementById('successMessage');
@@ -473,6 +480,9 @@ async function initRsvpForCurrentUser() {
         // Серверная истина: зарегистрирован ли пользователь в таблице гостей
         isUserRegistered = !!(status && status.registered);
 
+        // Блок "СВАДЕБНЫЙ ЧАТ" показываем только зарегистрированным гостям
+        updateGroupSectionVisibility(isUserRegistered);
+
         if (isUserRegistered) {
             setupAddGuestOnlyView();
         } else {
@@ -483,6 +493,9 @@ async function initRsvpForCurrentUser() {
         // На всякий случай показываем полную анкету, если проверка не удалась
         isUserRegistered = false;
         setupFullRsvpView();
+
+        // При ошибке проверки скрываем блок "СВАДЕБНЫЙ ЧАТ"
+        updateGroupSectionVisibility(false);
     }
 }
 
@@ -939,6 +952,9 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 isUserRegistered = true;
                 // И переключаем блок на режим "добавить дополнительного гостя"
                 setupAddGuestOnlyView();
+
+                // После регистрации открываем блок "СВАДЕБНЫЙ ЧАТ"
+                updateGroupSectionVisibility(true);
                 
                 // Прокручиваем к началу страницы
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1008,6 +1024,9 @@ if (cancelInvitationBtn) {
                 if (userId) {
                     localStorage.removeItem(`registered_${userId}`);
                 }
+
+                // После отмены приглашения скрываем блок "СВАДЕБНЫЙ ЧАТ"
+                updateGroupSectionVisibility(false);
                 
                 // После отмены приглашения очищаем форму и снова показываем блок регистрации
                 hideSuccessMessage();
