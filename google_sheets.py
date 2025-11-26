@@ -1486,6 +1486,88 @@ async def write_ping_to_admin_sheet(source: str, latency_ms: int, status: str) -
         None, _write_ping_to_admin_sheet_sync, source, latency_ms, status
     )
 
+
+# ========== РАССАДКА: ЧТЕНИЕ С ЛИСТА «РАССАДКА» ==========
+
+
+def _get_seating_from_sheets_sync() -> List[Dict]:
+    """
+    Получить текущую рассадку из листа "Рассадка".
+
+    Формат:
+        [
+          {
+            "table": "Стол №1",
+            "guests": ["Фамилия Имя", ...]
+          },
+          ...
+        ]
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, чтение рассадки невозможно")
+        return []
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            seating = spreadsheet.worksheet("Рассадка")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка' не найден: {e}")
+            return []
+
+        values = seating.get_all_values()
+        if not values:
+            return []
+
+        header_row = values[0]
+        cols = len(header_row)
+        if cols < 2:
+            # Нет ни одного столика
+            return []
+
+        # Заголовки столов начинаются с колонки B (индекс 1)
+        tables: List[Dict] = []
+        for idx in range(1, cols):
+            table_name = (header_row[idx] or "").strip()
+            if not table_name:
+                continue
+
+            guests: List[str] = []
+            # Строки 2..N (индексы 1..len(values)-1)
+            for r in range(1, len(values)):
+                row = values[r]
+                if idx >= len(row):
+                    continue
+                guest_name = (row[idx] or "").strip()
+                if not guest_name:
+                    continue
+                guests.append(guest_name)
+
+            tables.append({"table": table_name, "guests": guests})
+
+        logger.info(
+            f"Прочитана рассадка: {len(tables)} столов "
+            f"({sum(len(t['guests']) for t in tables)} гостей)"
+        )
+        return tables
+    except Exception as e:
+        logger.error(f"Ошибка при чтении рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+async def get_seating_from_sheets() -> List[Dict]:
+    """
+    Асинхронная обёртка для получения рассадки с листа "Рассадка".
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_seating_from_sheets_sync)
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:

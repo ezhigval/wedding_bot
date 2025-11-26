@@ -34,6 +34,7 @@ from google_sheets import (
     swap_guest_name_order,
     ping_admin_sheet,
     write_ping_to_admin_sheet,
+    get_seating_from_sheets,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
@@ -1269,6 +1270,83 @@ async def admin_guests_list(callback: CallbackQuery):
             reply_markup=keyboard
         )
         await callback.answer()
+
+
+@dp.callback_query(F.data == "admin_seating")
+async def admin_seating(callback: CallbackQuery):
+    """Показать рассадку по столам из листа 'Рассадка'."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    try:
+        seating = await get_seating_from_sheets()
+
+        if not seating:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ])
+            await callback.message.answer(
+                "🍽 <b>Рассадка</b>\n\n"
+                "Пока нет данных по рассадке (лист 'Рассадка' пуст или без гостей).",
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+            return
+
+        # Формируем текст с разбивкой по столам
+        lines = ["🍽 <b>Рассадка по столам</b>\n"]
+        for table in seating:
+            table_name = table.get("table") or "Без названия"
+            guests = table.get("guests") or []
+            lines.append(f"\n<b>{table_name}</b>")
+            if not guests:
+                lines.append("  (пока пусто)")
+            else:
+                for i, name in enumerate(guests, start=1):
+                    lines.append(f"{i}. {name}")
+
+        text = "\n".join(lines)
+
+        # Если текст слишком длинный — режем на несколько сообщений
+        MAX_LEN = 3800
+        chunks = []
+        while len(text) > MAX_LEN:
+            # ищем последний перевод строки перед пределом
+            split_pos = text.rfind("\n\n", 0, MAX_LEN)
+            if split_pos == -1:
+                split_pos = MAX_LEN
+            chunks.append(text[:split_pos])
+            text = text[split_pos:].lstrip()
+        if text:
+            chunks.append(text)
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+
+        for i, chunk in enumerate(chunks):
+            # клавиатуру добавляем только к последнему сообщению
+            if i == len(chunks) - 1:
+                await callback.message.answer(chunk, parse_mode="HTML", reply_markup=keyboard)
+            else:
+                await callback.message.answer(chunk, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "❌ Ошибка при получении рассадки. Попробуйте позже.",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
 
 
 @dp.callback_query(F.data == "admin_ping")

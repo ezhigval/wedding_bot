@@ -26,6 +26,7 @@ def get_admin_keyboard():
     """Клавиатура для администратора"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
+        [InlineKeyboardButton(text="🍽 Рассадка", callback_data="admin_seating")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
         [InlineKeyboardButton(text="📨 Рассылка в ЛС", callback_data="admin_broadcast_dm")],
         [InlineKeyboardButton(text="🔁 Исправить Имя/Фамилию", callback_data="admin_fix_names")],
