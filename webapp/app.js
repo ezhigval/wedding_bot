@@ -963,6 +963,12 @@ document.getElementById('guestForm').addEventListener('submit', async (e) => {
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('success');
                 }
+
+                // После успешной отправки формы перезагружаем страницу,
+                // чтобы все состояния (включая блок "СВАДЕБНЫЙ ЧАТ") подтянулись с сервера
+                setTimeout(() => {
+                    window.location.reload();
+                }, 300);
             } else {
                 // Пытаемся получить детали ошибки
                 let errorMessage = 'Ошибка при регистрации';
@@ -1023,6 +1029,10 @@ if (cancelInvitationBtn) {
                 const userId = user?.id;
                 if (userId) {
                     localStorage.removeItem(`registered_${userId}`);
+                    localStorage.removeItem('main_guest_first_name');
+                    localStorage.removeItem('main_guest_last_name');
+                    localStorage.removeItem('main_guest_category');
+                    localStorage.removeItem('main_guest_side');
                 }
 
                 // После отмены приглашения скрываем блок "СВАДЕБНЫЙ ЧАТ"
@@ -1053,6 +1063,12 @@ if (cancelInvitationBtn) {
                 if (tg.HapticFeedback) {
                     tg.HapticFeedback.notificationOccurred('warning');
                 }
+
+                // Перезагружаем страницу, чтобы состояние "незарегистрирован"
+                // и стандартная форма регистрации подтянулись с сервера
+                setTimeout(() => {
+                    window.location.reload();
+                }, 300);
             } else {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Ошибка при отмене приглашения');
