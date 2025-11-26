@@ -480,14 +480,25 @@ async def register_guest(request):
                 guest_last_name = guest.get('lastName', '').strip()
                 guest_category = guest.get('category', '')
                 guest_side = guest.get('side', '')
+                guest_telegram = (guest.get('telegram') or '').strip()
                 
                 if guest_first_name and guest_last_name:
+                    # Если для дополнительного гостя НЕ указан Telegram,
+                    # привязываем его строку в таблице к user_id основного гостя.
+                    # Это позволит:
+                    #  - считать его «принадлежащим» этому аккаунту Telegram
+                    #  - не дублировать рассылки (get_broadcast_recipients() берёт уникальный список user_id)
+                    guest_user_id = None
+                    if not guest_telegram:
+                        guest_user_id = user_id
+
                     await add_guest_to_sheets(
                         first_name=guest_first_name,
                         last_name=guest_last_name,
                         age=None,
                         category=guest_category,
-                        side=guest_side
+                        side=guest_side,
+                        user_id=guest_user_id
                     )
         except Exception as sheets_error:
             logger.error(f"Ошибка добавления в Google Sheets: {sheets_error}")
