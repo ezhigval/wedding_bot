@@ -1,0 +1,6 @@
+Placeholder for bot_instructions.txt
+
+Файл восстановлен в виде заглушки, чтобы Cursor / worktree
+не сообщал об ошибке "Unable to resolve nonexistent file 'bot_instructions.txt'".
+
+

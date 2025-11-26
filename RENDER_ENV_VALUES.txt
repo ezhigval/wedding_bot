@@ -1,0 +1,6 @@
+Placeholder for RENDER_ENV_VALUES.txt
+
+Файл восстановлен как заглушка, чтобы предотвратить ошибки Cursor/worktree
+о несуществующем `RENDER_ENV_VALUES.txt`.
+
+
