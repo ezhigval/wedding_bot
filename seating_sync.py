@@ -219,8 +219,11 @@ def _rebuild_seating_header_sync() -> bool:
 
 
 async def rebuild_seating_header() -> bool:
+    logger.info("[seating_sync] Запуск rebuild_seating_header()")
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _rebuild_seating_header_sync)
+    result = await loop.run_in_executor(None, _rebuild_seating_header_sync)
+    logger.info(f"[seating_sync] Завершён rebuild_seating_header(), result={result}")
+    return result
 
 
 # ========== СИНХРОНИЗАЦИЯ: «СПИСОК ГОСТЕЙ» → «РАССАДКА» ==========
@@ -334,8 +337,10 @@ def _sync_from_guests_sync() -> None:
 
 
 async def sync_from_guests() -> None:
+    logger.info("[seating_sync] Запуск sync_from_guests()")
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _sync_from_guests_sync)
+    logger.info("[seating_sync] Завершён sync_from_guests()")
 
 
 # ========== СИНХРОНИЗАЦИЯ: «РАССАДКА» → «СПИСОК ГОСТЕЙ» ==========
@@ -432,8 +437,10 @@ def _sync_from_seating_sync() -> None:
 
 
 async def sync_from_seating() -> None:
+    logger.info("[seating_sync] Запуск sync_from_seating()")
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _sync_from_seating_sync)
+    logger.info("[seating_sync] Завершён sync_from_seating()")
 
 
 # ========== ПОЛНАЯ ПЕРЕСБОРКА / ВЫРАВНИВАНИЕ ==========
@@ -455,7 +462,9 @@ def _full_reconcile_sync() -> None:
 
 
 async def full_reconcile() -> None:
+    logger.info("[seating_sync] Запуск full_reconcile()")
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _full_reconcile_sync)
+    logger.info("[seating_sync] Завершён full_reconcile()")
 
 

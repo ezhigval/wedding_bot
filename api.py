@@ -142,6 +142,8 @@ async def init_api():
     api.router.add_post('/seating/sync-from-seating', seating_sync_from_seating)
     api.router.add_post('/seating/full-reconcile', seating_full_reconcile)
     api.router.add_post('/seating/rebuild-header', seating_rebuild_header)
+    api.router.add_post('/seating/on-edit', seating_on_edit)
+    api.router.add_post('/ping/from-sheets', ping_from_sheets)
     
     # Запускаем фоновую проверку гостей на дубликаты сразу после старта API
     asyncio.create_task(scan_guests_for_duplicates_and_notify())
@@ -253,6 +255,139 @@ async def seating_rebuild_header(request: web.Request):
         return web.json_response({"status": "ok", "updated": bool(ok)})
     except Exception as e:
         logger.error(f"Ошибка в seating_rebuild_header: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_on_edit(request: web.Request):
+    """
+    Универсальный хук onEdit из Google Apps Script.
+
+    Backend сам решает, какие действия выполнять, исходя из:
+    - имени листа (Список гостей / Рассадка)
+    - затронутого диапазона (строки/колонки)
+    """
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    sheet_name = (data.get("sheetName") or "").strip()
+    row_start = int(data.get("rowStart") or 0)
+    col_start = int(data.get("colStart") or 0)
+    num_rows = int(data.get("numRows") or 1)
+    num_cols = int(data.get("numCols") or 1)
+    event = data.get("event") or "onEdit"
+    range_a1 = data.get("rangeA1") or ""
+
+    col_end = col_start + num_cols - 1
+
+    logger.info(
+        f"[seating_on_edit] event={event}, sheet={sheet_name}, "
+        f"range={range_a1 or f'R{row_start}C{col_start} ({num_rows}x{num_cols})'}"
+    )
+
+    try:
+        # 1) Изменения на листе «Список гостей»
+        if sheet_name == seating_sync.GUEST_SHEET:
+            touches_table_col = (
+                seating_sync.COL_TABLE >= col_start
+                and seating_sync.COL_TABLE <= col_end
+            )
+            if touches_table_col:
+                logger.info(
+                    "[seating_on_edit] Изменение в столбце столов на листе "
+                    f"'{sheet_name}', запускаем sync_from_guests()"
+                )
+                await seating_sync.sync_from_guests()
+            else:
+                logger.info(
+                    "[seating_on_edit] Изменение на листе гостей, "
+                    "но вне столбца столов — пока игнорируем"
+                )
+
+        # 2) Любые изменения на листе «Рассадка»
+        elif sheet_name == seating_sync.SEATING_SHEET:
+            logger.info(
+                "[seating_on_edit] Изменение на листе рассадки, "
+                "запускаем sync_from_seating()"
+            )
+            await seating_sync.sync_from_seating()
+
+        else:
+            logger.info(
+                f"[seating_on_edit] Лист '{sheet_name}' не относится к рассадке, "
+                "ничего не делаем"
+            )
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_on_edit: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def ping_from_sheets(request: web.Request):
+    """
+    Пинг, инициированный из интерфейса Google Sheets (через Apps Script меню).
+
+    Поток:
+    - проверяем токен
+    - меряем ping к листу "Админ бота"
+    - пишем запись в строку 5 вкладки "Админ бота"
+    - шлём сообщение всем админам от лица бота
+    """
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    event = data.get("event") or "ping_from_sheets"
+    logger.info(f"[ping_from_sheets] event={event}")
+
+    try:
+        # 1. Ping Google Sheets
+        latency_ms = await seating_sync.ping_admin_sheet()
+        status = "OK" if latency_ms >= 0 else "ERROR"
+        if latency_ms < 0:
+            latency_ms = -1
+
+        # 2. Запись результата в таблицу
+        await seating_sync.write_ping_to_admin_sheet(
+            source="sheets",
+            latency_ms=latency_ms,
+            status=status,
+        )
+
+        # 3. Уведомление админов через бота
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if status == "OK":
+            text = (
+                "📶 <b>Пинг из Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                f"⏱ Задержка: <b>{latency_ms} мс</b>\n"
+                f"✅ Статус: <b>OK</b>\n\n"
+                "Запись о ping сохранена в Google Sheets (строка 5 вкладки 'Админ бота')."
+            )
+        else:
+            text = (
+                "📶 <b>Пинг из Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                "❌ Не удалось корректно обратиться к Google Sheets.\n"
+                "Проверьте лог сервера и настройки доступа к таблице."
+            )
+
+        await notify_admins(text)
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в ping_from_sheets: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({"error": "server_error"}, status=500)
 

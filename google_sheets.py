@@ -6,6 +6,8 @@ import json
 import logging
 from typing import List, Dict, Optional, Tuple
 import asyncio
+from datetime import datetime
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -1387,6 +1389,102 @@ async def update_guest_user_id(row: int, user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+
+# ========== PING / СВЯЗЬ С GOOGLE SHEETS ДЛЯ ДИАГНОСТИКИ ==========
+
+
+def _ping_admin_sheet_sync() -> int:
+    """
+    Небольшой "ping" к листу "Админ бота".
+
+    Делает одно лёгкое чтение ячейки и возвращает примерную задержку в мс.
+    Возвращает -1 в случае ошибки.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, ping невозможен")
+        return -1
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return -1
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+
+        start = time.monotonic()
+        # Лёгкое чтение одной ячейки
+        _ = worksheet.acell("A1").value
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        logger.info(f"Ping Google Sheets (Админ бота): {latency_ms} ms")
+        return latency_ms
+    except Exception as e:
+        logger.error(f"Ошибка при ping листа 'Админ бота': {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return -1
+
+
+async def ping_admin_sheet() -> int:
+    """
+    Асинхронный ping к листу "Админ бота".
+
+    Returns:
+        Задержка в мс (int) или -1 при ошибке.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _ping_admin_sheet_sync)
+
+
+def _write_ping_to_admin_sheet_sync(source: str, latency_ms: int, status: str) -> bool:
+    """
+    Записать информацию о последнем ping в лист "Админ бота", строка 5.
+
+    Формат:
+        A5: timestamp (YYYY-MM-DD HH:MM:SS)
+        B5: source ("bot" / "sheets" / др.)
+        C5: latency (мс)
+        D5: status ("OK" / "ERROR: ...")
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, запись ping невозможна")
+        return False
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+
+        row = 5
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        values = [[timestamp, source, str(latency_ms), status]]
+        worksheet.update(f"A{row}:D{row}", values)
+
+        logger.info(
+            f"Записан ping в 'Админ бота': time={timestamp}, source={source}, "
+            f"latency_ms={latency_ms}, status={status}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при записи ping в 'Админ бота': {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def write_ping_to_admin_sheet(source: str, latency_ms: int, status: str) -> bool:
+    """
+    Асинхронная обёртка для записи ping в лист "Админ бота".
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _write_ping_to_admin_sheet_sync, source, latency_ms, status
+    )
 
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""

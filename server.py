@@ -250,11 +250,11 @@ async def main():
             logger.warning("⚠️ Экземпляр бота уже существует! Используем его")
             bot = _bot_instance
         else:
-            bot = await init_bot()
-            if bot is None:
-                logger.error("❌ Не удалось инициализировать бота")
-                logger.error("Проверьте переменные окружения на Render")
-                return
+        bot = await init_bot()
+        if bot is None:
+            logger.error("❌ Не удалось инициализировать бота")
+            logger.error("Проверьте переменные окружения на Render")
+            return
             _bot_instance = bot
             logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
         

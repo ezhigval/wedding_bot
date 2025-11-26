@@ -32,8 +32,12 @@ from google_sheets import (
     mark_invitation_as_sent,
     list_confirmed_guests,
     swap_guest_name_order,
+    ping_admin_sheet,
+    write_ping_to_admin_sheet,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
+from datetime import datetime
+import time
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -1265,6 +1269,66 @@ async def admin_guests_list(callback: CallbackQuery):
             reply_markup=keyboard
         )
         await callback.answer()
+
+
+@dp.callback_query(F.data == "admin_ping")
+async def admin_ping(callback: CallbackQuery, state: FSMContext):
+    """Проверка связи: бот → сервер → Google Sheets."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    await callback.message.answer("📶 Выполняю проверку связи с Google Sheets...")
+
+    try:
+        # 1. Измеряем примерную задержку запроса к листу "Админ бота"
+        latency_ms = await ping_admin_sheet()
+        status = "OK" if latency_ms >= 0 else "ERROR"
+
+        # Если при ping была ошибка, фиксируем latency как -1
+        if latency_ms < 0:
+            latency_ms = -1
+
+        # 2. Пишем результат ping в лист "Админ бота", строка 5
+        await write_ping_to_admin_sheet(
+            source="bot",
+            latency_ms=latency_ms,
+            status=status,
+        )
+
+        # 3. Отправляем человеку понятный ответ
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if status == "OK":
+            text = (
+                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                f"📄 Лист: <code>Админ бота</code>\n"
+                f"⚙️ Строка: <code>5</code>\n"
+                f"⏱ Задержка: <b>{latency_ms} мс</b>\n"
+                f"✅ Статус: <b>OK</b>\n\n"
+                "Запись о ping сохранена в Google Sheets (строка 5 вкладки 'Админ бота')."
+            )
+        else:
+            text = (
+                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                "❌ Не удалось получить корректный ответ от Google Sheets.\n"
+                "Проверьте лог сервера и настройки доступа к таблице."
+            )
+
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка в admin_ping: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+        await callback.message.answer(
+            "❌ Произошла ошибка при проверке связи с Google Sheets.\n"
+            "Подробности смотри в логах сервера.",
+            parse_mode="HTML",
+        )
 
 
 @dp.callback_query(F.data == "admin_fix_names")
