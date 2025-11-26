@@ -19,7 +19,14 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME
+from config import (
+    GOOGLE_SHEETS_ID,
+    GOOGLE_SHEETS_CREDENTIALS,
+    GOOGLE_SHEETS_SHEET_NAME,
+    GOOGLE_SHEETS_INVITATIONS_SHEET_NAME,
+    GOOGLE_SHEETS_ADMINS_SHEET_NAME,
+    GOOGLE_SHEETS_TIMELINE_SHEET_NAME,
+)
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -1487,7 +1494,146 @@ async def write_ping_to_admin_sheet(source: str, latency_ms: int, status: str) -
     )
 
 
-# ========== РАССАДКА: ЧТЕНИЕ С ЛИСТА «РАССАДКА» ==========
+# ========== КОНФИГ / ФЛАГИ ==========
+
+
+def _get_or_create_config_sheet_sync():
+    """
+    Получить (или создать) лист 'Config'.
+
+    Используется для хранения флагов:
+      - SEATING_LOCKED (true/false)
+      - SEATING_LOCKED_AT (timestamp)
+    """
+    client = get_google_sheets_client()
+    if not client:
+        raise RuntimeError("Google Sheets клиент недоступен")
+
+    spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+    try:
+        sheet = spreadsheet.worksheet("Config")
+    except Exception:
+        sheet = spreadsheet.add_worksheet(title="Config", rows=20, cols=4)
+    return sheet
+
+
+def _get_seating_lock_status_sync() -> Dict:
+    """
+    Прочитать статус закрепления рассадки из листа Config.
+    """
+    try:
+        sheet = _get_or_create_config_sheet_sync()
+        values = sheet.get_all_values()
+
+        data: Dict[str, str] = {}
+        for row in values:
+            if len(row) < 2:
+                continue
+            key = (row[0] or "").strip()
+            value = (row[1] or "").strip()
+            if key:
+                data[key] = value
+
+        locked = data.get("SEATING_LOCKED", "").lower() in ("1", "true", "yes")
+        locked_at = data.get("SEATING_LOCKED_AT") or ""
+
+        return {"locked": locked, "locked_at": locked_at}
+    except Exception as e:
+        logger.error(f"Ошибка при чтении статуса закрепления рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"locked": False, "locked_at": ""}
+
+
+async def get_seating_lock_status() -> Dict:
+    """
+    Асинхронная обёртка для чтения статуса закрепления рассадки.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_seating_lock_status_sync)
+
+
+def _lock_seating_sync() -> Dict:
+    """
+    Закрепить текущую рассадку:
+      - Создать/обновить лист 'Рассадка_фикс' (копия текущей 'Рассадка')
+      - Записать флаги SEATING_LOCKED и SEATING_LOCKED_AT в лист Config
+
+    Возвращает словарь с информацией о статусе:
+      {'locked': True/False, 'locked_at': '...', 'reason': str}
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return {"locked": False, "locked_at": "", "reason": "no_client"}
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+
+        # Проверяем текущий статус
+        status = _get_seating_lock_status_sync()
+        if status.get("locked"):
+            return {
+                "locked": True,
+                "locked_at": status.get("locked_at", ""),
+                "reason": "already_locked",
+            }
+
+        # Читаем текущую рассадку
+        try:
+            seating_sheet = spreadsheet.worksheet("Рассадка")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка' не найден при закреплении: {e}")
+            return {"locked": False, "locked_at": "", "reason": "no_seating_sheet"}
+
+        values = seating_sheet.get_all_values()
+
+        # Создаём/очищаем лист 'Рассадка_фикс'
+        try:
+            fixed_sheet = spreadsheet.worksheet("Рассадка_фикс")
+            fixed_sheet.clear()
+        except Exception:
+            fixed_sheet = spreadsheet.add_worksheet(title="Рассадка_фикс", rows=100, cols=26)
+
+        if values:
+            rows = len(values)
+            cols = max(len(row) for row in values)
+            # Нормализуем размеры
+            norm_values = []
+            for row in values:
+                r = list(row)
+                if len(r) < cols:
+                    r.extend([""] * (cols - len(r)))
+                norm_values.append(r)
+
+            end_col_letter = chr(ord("A") + cols - 1)
+            fixed_sheet.update(f"A1:{end_col_letter}{rows}", norm_values)
+
+        # Обновляем Config
+        config_sheet = _get_or_create_config_sheet_sync()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        config_sheet.update("A1:B2", [
+            ["SEATING_LOCKED", "1"],
+            ["SEATING_LOCKED_AT", now_str],
+        ])
+
+        logger.info(f"Рассадка закреплена в листе 'Рассадка_фикс' в {now_str}")
+        return {"locked": True, "locked_at": now_str, "reason": "ok"}
+    except Exception as e:
+        logger.error(f"Ошибка при закреплении рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"locked": False, "locked_at": "", "reason": "exception"}
+
+
+async def lock_seating() -> Dict:
+    """
+    Асинхронная обёртка для закрепления рассадки.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _lock_seating_sync)
+
+
+# ========== РАССАДКА: ЧТЕНИЕ С ЛИСТА «РАССАДКА» / «РАССАДКА_ФИКС» ==========
 
 
 def _get_seating_from_sheets_sync() -> List[Dict]:

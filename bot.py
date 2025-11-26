@@ -35,6 +35,8 @@ from google_sheets import (
     ping_admin_sheet,
     write_ping_to_admin_sheet,
     get_seating_from_sheets,
+    get_seating_lock_status,
+    lock_seating,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
@@ -1404,6 +1406,75 @@ async def admin_ping(callback: CallbackQuery, state: FSMContext):
 
         await callback.message.answer(
             "❌ Произошла ошибка при проверке связи с Google Sheets.\n"
+            "Подробности смотри в логах сервера.",
+            parse_mode="HTML",
+        )
+
+
+@dp.callback_query(F.data == "admin_lock_seating")
+async def admin_lock_seating(callback: CallbackQuery, state: FSMContext):
+    """Одноразовое закрепление рассадки."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+
+    # Проверяем дату: кнопка логически доступна только после 2026-05-01
+    now = datetime.now()
+    lock_available_from = datetime(2026, 5, 1)
+    if now < lock_available_from:
+        await callback.message.answer(
+            "🔒 Закрепить рассадку можно только после 01.05.2026.\n"
+            "Сейчас изменения ещё возможны.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Проверяем, не закреплена ли уже рассадка
+    status = await get_seating_lock_status()
+    if status.get("locked"):
+        locked_at = status.get("locked_at") or "неизвестно"
+        await callback.message.answer(
+            "🔒 <b>Рассадка уже закреплена.</b>\n\n"
+            f"🕐 Время фиксации: <code>{locked_at}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    await callback.message.answer(
+        "⏳ Закрепляю текущую рассадку...\n"
+        "После этого любые изменения мест в таблице не будут учитываться.",
+        parse_mode="HTML",
+    )
+
+    try:
+        result = await lock_seating()
+        if result.get("locked"):
+            locked_at = result.get("locked_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            text = (
+                "✅ <b>Рассадка закреплена.</b>\n\n"
+                f"🕐 Время фиксации: <code>{locked_at}</code>\n\n"
+                "Теперь:\n"
+                "• Все onEdit-события для 'Список гостей' и 'Рассадка' игнорируются модулем рассадки.\n"
+                "• Mini App и бот могут использовать зафиксированную рассадку для показа столов гостям."
+            )
+        else:
+            reason = result.get("reason") or "unknown"
+            text = (
+                "❌ <b>Не удалось закрепить рассадку.</b>\n\n"
+                f"Причина: <code>{reason}</code>\n"
+                "Проверьте логи сервера и содержимое листов 'Рассадка' и 'Config'."
+            )
+
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка в admin_lock_seating: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+        await callback.message.answer(
+            "❌ Произошла внутренняя ошибка при закреплении рассадки.\n"
             "Подробности смотри в логах сервера.",
             parse_mode="HTML",
         )

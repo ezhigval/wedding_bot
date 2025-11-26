@@ -35,6 +35,7 @@ from google_sheets import (
     find_duplicate_guests,
     ping_admin_sheet,
     write_ping_to_admin_sheet,
+    get_seating_lock_status,
 )
 import seating_sync
 import traceback
@@ -279,6 +280,14 @@ async def seating_on_edit(request: web.Request):
         return web.json_response({"error": "forbidden"}, status=403)
 
     try:
+        # Если рассадка уже закреплена — просто игнорируем любые onEdit-события
+        lock_status = await get_seating_lock_status()
+        if lock_status.get("locked"):
+            logger.info(
+                "[seating_on_edit] Рассадка уже закреплена, onEdit-событие игнорируется"
+            )
+            return web.json_response({"status": "locked"})
+
         data = await request.json()
     except Exception:
         data = {}
