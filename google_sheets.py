@@ -1714,6 +1714,111 @@ async def get_seating_from_sheets() -> List[Dict]:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_seating_from_sheets_sync)
 
+
+def _get_guest_table_and_neighbors_sync(user_id: int) -> Optional[Dict]:
+    """
+    Найти для гостя по user_id:
+      - зафиксированный стол (из 'Рассадка_фикс')
+      - список соседей (другие имена в том же столбце)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, поиск стола невозможен")
+        return None
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+
+        # 1. Находим полное имя гостя по user_id на листе "Список гостей"
+        try:
+            guest_sheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Лист гостей '{GOOGLE_SHEETS_SHEET_NAME}' не найден: {e}")
+            return None
+
+        guest_values = guest_sheet.get_all_values()
+        if not guest_values:
+            return None
+
+        full_name = ""
+        for row in guest_values[1:]:
+            if len(row) <= 5:
+                continue
+            uid_cell = (row[5] or "").strip()
+            if uid_cell == str(user_id):
+                full_name = (row[0] or "").strip()
+                break
+
+        if not full_name:
+            logger.info(f"Гость с user_id={user_id} не найден в 'Список гостей'")
+            return None
+
+        # 2. Ищем это имя в зафиксированной рассадке ('Рассадка_фикс')
+        try:
+            seating_sheet = spreadsheet.worksheet("Рассадка_фикс")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка_фикс' не найден: {e}")
+            return None
+
+        values = seating_sheet.get_all_values()
+        if not values or len(values) < 2:
+            return None
+
+        header_row = values[0]
+        cols = len(header_row)
+        target_table = None
+        neighbors: List[str] = []
+
+        for col_idx in range(1, cols):
+            table_name = (header_row[col_idx] or "").strip()
+            if not table_name:
+                continue
+
+            column_names: List[str] = []
+            for r in range(1, len(values)):
+                row = values[r]
+                if col_idx >= len(row):
+                    continue
+                name = (row[col_idx] or "").strip()
+                if not name:
+                    continue
+                column_names.append(name)
+
+            # ищем полное совпадение имени в этом столе
+            if any(n == full_name for n in column_names):
+                target_table = table_name
+                neighbors = [n for n in column_names if n != full_name]
+                break
+
+        if not target_table:
+            logger.info(
+                f"Гость '{full_name}' (user_id={user_id}) не найден "
+                f"в зафиксированной рассадке"
+            )
+            return None
+
+        return {
+            "full_name": full_name,
+            "table": target_table,
+            "neighbors": neighbors,
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при поиске стола и соседей для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def get_guest_table_and_neighbors(user_id: int) -> Optional[Dict]:
+    """
+    Асинхронная обёртка для get_guest_table_and_neighbors.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_guest_table_and_neighbors_sync, user_id)
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:

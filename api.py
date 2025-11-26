@@ -36,6 +36,7 @@ from google_sheets import (
     ping_admin_sheet,
     write_ping_to_admin_sheet,
     get_seating_lock_status,
+    get_guest_table_and_neighbors,
 )
 import seating_sync
 import traceback
@@ -153,6 +154,7 @@ async def init_api():
     api.router.add_post('/seating/rebuild-header', seating_rebuild_header)
     api.router.add_post('/seating/on-edit', seating_on_edit)
     api.router.add_post('/ping/from-sheets', ping_from_sheets)
+    api.router.add_get('/seating-info', get_seating_info)
     
     # Запускаем фоновую проверку гостей на дубликаты сразу после старта API
     asyncio.create_task(scan_guests_for_duplicates_and_notify())
@@ -174,6 +176,67 @@ async def get_config(request):
         import logging
         logging.error(f"Error in get_config: {e}")
         return web.json_response({'error': str(e)}, status=500)
+
+
+async def get_seating_info(request):
+    """
+    Получить информацию о столе и соседях для текущего пользователя.
+
+    Условия показа:
+      - рассадка закреплена (SEATING_LOCKED = 1 в Config)
+      - текущая дата >= 2026-06-04 00:00 по Москве
+      - найден гость с таким user_id и его стол в 'Рассадка_фикс'
+
+    Ответ:
+      {
+        "visible": true/false,
+        "table": "Стол №1",
+        "neighbors": ["Фамилия Имя", ...],
+        "full_name": "Фамилия Имя"
+      }
+    """
+    try:
+        user_id_str = request.query.get("userId")
+        if not user_id_str:
+            return web.json_response({"visible": False})
+
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            return web.json_response({"visible": False})
+
+        # 1. Проверяем, закреплена ли рассадка
+        lock_status = await get_seating_lock_status()
+        if not lock_status.get("locked"):
+            return web.json_response({"visible": False})
+
+        # 2. Проверяем дату раскрытия (2026-06-04 00:00 по Москве)
+        from datetime import timedelta
+
+        now_utc = datetime.utcnow()
+        now_msk = now_utc + timedelta(hours=3)  # Москва = UTC+3, без переходов
+        reveal_dt_msk = datetime(2026, 6, 4, 0, 0, 0)
+
+        if now_msk < reveal_dt_msk:
+            return web.json_response({"visible": False})
+
+        # 3. Ищем стол и соседей в зафиксированной рассадке
+        info = await get_guest_table_and_neighbors(user_id)
+        if not info:
+            return web.json_response({"visible": False})
+
+        return web.json_response(
+            {
+                "visible": True,
+                "table": info.get("table"),
+                "neighbors": info.get("neighbors") or [],
+                "full_name": info.get("full_name") or "",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в get_seating_info: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"visible": False, "error": "server_error"}, status=500)
 
 
 def _check_seating_token(request: web.Request) -> bool:

@@ -626,6 +626,11 @@ async function loadMainPageData() {
     
     // Обновляем контакты
     updateMainContacts();
+
+    // Пытаемся загрузить информацию о столе и соседях (если доступна)
+    loadSeatingInfoForCurrentUser().catch(err => {
+        console.error('Error loading seating info:', err);
+    });
 }
 
 // Обновление UI основной страницы
@@ -736,6 +741,63 @@ function updateMainContacts() {
     }
     if (brideContact) {
         brideContact.href = `https://t.me/${CONFIG.brideTelegram || 'mrfilmpro'}`;
+    }
+}
+
+// Загрузка информации о столе и соседях для текущего пользователя
+async function loadSeatingInfoForCurrentUser() {
+    try {
+        const userData = getTelegramUserId();
+        const userId = userData.userId;
+
+        if (!userId) {
+            console.log('loadSeatingInfoForCurrentUser: no userId, skipping');
+            return;
+        }
+
+        const url = `${CONFIG.apiUrl}/seating-info?userId=${encodeURIComponent(userId)}`;
+        console.log('loadSeatingInfoForCurrentUser: fetching', url);
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.log('loadSeatingInfoForCurrentUser: response not ok', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        console.log('loadSeatingInfoForCurrentUser: data', data);
+
+        if (!data.visible) {
+            return;
+        }
+
+        const tableName = data.table || '';
+        const neighbors = Array.isArray(data.neighbors) ? data.neighbors : [];
+
+        const greetingSection = document.querySelector('.greeting-section');
+        if (!greetingSection) return;
+
+        const titleEl = greetingSection.querySelector('.section-title');
+        const textEl = greetingSection.querySelector('.greeting-text');
+
+        if (titleEl) {
+            const tableText = tableName ? `ВАШ СТОЛ ${tableName}` : 'ВАШ СТОЛ';
+            titleEl.textContent = tableText;
+        }
+
+        if (textEl) {
+            if (!neighbors.length) {
+                textEl.textContent = 'Ваш стол готов. Список соседей будет доступен позже.';
+            } else {
+                const lines = ['Ваши соседи:'];
+                for (const name of neighbors) {
+                    lines.push(`• ${name}`);
+                }
+                textEl.textContent = lines.join('\n');
+            }
+        }
+    } catch (error) {
+        console.error('loadSeatingInfoForCurrentUser error:', error);
     }
 }
 
