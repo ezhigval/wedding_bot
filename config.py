@@ -56,6 +56,9 @@ GOOGLE_SHEETS_INVITATIONS_SHEET_NAME = "Пригласительные"  # Вк�
 GOOGLE_SHEETS_ADMINS_SHEET_NAME = "Админ бота"  # Вкладка для списка админов
 GOOGLE_SHEETS_TIMELINE_SHEET_NAME = "Публичная План-сетка"  # Вкладка для плана-сетки мероприятия
 
+# Токен для защищённых вызовов рассадки из Apps Script (X-Api-Token)
+SEATING_API_TOKEN = os.getenv("SEATING_API_TOKEN", "").strip() if os.getenv("SEATING_API_TOKEN") else ""
+
 # Telegram Client API настройки теперь хранятся в Google Sheets для каждого админа индивидуально
 # Вкладка "Админ бота": столбец D = API_ID, столбец E = API_HASH, столбец F = PHONE
 # Получить API_ID и API_HASH на https://my.telegram.org/auth

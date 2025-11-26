@@ -12,13 +12,23 @@ import hmac
 import urllib.parse
 import asyncio
 
-from config import BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
+from config import (
+    BOT_TOKEN,
+    WEDDING_DATE,
+    GROOM_NAME,
+    BRIDE_NAME,
+    GROOM_TELEGRAM,
+    BRIDE_TELEGRAM,
+    WEDDING_ADDRESS,
+    SEATING_API_TOKEN,
+)
 from google_sheets import (
     add_guest_to_sheets, cancel_invitation, get_timeline,
     check_guest_registration, get_all_guests_from_sheets, 
     get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
     find_guest_by_name, update_guest_user_id, find_duplicate_guests
 )
+import seating_sync
 import traceback
 import logging
 
@@ -126,6 +136,12 @@ async def init_api():
     api.router.add_get('/timeline', get_timeline_endpoint)
     api.router.add_post('/confirm-identity', confirm_identity)
     api.router.add_post('/parse-init-data', parse_init_data)
+
+    # Seating sync endpoints (для вызова из Google Apps Script)
+    api.router.add_post('/seating/sync-from-guests', seating_sync_from_guests)
+    api.router.add_post('/seating/sync-from-seating', seating_sync_from_seating)
+    api.router.add_post('/seating/full-reconcile', seating_full_reconcile)
+    api.router.add_post('/seating/rebuild-header', seating_rebuild_header)
     
     # Запускаем фоновую проверку гостей на дубликаты сразу после старта API
     asyncio.create_task(scan_guests_for_duplicates_and_notify())
@@ -147,6 +163,98 @@ async def get_config(request):
         import logging
         logging.error(f"Error in get_config: {e}")
         return web.json_response({'error': str(e)}, status=500)
+
+
+def _check_seating_token(request: web.Request) -> bool:
+    """
+    Проверка токена для эндпоинтов рассадки.
+
+    Если SEATING_API_TOKEN не задан, проверка считается пройденной.
+    Если задан — сравниваем с заголовком X-Api-Token.
+    """
+    if not SEATING_API_TOKEN:
+        return True
+
+    header_token = (request.headers.get("X-Api-Token") or "").strip()
+    return header_token == SEATING_API_TOKEN
+
+
+async def seating_sync_from_guests(request: web.Request):
+    """Вызов sync_from_guests() из Apps Script (Список гостей → Рассадка)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        # Тело нам пока не нужно, но читаем для совместимости
+        _ = await request.json()
+    except Exception:
+        # Игнорируем ошибки парсинга — логика не зависит от payload
+        pass
+
+    try:
+        await seating_sync.sync_from_guests()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_sync_from_guests: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_sync_from_seating(request: web.Request):
+    """Вызов sync_from_seating() из Apps Script (Рассадка → Список гостей)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        await seating_sync.sync_from_seating()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_sync_from_seating: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_full_reconcile(request: web.Request):
+    """Полная пересборка рассадки (rebuild header + обе синхронизации)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        await seating_sync.full_reconcile()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_full_reconcile: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_rebuild_header(request: web.Request):
+    """Только перестроение шапки рассадки из Data Validation G2."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        ok = await seating_sync.rebuild_seating_header()
+        return web.json_response({"status": "ok", "updated": bool(ok)})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_rebuild_header: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def parse_init_data(request):
     """Парсинг initData от Telegram для извлечения user_id"""
