@@ -46,6 +46,7 @@ from google_sheets import (
     get_seating_lock_status,
     lock_seating,
     save_photo_from_user,
+    get_admin_login_code_and_clear,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, start_phone_login, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
@@ -619,6 +620,38 @@ async def admin_menu_auth_client(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await _start_telegram_client_auth(message, state, message.from_user.id)
+
+
+@dp.message(F.text == "📥 Считать код из таблицы")
+async def admin_menu_read_code_from_sheet(message: Message, state: FSMContext):
+    """
+    Считать одноразовый код авторизации из вкладки «Админ бота» (столбец G)
+    и сразу авторизовать Telegram Client.
+
+    Флоу:
+    1. Админ вручную вставляет код в Google Sheets в свою строку (столбец G).
+    2. Жмёт в боте кнопку «📥 Считать код из таблицы».
+    3. Бот берёт код, очищает ячейку и запускает process_auth_code.
+    """
+    if not is_admin(message.from_user.id):
+        return
+
+    admin_user_id = message.from_user.id
+
+    # Читаем код авторизации из Google Sheets и очищаем ячейку
+    code = await get_admin_login_code_and_clear(admin_user_id)
+    if not code:
+        await message.answer(
+            "⚠️ В таблице 'Админ бота' в вашей строке (столбец G) нет кода.\n\n"
+            "1️⃣ Вставьте код из сообщения Telegram в столбец G напротив своего username.\n"
+            "2️⃣ Затем снова нажмите «📥 Считать код из таблицы».",
+            parse_mode="HTML",
+        )
+        return
+
+    # Код есть — используем общий обработчик авторизации по коду
+    await message.answer("⏳ Нашёл код в таблице, авторизую Telegram Client...")
+    await process_auth_code(message, state, code.strip())
 
 
 @dp.message(F.text == "Начать с нуля")

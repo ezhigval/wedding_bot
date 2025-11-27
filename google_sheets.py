@@ -640,32 +640,36 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                 start_row = 1
         
         # Обрабатываем данные
-        # Столбец A - username, столбец B - user_id, столбец D - api_id, столбец E - api_hash, столбец F - phone
-        for row in all_values[start_row:]:
+        # Столбец A - username, столбец B - user_id,
+        # столбец D - api_id, столбец E - api_hash, столбец F - phone,
+        # столбец G - login_code (используем для авторизации Telegram Client)
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
             if len(row) >= 1:
                 username = row[0].strip() if row[0] else ""
                 user_id = row[1].strip() if len(row) >= 2 and row[1] else None
                 api_id = row[3].strip() if len(row) >= 4 and row[3] else None  # Столбец D
                 api_hash = row[4].strip() if len(row) >= 5 and row[4] else None  # Столбец E
                 phone = row[5].strip() if len(row) >= 6 and row[5] else None  # Столбец F
-                
+                login_code = row[6].strip() if len(row) >= 7 and row[6] else None  # Столбец G
+
                 # Пропускаем пустые строки
                 if not username:
                     continue
-                
+
                 # Убираем @ если есть
-                username = username.replace('@', '').lower()
-                
+                username_clean = username.replace('@', '').lower()
+
                 admin_data = {
-                    'username': username,
-                    'name': username,
-                    'telegram': username
+                    'username': username_clean,
+                    'name': username_clean,
+                    'telegram': username_clean,
+                    'row_index': row_idx,
                 }
-                
+
                 # Если есть user_id, добавляем его
                 if user_id and user_id.isdigit():
                     admin_data['user_id'] = int(user_id)
-                
+
                 # Добавляем данные Telegram Client API
                 if api_id:
                     admin_data['api_id'] = api_id
@@ -673,7 +677,9 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                     admin_data['api_hash'] = api_hash
                 if phone:
                     admin_data['phone'] = phone
-                
+                if login_code:
+                    admin_data['login_code'] = login_code
+
                 admins.append(admin_data)
         
         logger.info(f"Получено {len(admins)} админов из Google Sheets")
@@ -684,6 +690,83 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
         import traceback
         logger.error(traceback.format_exc())
         return []
+
+
+def _get_admin_login_code_and_clear_sync(admin_user_id: int) -> str:
+    """
+    Считает одноразовый код авторизации из вкладки \"Админ бота\" и сразу очищает ячейку.
+
+    Логика:
+    - ищем строку, где столбец B (user_id) совпадает с admin_user_id;
+    - берём значение из столбца G (login_code);
+    - если код есть — очищаем ячейку G и возвращаем код.
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return ""
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f\"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}\")
+            return ""
+
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            return ""
+
+        start_row = 0
+        if all_values:
+            first_row = all_values[0]
+            if any(keyword in str(first_row[0]).lower() for keyword in ['username', 'админ', 'admin']):
+                start_row = 1
+
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
+            if len(row) < 2:
+                continue
+
+            user_id_cell = row[1].strip() if row[1] else ""
+            try:
+                user_id_value = int(user_id_cell) if user_id_cell else None
+            except ValueError:
+                user_id_value = None
+
+            if user_id_value != admin_user_id:
+                continue
+
+            # Нашли строку текущего админа
+            code = row[6].strip() if len(row) >= 7 and row[6] else ""
+            if not code:
+                logger.info(f\"В столбце G для админа {admin_user_id} код не найден (строка {row_idx})\")
+                return ""
+
+            # Очищаем ячейку с кодом (столбец G = 7)
+            worksheet.update_cell(row_idx, 7, \"\")
+            logger.info(f\"Считан и очищен код авторизации для админа {admin_user_id} из строки {row_idx}\")
+            return code
+
+        logger.info(f\"Строка для админа {admin_user_id} в листе 'Админ бота' не найдена\")
+        return ""
+
+    except Exception as e:
+        logger.error(f\"Ошибка при чтении кода авторизации из 'Админ бота': {e}\")
+        import traceback
+        logger.error(traceback.format_exc())
+        return \"\"
+
+
+async def get_admin_login_code_and_clear(admin_user_id: int) -> str:
+    """
+    Асинхронная обёртка для _get_admin_login_code_and_clear_sync.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning(\"Google Sheets недоступен, не можем считать код авторизации\")
+        return \"\"
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_admin_login_code_and_clear_sync, admin_user_id)
 
 async def save_admin_to_sheets(username: str, user_id: int):
     """
