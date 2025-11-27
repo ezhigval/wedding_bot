@@ -2582,12 +2582,12 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     # Очищаем состояние при возврате в меню
     await state.clear()
     
-        await callback.message.answer(
+    await callback.message.answer(
         "👋 <b>Главное меню</b>\n\n"
         "Выберите действие:",
         reply_markup=get_admin_keyboard(),
-            parse_mode="HTML"
-        )
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_send_invite")
