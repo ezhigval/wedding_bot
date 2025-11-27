@@ -95,6 +95,7 @@ class AdminMenuStates(StatesGroup):
     group = State()
     bot_menu = State()
     add_admin_waiting_username = State()
+    find_userid_waiting_username = State()
 
 # Состояния для удаления гостя
 
@@ -437,6 +438,85 @@ async def admin_menu_bot(message: Message, state: FSMContext):
         reply_markup=get_admin_bot_reply_keyboard(),
         parse_mode="HTML",
     )
+
+
+@dp.message(F.text == "🆔 Найти user_id")
+async def admin_menu_find_userid(message: Message, state: FSMContext):
+    """Запрос username для получения user_id."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.set_state(AdminMenuStates.find_userid_waiting_username)
+    await message.answer(
+        "🆔 <b>Найти user_id по username</b>\n\n"
+        "Пришлите @username или ссылку вида `https://t.me/username`.\n"
+        "Важно: пользователь должен хотя бы раз написать боту или быть с ботом в одной группе.",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminMenuStates.find_userid_waiting_username)
+async def admin_menu_find_userid_username(message: Message, state: FSMContext):
+    """Обработка username и ответ с user_id."""
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+
+    raw = (message.text or "").strip()
+    if not raw:
+        await message.answer("❌ Отправьте, пожалуйста, @username или ссылку на пользователя.")
+        return
+
+    username = raw
+    # Поддерживаем форматы: @user, user, https://t.me/user, t.me/user
+    username = username.replace("https://t.me/", "").replace("http://t.me/", "")
+    username = username.replace("t.me/", "")
+    if username.startswith("@"):
+        username = username[1:]
+    username = username.split()[0].strip()
+
+    if not username:
+        await message.answer(
+            "❌ Не удалось распознать username.\n"
+            "Попробуйте ещё раз в формате @username.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        # Bot API: getChat поддерживает username (как @username, так и просто username)
+        chat = await bot.get_chat(username)
+        user_id = chat.id
+        full_name = ""
+        if getattr(chat, "first_name", None) or getattr(chat, "last_name", None):
+            full_name = f"{getattr(chat, 'first_name', '')} {getattr(chat, 'last_name', '')}".strip()
+
+        text_lines = [
+            "🆔 <b>Информация о пользователе</b>",
+            "",
+            f"👤 Username: @{username}",
+            f"🆔 user_id: <code>{user_id}</code>",
+        ]
+        if full_name:
+            text_lines.insert(2, f"Имя: {full_name}")
+
+        await message.answer("\n".join(text_lines), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Не удалось получить user_id для @{username}: {e}")
+        await message.answer(
+            "❌ Не удалось получить user_id.\n\n"
+            "Чаще всего это значит, что бот ещё не видел этого пользователя.\n"
+            "Попросите его написать боту или добавить его в общую группу, и попробуйте снова.",
+            parse_mode="HTML",
+        )
+    finally:
+        # Возвращаемся в подменю 'Бот'
+        await state.set_state(AdminMenuStates.bot_menu)
+        await message.answer(
+            "🤖 <b>Админ → Бот</b>\n\nВыберите следующее действие:",
+            reply_markup=get_admin_bot_reply_keyboard(),
+            parse_mode="HTML",
+        )
 
 
 @dp.message(F.text == "Статус бота")
