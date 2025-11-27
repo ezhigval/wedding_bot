@@ -165,7 +165,6 @@ def get_admin_bot_reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="Статус бота")],
             [KeyboardButton(text="🔐 Авторизовать клиент")],
-            [KeyboardButton(text="📥 Считать код из таблицы")],
             [KeyboardButton(text="Начать с нуля")],
             [KeyboardButton(text="Добавить админа")],
             [KeyboardButton(text="🆔 Найти user_id")],
