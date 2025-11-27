@@ -1919,63 +1919,69 @@ async def admin_guests_list(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
-    
+
     try:
         guests = await get_all_guests_from_sheets()
-    
-    if not guests:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-            ])
+
+        if not guests:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+                ]
+            )
             await callback.message.answer(
                 "📋 <b>Список гостей</b>\n\n"
                 "Пока никто не подтвердил присутствие.",
                 reply_markup=keyboard,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
-        await callback.answer()
-        return
-    
-    guests_text = "📋 <b>Список всех гостей:</b>\n\n"
-    for i, guest in enumerate(guests, 1):
-        first_name = guest.get('first_name', '')
-        last_name = guest.get('last_name', '')
-            category = guest.get('category', '')
-            side = guest.get('side', '')
-            user_id = guest.get('user_id', '')
-            
-            # Формируем строку с информацией о госте
+            await callback.answer()
+            return
+
+        guests_text = "📋 <b>Список всех гостей:</b>\n\n"
+        for i, guest in enumerate(guests, 1):
+            first_name = guest.get("first_name", "")
+            last_name = guest.get("last_name", "")
+            category = guest.get("category", "")
+            side = guest.get("side", "")
+            user_id = guest.get("user_id", "")
+
             guest_line = f"{i}. <b>{first_name} {last_name}</b>"
-            
             if category:
                 guest_line += f" ({category})"
             if side:
                 guest_line += f" - {side}"
             if user_id:
                 guest_line += f" [ID: {user_id}]"
-            
+
             guests_text += guest_line + "\n"
-    
-    guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
-    
-    # Добавляем кнопку "Вернуться"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
+
+        guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ]
+        )
+
+        await callback.message.answer(
+            guests_text, reply_markup=keyboard, parse_mode="HTML"
+        )
+        await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка получения списка гостей: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    await callback.message.answer(
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ]
+        )
+        await callback.message.answer(
             "❌ Ошибка при получении списка гостей. Попробуйте позже.",
-            reply_markup=keyboard
-    )
+            reply_markup=keyboard,
+        )
         await callback.answer()
 
 
