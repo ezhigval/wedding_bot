@@ -170,7 +170,7 @@ async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     # Определяем, является ли пользователь админом, для клавиатуры
     is_admin_user = is_admin(user_id)
-
+    
     # Отправляем приветственное сообщение с фото
     try:
         photo = FSInputFile(PHOTO_PATH)
@@ -318,6 +318,110 @@ async def admin_menu_group(message: Message, state: FSMContext):
     await message.answer(
         "💬 <b>Админ → Группа</b>\n\nВыберите действие:",
         reply_markup=get_admin_group_reply_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Написать сообщение")
+async def admin_menu_group_send_message(message: Message, state: FSMContext):
+    """Старт отправки сообщения в группу (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    if not GROUP_ID:
+        await message.answer(
+            "❌ GROUP_ID не настроен в конфигурации.",
+            parse_mode="HTML",
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_group")]
+        ]
+    )
+
+    await message.answer(
+        "📢 <b>Отправка сообщения в группу</b>\n\n"
+        "Введите текст сообщения, которое будет отправлено в группу от имени группы:",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await state.set_state(GroupManagementStates.waiting_message)
+
+
+@dp.message(F.text == "Посмотреть участников")
+async def admin_menu_group_list_members(message: Message, state: FSMContext):
+    """Краткая информация о группе (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    if not GROUP_ID:
+        await message.answer(
+            "❌ GROUP_ID не настроен в конфигурации.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        chat = await bot.get_chat(chat_id=GROUP_ID)
+        member_count = (
+            chat.members_count if hasattr(chat, "members_count") else "неизвестно"
+        )
+
+        await message.answer(
+            "👥 <b>Информация о группе</b>\n\n"
+            f"📛 Название: {chat.title}\n"
+            f"🆔 ID: <code>{GROUP_ID}</code>\n"
+            f"👥 Участников: {member_count}\n"
+            f"🔗 Ссылка: {GROUP_LINK}\n\n"
+            "<i>Для получения полного списка участников используйте сторонние боты или API.</i>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Ошибка получения информации о группе (реплай-меню): {e}")
+
+        if "chat not found" in error_msg.lower():
+            await message.answer(
+                "❌ <b>Группа не найдена!</b>\n\n"
+                "Проверьте, что:\n"
+                "1. Бот добавлен в группу\n"
+                "2. GROUP_ID указан правильно",
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(
+                "❌ <b>Ошибка получения информации о группе.</b>\n\n"
+                f"<code>{error_msg}</code>",
+                parse_mode="HTML",
+            )
+
+
+@dp.message(F.text == "Добавить/Удалить")
+async def admin_menu_group_add_remove(message: Message, state: FSMContext):
+    """
+    Переход к расширенному управлению группой (inline-меню),
+    где уже есть кнопки Добавить/Удалить/Список/Сообщение.
+    """
+    if not is_admin(message.from_user.id):
+        return
+
+    if not GROUP_ID:
+        await message.answer(
+            "❌ GROUP_ID не настроен в конфигурации.",
+            parse_mode="HTML",
+        )
+        return
+
+    keyboard = get_group_management_keyboard()
+
+    await message.answer(
+        f"💬 <b>Управление группой</b>\n\n"
+        f"🔗 Ссылка: {GROUP_LINK}\n"
+        f"🆔 ID группы: <code>{GROUP_ID}</code>\n\n"
+        "Выберите нужное действие ниже:",
+        reply_markup=keyboard,
         parse_mode="HTML",
     )
 
@@ -585,6 +689,96 @@ async def admin_menu_seating(message: Message, state: FSMContext):
             "❌ Ошибка при получении рассадки. Попробуйте позже.",
             parse_mode="HTML",
         )
+
+
+@dp.message(F.text == "Отправить приглашение")
+async def admin_menu_send_invite(message: Message, state: FSMContext):
+    """Запуск режима отправки приглашений (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.clear()
+
+    invitations = await get_invitations_list()
+    if not invitations:
+        await message.answer(
+            "❌ <b>Список приглашений пуст</b>\n\n"
+            "Проверьте вкладку 'Пригласительные' в Google Sheets.\n"
+            "Убедитесь, что:\n"
+            "• Столбец A содержит имена гостей\n"
+            "• Столбец B содержит телеграм ID (опционально, формат: @username, t.me/username или просто username)\n\n"
+            "💡 <i>Все гости из таблицы будут показаны, даже если у них нет телеграм username.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    await state.update_data(invitations=invitations)
+
+    sent_count = sum(1 for inv in invitations if inv.get("is_sent", False))
+    guests_list = "📋 <b>Выберите гостя для отправки приглашения:</b>\n\n"
+    guests_list += f"Всего гостей: <b>{len(invitations)}</b>\n"
+    guests_list += f"✅ Отправлено: <b>{sent_count}</b>\n"
+    guests_list += f"⏳ Осталось: <b>{len(invitations) - sent_count}</b>\n\n"
+    guests_list += (
+        "Нажмите на кнопку с именем гостя, чтобы открыть диалог с заготовленным текстом приглашения.\n\n"
+        "💡 <i>Гости с галочкой ✅ уже получили приглашение</i>"
+    )
+
+    keyboard = get_guests_selection_keyboard(invitations)
+    await message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
+
+
+@dp.message(F.text == "Исправить имя/фамилию")
+async def admin_menu_fix_names(message: Message, state: FSMContext):
+    """Запуск режима исправления Имя/Фамилия (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    guests = await list_confirmed_guests()
+    if not guests:
+        await message.answer(
+            "📋 <b>Исправление Имя/Фамилия</b>\n\n"
+            "Пока нет ни одного подтверждённого гостя.",
+            parse_mode="HTML",
+        )
+        return
+
+    keyboard = build_guest_swap_page(guests, page=0)
+    await message.answer(
+        "🔁 <b>Исправление Имя/Фамилия</b>\n\n"
+        "Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n"
+        "Если нажать ещё раз — порядок вернётся обратно.\n\n"
+        "Строка в списке соответствует строке в вкладке «Список гостей».",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Рассылка в ЛС")
+async def admin_menu_broadcast_dm(message: Message, state: FSMContext):
+    """Запуск рассылки в личные сообщения (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.clear()
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ]
+    )
+
+    await message.answer(
+        "📨 <b>Рассылка в личные сообщения</b>\n\n"
+        f"Получателей (по базе гостей): <b>{total}</b>\n\n"
+        "1️⃣ Отправьте текст сообщения, которое получат гости.",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await state.set_state(BroadcastStates.waiting_text)
 
 
 @dp.message(F.text == "Открыть таблицу")
@@ -1301,7 +1495,7 @@ async def cmd_admin(message: Message, state: FSMContext):
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
     await state.set_state(AdminMenuStates.root)
-
+    
     admin_text = f"""
 🔧 <b>Панель администратора</b>
 
@@ -1698,7 +1892,7 @@ async def cmd_bot_status(message: Message):
             status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
         except Exception as e:
             status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
-        
+    
         # 3. Проверка на Render (если доступно)
         render_service_id = os.getenv('RENDER_SERVICE_ID', '')
         if render_service_id:
@@ -1728,8 +1922,8 @@ async def admin_guests_list(callback: CallbackQuery):
     
     try:
         guests = await get_all_guests_from_sheets()
-        
-        if not guests:
+    
+    if not guests:
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
             ])
@@ -1739,13 +1933,13 @@ async def admin_guests_list(callback: CallbackQuery):
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
-            await callback.answer()
-            return
-        
-        guests_text = "📋 <b>Список всех гостей:</b>\n\n"
-        for i, guest in enumerate(guests, 1):
-            first_name = guest.get('first_name', '')
-            last_name = guest.get('last_name', '')
+        await callback.answer()
+        return
+    
+    guests_text = "📋 <b>Список всех гостей:</b>\n\n"
+    for i, guest in enumerate(guests, 1):
+        first_name = guest.get('first_name', '')
+        last_name = guest.get('last_name', '')
             category = guest.get('category', '')
             side = guest.get('side', '')
             user_id = guest.get('user_id', '')
@@ -1761,27 +1955,27 @@ async def admin_guests_list(callback: CallbackQuery):
                 guest_line += f" [ID: {user_id}]"
             
             guests_text += guest_line + "\n"
-        
-        guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
-        
-        # Добавляем кнопку "Вернуться"
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        
-        await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
+    
+    guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
+    
+    # Добавляем кнопку "Вернуться"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    
+    await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка получения списка гостей: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+    ])
+    await callback.message.answer(
             "❌ Ошибка при получении списка гостей. Попробуйте позже.",
             reply_markup=keyboard
-        )
+    )
         await callback.answer()
 
 
@@ -2382,12 +2576,12 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     # Очищаем состояние при возврате в меню
     await state.clear()
     
-    await callback.message.answer(
+        await callback.message.answer(
         "👋 <b>Главное меню</b>\n\n"
         "Выберите действие:",
         reply_markup=get_admin_keyboard(),
-        parse_mode="HTML"
-    )
+            parse_mode="HTML"
+        )
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_send_invite")

@@ -3,6 +3,7 @@ API для Mini App и управления
 """
 from aiohttp import web
 from aiohttp.web import Response
+import aiohttp
 import json
 import sqlite3
 import os
@@ -21,6 +22,7 @@ from config import (
     BRIDE_TELEGRAM,
     WEDDING_ADDRESS,
     SEATING_API_TOKEN,
+    GROUP_ID,
 )
 from google_sheets import (
     add_guest_to_sheets,
@@ -56,6 +58,45 @@ async def notify_admins(message_text):
     """Отправка уведомления админам"""
     if _notify_admins_func:
         await _notify_admins_func(message_text)
+
+
+async def is_user_in_group_chat(user_id: int) -> bool:
+    """
+    Проверка, состоит ли пользователь в общем чате гостей.
+
+    Используем прямой вызов Telegram Bot API getChatMember.
+    Если BOT_TOKEN или GROUP_ID не заданы, считаем, что пользователь не в чате.
+    """
+    if not BOT_TOKEN or not GROUP_ID:
+        return False
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    params = {"chat_id": GROUP_ID, "user_id": user_id}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        f"is_user_in_group_chat: getChatMember HTTP {resp.status}"
+                    )
+                    return False
+                data = await resp.json()
+    except Exception as e:
+        logger.warning(f"is_user_in_group_chat: error {e}")
+        return False
+
+    try:
+        ok = data.get("ok", False)
+        if not ok:
+            # Например, user not found, kicked и т.п.
+            return False
+        status = (data.get("result") or {}).get("status") or ""
+        # статусы: creator, administrator, member, restricted, left, kicked
+        return status in {"creator", "administrator", "member"}
+    except Exception as e:
+        logger.warning(f"is_user_in_group_chat: parse error {e}")
+        return False
 
 
 async def scan_guests_for_duplicates_and_notify():
@@ -601,16 +642,19 @@ async def check_registration(request):
                 'registered': False,
                 'error': 'user_id_or_name_required'
             }, status=400)
-        
         user_id = int(user_id_str)
         logger.info(f"check_registration: checking user_id {user_id} (from Telegram) against column F in Google Sheets")
+
+        # Дополнительно проверяем, состоит ли пользователь в общем чате
+        in_group_chat = await is_user_in_group_chat(user_id)
         
         # 1. Проверяем по user_id в столбце F таблицы
         registered = await check_guest_registration(user_id)
         if registered:
             logger.info(f"check_registration: user_id {user_id} found and registered")
             return web.json_response({
-                'registered': True
+                'registered': True,
+                'in_group_chat': in_group_chat,
             })
         
         # 2. Если не найден по user_id, проверяем по имени/фамилии
@@ -633,13 +677,15 @@ async def check_registration(request):
                     logger.error(traceback.format_exc())
                 
                 return web.json_response({
-                    'registered': True
+                    'registered': True,
+                    'in_group_chat': in_group_chat,
                 })
         
         # Не найден ни по user_id, ни по имени
         logger.info(f"check_registration: user_id {user_id} not found")
         return web.json_response({
-            'registered': False
+            'registered': False,
+            'in_group_chat': in_group_chat,
         })
         
     except ValueError as e:

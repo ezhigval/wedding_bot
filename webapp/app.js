@@ -433,10 +433,10 @@ async function checkRegistrationWithUserId(userId, firstName, lastName) {
 }
 
 // Управление видимостью блока "СВАДЕБНЫЙ ЧАТ"
-function updateGroupSectionVisibility(isRegistered) {
+function updateGroupSectionVisibility(shouldShow) {
     const groupSection = document.getElementById('groupSection');
     if (!groupSection) return;
-    groupSection.style.display = isRegistered ? 'block' : 'none';
+    groupSection.style.display = shouldShow ? 'block' : 'none';
 }
 
 // Функция для показа сообщения об успешной регистрации
@@ -479,9 +479,11 @@ async function initRsvpForCurrentUser() {
         const status = await checkRegistration();
         // Серверная истина: зарегистрирован ли пользователь в таблице гостей
         isUserRegistered = !!(status && status.registered);
+        const inGroupChat = !!(status && status.in_group_chat);
 
-        // Блок "СВАДЕБНЫЙ ЧАТ" показываем только зарегистрированным гостям
-        updateGroupSectionVisibility(isUserRegistered);
+        // Блок "СВАДЕБНЫЙ ЧАТ" показываем только зарегистрированным гостям,
+        // которые ЕЩЁ НЕ состоят в общем чате Telegram
+        updateGroupSectionVisibility(isUserRegistered && !inGroupChat);
 
         if (isUserRegistered) {
             setupAddGuestOnlyView();
