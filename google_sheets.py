@@ -854,16 +854,27 @@ def _get_timeline_sync() -> List[Dict[str, str]]:
             logger.warning(f"Вкладка '{GOOGLE_SHEETS_TIMELINE_SHEET_NAME}' не найдена")
             return []
         
-        # Получаем все данные (столбец A - время, столбец B - событие)
-        values = worksheet.get_all_values()
+        # Получаем данные ТОЛЬКО из первых двух столбцов (A: время, B: событие),
+        # чтобы любые дополнительные столбцы (C, D, ...) не ломали план-сетку.
+        values = worksheet.get("A:B") or []
         
-        timeline = []
-        for row in values:
-            if len(row) >= 2 and row[0].strip() and row[1].strip():
-                timeline.append({
-                    'time': row[0].strip(),
-                    'event': row[1].strip()
-                })
+        timeline: List[Dict[str, str]] = []
+        for raw_row in values:
+            # Гарантируем, что у нас всегда есть как минимум 2 ячейки
+            row = (raw_row + ["", ""])[:2]
+            time_cell = (row[0] or "").strip()
+            event_cell = (row[1] or "").strip()
+
+            # Пропускаем полностью пустые строки и строки без события
+            if not event_cell:
+                continue
+
+            timeline.append(
+                {
+                    "time": time_cell,
+                    "event": event_cell,
+                }
+            )
         
         return timeline
     except Exception as e:
