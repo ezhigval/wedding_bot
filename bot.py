@@ -18,6 +18,9 @@ from keyboards import (
     get_guests_selection_keyboard,
     get_invitation_dialog_keyboard,
     build_guest_swap_page,
+    get_main_reply_keyboard,
+    get_contacts_inline_keyboard,
+    get_group_link_keyboard,
 )
 from google_sheets import (
     get_invitations_list,
@@ -53,6 +56,9 @@ dp = Dispatcher(storage=MemoryStorage())
 bot = None
 
 # RegistrationStates удален - больше не используется (регистрация через Mini App)
+
+# Пользовательские настройки
+PHOTO_MODE_USERS: set[int] = set()
 
 # Состояния для рассылки приглашений
 class InvitationStates(StatesGroup):
@@ -145,13 +151,17 @@ async def cmd_start(message: Message, state: FSMContext):
         logger.warning(f"Не удалось обновить user_id в таблице приглашений: {e}")
         # Не блокируем выполнение, если обновление не удалось
     
+    # Определяем, является ли пользователь админом, для клавиатуры
+    is_admin_user = is_admin(message.from_user.id)
+
     # Отправляем приветственное сообщение с фото
     try:
         photo = FSInputFile(PHOTO_PATH)
         await message.answer_photo(
             photo=photo,
             caption=f"👋 Привет, {display_name}!",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=get_main_reply_keyboard(is_admin=is_admin_user),
         )
     except (FileNotFoundError, Exception) as e:
         # Если фото нет или произошла ошибка, отправляем только текст
@@ -160,6 +170,58 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Отправляем приглашение
     await send_invitation_card(message)
+
+
+@dp.message(F.text == "📸 Фоторежим")
+async def toggle_photo_mode(message: Message):
+    """Включение/выключение фоторежима для пользователя."""
+    user_id = message.from_user.id
+    if user_id in PHOTO_MODE_USERS:
+        PHOTO_MODE_USERS.remove(user_id)
+        await message.answer(
+            "📸 Фоторежим <b>выключен</b>.\n"
+            "Фото больше не собираются автоматически.",
+            parse_mode="HTML",
+        )
+    else:
+        PHOTO_MODE_USERS.add(user_id)
+        await message.answer(
+            "📸 Фоторежим <b>включен</b>.\n"
+            "Просто отправляйте фото в этот чат — я всё соберу.",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(F.text == "💬 Общий чат")
+async def open_group_chat(message: Message):
+    """Отправить ссылку на общий свадебный чат."""
+    await message.answer(
+        "💬 <b>Общий свадебный чат</b>\n\n"
+        "Нажмите кнопку ниже, чтобы перейти в беседу.",
+        reply_markup=get_group_link_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "📞 Связаться с нами")
+async def contact_organizers(message: Message):
+    """Отправить кнопки для связи с организаторами."""
+    await message.answer(
+        "📞 <b>Связаться с нами</b>\n\n"
+        "Выберите, кому написать — откроется личный диалог в Telegram.",
+        reply_markup=get_contacts_inline_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "🛠 Админ-панель")
+async def open_admin_panel(message: Message, state: FSMContext):
+    """Быстрый вход в админ-панель по кнопке."""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к админ-панели.")
+        return
+    # Просто переиспользуем существующий /admin
+    await cmd_admin(message)
 
 async def send_invitation_card(message: Message):
     """Отправляет красивую открытку-приглашение"""

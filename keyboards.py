@@ -1,5 +1,11 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    WebAppInfo,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
+from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE, GROOM_TELEGRAM, BRIDE_TELEGRAM, GROUP_LINK
 from datetime import datetime
 
 
@@ -12,6 +18,82 @@ def get_invitation_keyboard():
         )]
     ])
     return keyboard
+
+
+def get_main_reply_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    """
+    Основная пользовательская клавиатура:
+    - 📱 Приглашение (Mini App)
+    - 📸 Фоторежим (вкл/выкл)
+    - 💬 Общий чат
+    - 📞 Связаться с нами
+    """
+    rows = [
+        [
+            KeyboardButton(
+                text="📱 Приглашение",
+                web_app=WebAppInfo(url=WEBAPP_URL),
+            ),
+            KeyboardButton(text="📸 Фоторежим"),
+        ],
+        [
+            KeyboardButton(text="💬 Общий чат"),
+            KeyboardButton(text="📞 Связаться с нами"),
+        ],
+    ]
+
+    if is_admin:
+        rows.append([KeyboardButton(text="🛠 Админ-панель")])
+
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        input_field_placeholder="Выберите действие…",
+    )
+
+
+def get_contacts_inline_keyboard() -> InlineKeyboardMarkup:
+    """Кнопки для быстрого перехода в диалог с организаторами."""
+    buttons = []
+    if GROOM_TELEGRAM:
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"Валентин (@{GROOM_TELEGRAM})",
+                url=f"https://t.me/{GROOM_TELEGRAM}",
+            )
+        )
+    if BRIDE_TELEGRAM:
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"Мария (@{BRIDE_TELEGRAM})",
+                url=f"https://t.me/{BRIDE_TELEGRAM}",
+            )
+        )
+
+    if not buttons:
+        # fallback
+        buttons.append(
+            InlineKeyboardButton(
+                text="Организатор",
+                url=f"https://t.me/{GROOM_TELEGRAM or BRIDE_TELEGRAM}",
+            )
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=[[b] for b in buttons])
+
+
+def get_group_link_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка для перехода в общий чат."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Перейти в общий чат",
+                    url=GROUP_LINK,
+                )
+            ]
+        ]
+    )
 
 
 def get_registration_keyboard():
