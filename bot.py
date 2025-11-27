@@ -192,7 +192,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await send_invitation_card(message)
 
 
-@dp.message(F.text == "📸 Фоторежим")
+@dp.message(F.text.in_({"📸 Фоторежим ❌", "📸 Фоторежим ✅"}))
 async def toggle_photo_mode(message: Message):
     """Включение/выключение фоторежима для пользователя."""
     user_id = message.from_user.id
