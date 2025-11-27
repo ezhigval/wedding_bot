@@ -40,6 +40,7 @@ from google_sheets import (
     get_seating_from_sheets,
     get_seating_lock_status,
     lock_seating,
+    save_photo_from_user,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
@@ -151,8 +152,9 @@ async def cmd_start(message: Message, state: FSMContext):
         logger.warning(f"Не удалось обновить user_id в таблице приглашений: {e}")
         # Не блокируем выполнение, если обновление не удалось
     
+    user_id = message.from_user.id
     # Определяем, является ли пользователь админом, для клавиатуры
-    is_admin_user = is_admin(message.from_user.id)
+    is_admin_user = is_admin(user_id)
 
     # Отправляем приветственное сообщение с фото
     try:
@@ -161,7 +163,10 @@ async def cmd_start(message: Message, state: FSMContext):
             photo=photo,
             caption=f"👋 Привет, {display_name}!",
             parse_mode="HTML",
-            reply_markup=get_main_reply_keyboard(is_admin=is_admin_user),
+            reply_markup=get_main_reply_keyboard(
+                is_admin=is_admin_user,
+                photo_mode_enabled=(user_id in PHOTO_MODE_USERS),
+            ),
         )
     except (FileNotFoundError, Exception) as e:
         # Если фото нет или произошла ошибка, отправляем только текст
@@ -176,19 +181,68 @@ async def cmd_start(message: Message, state: FSMContext):
 async def toggle_photo_mode(message: Message):
     """Включение/выключение фоторежима для пользователя."""
     user_id = message.from_user.id
+    is_admin_user = is_admin(user_id)
+
     if user_id in PHOTO_MODE_USERS:
         PHOTO_MODE_USERS.remove(user_id)
         await message.answer(
             "📸 Фоторежим <b>выключен</b>.\n"
             "Фото больше не собираются автоматически.",
             parse_mode="HTML",
+            reply_markup=get_main_reply_keyboard(
+                is_admin=is_admin_user, photo_mode_enabled=False
+            ),
         )
     else:
         PHOTO_MODE_USERS.add(user_id)
+        is_admin_user = is_admin(user_id)
         await message.answer(
             "📸 Фоторежим <b>включен</b>.\n"
             "Просто отправляйте фото в этот чат — я всё соберу.",
             parse_mode="HTML",
+            reply_markup=get_main_reply_keyboard(
+                is_admin=is_admin_user, photo_mode_enabled=True
+            ),
+        )
+
+
+@dp.message(F.photo)
+async def handle_photo(message: Message):
+    """
+    Обработка входящих фото.
+    Если у пользователя включен фоторежим — сохраняем метаданные в Google Sheets.
+    """
+    user_id = message.from_user.id
+    if user_id not in PHOTO_MODE_USERS:
+        # Фоторежим не включен — ничего не делаем (или можно показать подсказку)
+        return
+
+    try:
+        display_name = await get_user_display_name(message.from_user)
+        username = message.from_user.username
+        photo = message.photo[-1]  # самое большое
+        file_id = photo.file_id
+
+        ok = await save_photo_from_user(
+            user_id=user_id,
+            username=username,
+            full_name=display_name,
+            file_id=file_id,
+        )
+
+        if ok:
+            await message.answer("📸 Фото сохранено в свадебный альбом 🙌")
+        else:
+            await message.answer(
+                "⚠️ Не удалось сохранить фото. Попробуйте ещё раз позже."
+            )
+    except Exception as e:
+        logger.error(f"Ошибка при обработке фото от {user_id}: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        await message.answer(
+            "⚠️ Произошла ошибка при обработке фото. Попробуйте ещё раз позже."
         )
 
 

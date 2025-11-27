@@ -20,7 +20,7 @@ def get_invitation_keyboard():
     return keyboard
 
 
-def get_main_reply_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+def get_main_reply_keyboard(is_admin: bool = False, photo_mode_enabled: bool = False) -> ReplyKeyboardMarkup:
     """
     Основная пользовательская клавиатура:
     - 📱 Приглашение (Mini App)
@@ -28,13 +28,15 @@ def get_main_reply_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
     - 💬 Общий чат
     - 📞 Связаться с нами
     """
+    photo_label = "📸 Фоторежим ✅" if photo_mode_enabled else "📸 Фоторежим ❌"
+
     rows = [
         [
             KeyboardButton(
                 text="📱 Приглашение",
                 web_app=WebAppInfo(url=WEBAPP_URL),
             ),
-            KeyboardButton(text="📸 Фоторежим"),
+            KeyboardButton(text=photo_label),
         ],
         [
             KeyboardButton(text="💬 Общий чат"),
