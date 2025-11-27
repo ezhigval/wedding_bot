@@ -63,111 +63,135 @@ def normalize_admin_phone(phone: str) -> str:
 
 async def get_or_init_client(admin_user_id: int, api_id: str, api_hash: str, phone: str):
     """
-    Получить или инициализировать Telegram клиент для конкретного админа
-    
-    Args:
-        admin_user_id: User ID админа
-        api_id: API ID из my.telegram.org
-        api_hash: API Hash из my.telegram.org
-        phone: Номер телефона админа (формат: 79001234567 или +79001234567)
-               Google Sheets хранит номера как 79... (без +), функция автоматически нормализует
-    
-    Returns:
-        TelegramClient или None если не удалось инициализировать
+    Получить авторизованный TelegramClient для конкретного админа.
+
+    ВАЖНО: эта функция НИКОГДА не инициирует отправку кода подтверждения.
+    Если клиент не найден или не авторизован, возвращает None.
     """
     if not TELETHON_AVAILABLE:
         logger.warning("Telethon недоступен")
         return None
-    
-    # Если клиент уже существует и подключен - возвращаем его
-    if admin_user_id in _clients:
-        client = _clients[admin_user_id]
-        if client.is_connected():
-            return client
-        else:
-            # Переподключаемся
-            try:
+
+    # 1. Пытаемся переиспользовать уже открытый клиент
+    client = _clients.get(admin_user_id)
+    if client:
+        try:
+            if not client.is_connected():
                 await client.connect()
-                if await client.is_user_authorized():
-                    return client
-            except:
-                pass
-    
-    # Создаем новый клиент
+            if await client.is_user_authorized():
+                return client
+        except Exception as e:
+            logger.warning(
+                f"Не удалось переиспользовать существующий клиент для админа {admin_user_id}: {e}"
+            )
+
+    # 2. Пытаемся открыть существующую сессию с диска
     try:
         api_id_int = int(api_id) if api_id else None
         if not api_id_int or not api_hash or not phone:
-            logger.warning(f"Не указаны API_ID, API_HASH или PHONE для админа {admin_user_id}")
+            logger.warning(
+                f"Не указаны API_ID, API_HASH или PHONE для админа {admin_user_id}"
+            )
             return None
-        
-        # Уникальное имя файла сессии для каждого админа
+
         session_file = f"telegram_session_{admin_user_id}"
-        
         client = TelegramClient(session_file, api_id_int, api_hash)
         await client.connect()
-        
-        # Нормализуем номер телефона (Google Sheets хранит номера как 79..., а Telethon требует +79...)
-        phone_normalized = normalize_admin_phone(phone)
-        
-        # Проверяем, авторизован ли клиент
-        if not await client.is_user_authorized():
-            logger.info(f"Telegram клиент для админа {admin_user_id} не авторизован. Пробуем QR-код авторизацию...")
-            try:
-                # Пробуем QR-код авторизацию (более удобный способ)
-                try:
-                    qr_login = await client.qr_login()
-                    # Сохраняем клиент в словарь ожидающих авторизации через QR
-                    _pending_clients[admin_user_id] = {
-                        'client': client,
-                        'phone': phone_normalized,
-                        'qr_login': qr_login,
-                        'auth_method': 'qr'
-                    }
-                    logger.info(f"QR-код авторизация инициализирована для админа {admin_user_id}")
-                    return None  # Возвращаем None, чтобы бот мог отправить QR-код
-                except Exception as qr_error:
-                    # Если QR-код не работает, используем код подтверждения
-                    logger.info(f"QR-код авторизация недоступна, используем код подтверждения: {qr_error}")
-                    
-                    # Отправляем код подтверждения
-                    # По умолчанию Telegram отправляет код через SMS или Telegram (если аккаунт уже авторизован в другом месте)
-                    code_request = await client.send_code_request(phone_normalized)
-                    
-                    # Определяем тип отправки кода
-                    code_type = "SMS"
-                    if hasattr(code_request, 'type'):
-                        if hasattr(code_request.type, 'type'):
-                            if 'sms' in str(code_request.type.type).lower():
-                                code_type = "SMS"
-                            elif 'call' in str(code_request.type.type).lower():
-                                code_type = "звонок"
-                            elif 'flash' in str(code_request.type.type).lower():
-                                code_type = "flash-звонок"
-                    
-                    # Сохраняем клиент в словарь ожидающих авторизации
-                    _pending_clients[admin_user_id] = {
-                        'client': client,
-                        'phone': phone_normalized,
-                        'phone_code_hash': code_request.phone_code_hash,
-                        'code_type': code_type,
-                        'auth_method': 'code'
-                    }
-                    logger.info(f"Код подтверждения отправлен на номер {phone_normalized} для админа {admin_user_id} (тип: {code_type})")
-                    # Возвращаем None, чтобы бот мог запросить код у админа
-                    return None
-            except Exception as e:
-                logger.error(f"Ошибка отправки кода подтверждения для админа {admin_user_id}: {e}")
-                await client.disconnect()
-                return None
-        
-        # Сохраняем клиент
-        _clients[admin_user_id] = client
-        logger.info(f"Telegram клиент для админа {admin_user_id} успешно инициализирован")
-        return client
-        
-    except Exception as e:
-        logger.error(f"Ошибка инициализации Telegram клиента для админа {admin_user_id}: {e}")
+
+        if await client.is_user_authorized():
+            _clients[admin_user_id] = client
+            logger.info(
+                f"Telegram клиент для админа {admin_user_id} найден и авторизован (из сессии)."
+            )
+            return client
+
+        # Клиент не авторизован — для безопасности закрываем соединение и возвращаем None
+        logger.info(
+            f"Telegram клиент для админа {admin_user_id} не авторизован (нет активной сессии)."
+        )
+        await client.disconnect()
         return None
+    except Exception as e:
+        logger.error(f"Ошибка получения клиента для админа {admin_user_id}: {e}")
+        return None
+
+
+async def start_phone_login(admin_user_id: int, api_id: str, api_hash: str, phone: str):
+    """
+    Явный старт авторизации по номеру телефона:
+    - создаёт/открывает клиент
+    - отправляет код (send_code_request)
+    - сохраняет client + phone_code_hash в _pending_clients
+
+    НИКОГДА не вызывает disconnect() до завершения авторизации.
+
+    Возвращает кортеж (status, message, code_type):
+      status: "authorized" | "code_sent" | "pending" | "error"
+    """
+    if not TELETHON_AVAILABLE:
+        logger.warning("Telethon недоступен, невозможно инициировать авторизацию по телефону")
+        return "error", "Telethon недоступен", None
+
+    # Если уже есть незавершённый логин — не посылаем новый код, чтобы не инвалидировать старый
+    pending = _pending_clients.get(admin_user_id)
+    if pending and pending.get("auth_method") == "code":
+        code_type = pending.get("code_type") or "SMS"
+        logger.info(
+            f"Уже есть ожидающий логин по коду для админа {admin_user_id}, повторно код не отправляем"
+        )
+        return "pending", "Код уже отправлен. Используйте ранее полученный код.", code_type
+
+    try:
+        api_id_int = int(api_id) if api_id else None
+        if not api_id_int or not api_hash or not phone:
+            logger.warning(
+                f"Не указаны API_ID/API_HASH/PHONE для админа {admin_user_id}"
+            )
+            return "error", "Не настроен Telegram Client API (API_ID/API_HASH/PHONE).", None
+
+        session_file = f"telegram_session_{admin_user_id}"
+        client = TelegramClient(session_file, api_id_int, api_hash)
+        await client.connect()
+
+        phone_normalized = normalize_admin_phone(phone)
+
+        # Если уже авторизован — просто сохраняем и выходим
+        if await client.is_user_authorized():
+            _clients[admin_user_id] = client
+            logger.info(
+                f"Telegram клиент для админа {admin_user_id} уже авторизован, код отправлять не нужно."
+            )
+            return "authorized", "Клиент уже авторизован, код не требуется.", None
+
+        logger.info(f"Инициализируем авторизацию по коду для админа {admin_user_id}")
+
+        code_request = await client.send_code_request(phone_normalized)
+
+        code_type = "SMS"
+        if hasattr(code_request, "type") and hasattr(code_request.type, "type"):
+            t = str(code_request.type.type).lower()
+            if "call" in t:
+                code_type = "звонок"
+            elif "flash" in t:
+                code_type = "flash-звонок"
+
+        _pending_clients[admin_user_id] = {
+            "client": client,
+            "phone": phone_normalized,
+            "phone_code_hash": getattr(code_request, "phone_code_hash", None),
+            "code_type": code_type,
+            "auth_method": "code",
+        }
+        logger.info(
+            f"Код подтверждения отправлен на номер {phone_normalized} для админа {admin_user_id} (тип: {code_type})"
+        )
+        return "code_sent", f"Код отправлен ({code_type}).", code_type
+    except Exception as e:
+        logger.error(f"Ошибка start_phone_login для админа {admin_user_id}: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        return "error", f"❌ Ошибка при отправке кода: {e}", None
 
 async def init_telegram_client(api_id: str, api_hash: str, phone: str, session_file: str = "telegram_session"):
     """

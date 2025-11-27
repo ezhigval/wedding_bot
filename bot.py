@@ -47,7 +47,7 @@ from google_sheets import (
     lock_seating,
     save_photo_from_user,
 )
-from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
+from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, start_phone_login, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
 import time
 
@@ -1525,48 +1525,86 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
         )
         return
     
-    # Пытаемся инициализировать клиент (это отправит код)
-    await callback.message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
+    # Пытаемся получить уже авторизованный клиент (без отправки кода)
     client = await get_or_init_client(
         admin_user_id,
-        admin_data['api_id'],
-        admin_data['api_hash'],
-        admin_data['phone']
+        admin_data["api_id"],
+        admin_data["api_hash"],
+        admin_data["phone"],
     )
-    
+
     if client:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ]
+        )
         await callback.message.answer(
             "✅ <b>Telegram Client уже авторизован!</b>\n\n"
             "Вы можете использовать поиск username по номеру телефона.",
             reply_markup=keyboard,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
-    else:
-        # Код отправлен, переводим в состояние ожидания кода
+        return
+
+    # Явно инициируем отправку кода подтверждения
+    await callback.message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
+    status, msg, code_type = await start_phone_login(
+        admin_user_id,
+        admin_data["api_id"],
+        admin_data["api_hash"],
+        admin_data["phone"],
+    )
+
+    if status == "authorized":
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ]
+        )
+        await callback.message.answer(
+            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+            "Вы можете использовать поиск username по номеру телефона.",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        return
+
+    if status in {"code_sent", "pending"}:
+        # Есть действующий код, переводим в состояние ожидания ввода
         await state.set_state(TelegramClientAuthStates.waiting_code)
         await state.update_data(admin_user_id=admin_user_id)
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-        ])
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")],
+            ]
+        )
         await callback.message.answer(
             "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
-            "⚡ <b>ВАЖНО: Введите код как можно быстрее!</b>\n\n"
-            "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
+            f"{msg}\n\n"
+            "⚡ <b>ВАЖНО: введите код как можно быстрее!</b>\n\n"
+            "Коды подтверждения действительны ограниченное время (обычно 1–2 минуты).\n\n"
             "Введите код:\n"
             "<code>/auth_code [код]</code>\n\n"
             "Или просто отправьте код как обычное сообщение.\n\n"
             "💡 <b>Совет:</b>\n"
             "• Откройте Telegram заранее, чтобы быстро скопировать код\n"
             "• Код приходит в ваш Telegram (не в бота)\n"
-            "• Если код не пришел или устарел, нажмите 'Запросить новый код'",
+            "• Если код не пришёл или устарел, нажмите «Запросить новый код».",
             reply_markup=keyboard,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
+        return
+
+    # Ошибка при старте логина
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ]
+    )
+    await callback.message.answer(msg, reply_markup=keyboard, parse_mode="HTML")
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
