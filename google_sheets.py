@@ -1291,6 +1291,8 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
         
         by_user_id: Dict[str, List[Dict]] = {}
         by_name_key: Dict[str, List[Dict]] = {}
+        missing_ids: List[Dict] = []      # подтверждён, но без user_id
+        username_ids: List[Dict] = []     # в столбце F лежит @username / t.me/...
         
         for row_idx, row in enumerate(all_values, start=1):
             if not row or len(row) == 0:
@@ -1306,7 +1308,8 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
                 # Интересуют только подтверждённые гости
                 continue
             
-            user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            raw_user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            numeric_user_id = raw_user_id if raw_user_id.isdigit() else ""
             
             # Разбираем имя и фамилию для нормализации (учитываем возможную перестановку)
             parts = full_name.split()
@@ -1322,11 +1325,34 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
             info = {
                 "row": row_idx,
                 "full_name": full_name,
-                "user_id": user_id,
+                "user_id": raw_user_id,
             }
-            
-            if user_id:
-                by_user_id.setdefault(user_id, []).append(info)
+
+            # Кейс 1: подтверждённый гость без user_id вообще
+            if not raw_user_id:
+                missing_ids.append(info)
+            # Кейс 2: в ячейке что-то есть, но это не цифры — пытаемся распознать username
+            elif not numeric_user_id:
+                # Пробуем вытащить чистый username из разных форматов
+                candidate = raw_user_id.strip()
+                candidate = candidate.replace("https://t.me/", "").replace("http://t.me/", "")
+                candidate = candidate.replace("t.me/", "")
+                if candidate.startswith("@"):
+                    candidate = candidate[1:]
+                candidate = candidate.split()[0].strip()
+                if candidate:
+                    username_ids.append(
+                        {
+                            "row": row_idx,
+                            "full_name": full_name,
+                            "raw_value": raw_user_id,
+                            "username": candidate,
+                        }
+                    )
+
+            # Для поиска дубликатов по user_id учитываем только числовые ID
+            if numeric_user_id:
+                by_user_id.setdefault(numeric_user_id, []).append(info)
             by_name_key.setdefault(name_key, []).append(info)
         
         # Дубликаты по user_id.
@@ -1364,19 +1390,25 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
                 dup_by_user_id.append({"user_id": uid, "rows": problem_rows})
         
         # Дубликаты по имени (независимо от user_id) оставляем как есть
-        dup_by_name = [
-            rows for key, rows in by_name_key.items() if len(rows) > 1
-        ]
+        dup_by_name = [rows for key, rows in by_name_key.items() if len(rows) > 1]
         
-        if dup_by_user_id or dup_by_name:
+        if dup_by_user_id or dup_by_name or missing_ids or username_ids:
             logger.warning(
-                f"Найдены возможные дубликаты гостей: "
-                f"{len(dup_by_user_id)} по user_id, {len(dup_by_name)} по имени"
+                "Найдены возможные проблемы в списке гостей: "
+                f"{len(dup_by_user_id)} по user_id, "
+                f"{len(dup_by_name)} по имени, "
+                f"{len(missing_ids)} без user_id, "
+                f"{len(username_ids)} с username вместо user_id"
             )
         else:
             logger.info("Дубликаты гостей не обнаружены")
         
-        return {"by_user_id": dup_by_user_id, "by_name": dup_by_name}
+        return {
+            "by_user_id": dup_by_user_id,
+            "by_name": dup_by_name,
+            "missing_ids": missing_ids,
+            "username_ids": username_ids,
+        }
     except Exception as e:
         logger.error(f"Ошибка при поиске дубликатов гостей: {e}")
         import traceback

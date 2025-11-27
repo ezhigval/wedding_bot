@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import urllib.parse
 import asyncio
+from typing import Optional
 
 from config import (
     BOT_TOKEN,
@@ -99,6 +100,49 @@ async def is_user_in_group_chat(user_id: int) -> bool:
         return False
 
 
+async def _resolve_username_to_user_id(username: str) -> Optional[int]:
+    """
+    Получить numeric user_id по username через Bot API.
+    Требует корректного BOT_TOKEN.
+    """
+    if not BOT_TOKEN or not username:
+        return None
+
+    # Допускаем, что username может приходить без @
+    if not username.startswith("@"):
+        chat_id = f"@{username}"
+    else:
+        chat_id = username
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChat"
+    params = {"chat_id": chat_id}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        f"_resolve_username_to_user_id: getChat HTTP {resp.status} for {chat_id}"
+                    )
+                    return None
+                data = await resp.json()
+    except Exception as e:
+        logger.warning(f"_resolve_username_to_user_id: error {e}")
+        return None
+
+    try:
+        if not data.get("ok"):
+            return None
+        result = data.get("result") or {}
+        uid = result.get("id")
+        if isinstance(uid, int):
+            return uid
+        return None
+    except Exception as e:
+        logger.warning(f"_resolve_username_to_user_id: parse error {e}")
+        return None
+
+
 async def scan_guests_for_duplicates_and_notify():
     """
     Одноразовая проверка гостей на возможную двойную регистрацию при старте сервера.
@@ -107,14 +151,20 @@ async def scan_guests_for_duplicates_and_notify():
         duplicates = await find_duplicate_guests()
         dup_by_user_id = duplicates.get("by_user_id") or []
         dup_by_name = duplicates.get("by_name") or []
-
-        if not dup_by_user_id and not dup_by_name:
-            logger.info("Проверка гостей на дубликаты: дубликаты не найдены")
-            return
+        missing_ids = duplicates.get("missing_ids") or []
+        username_ids = duplicates.get("username_ids") or []
 
         lines = []
         lines.append("⚠️ <b>Проведена проверка гостей</b>")
-        lines.append("Обнаружены возможные двойные регистрации в Google Sheets.\n")
+
+        if not dup_by_user_id and not dup_by_name and not missing_ids and not username_ids:
+            lines.append("Проблем не обнаружено. Дубликаты и незаполненные user_id не найдены.")
+            await notify_admins("\n".join(lines))
+            logger.info("Проверка гостей: проблем не обнаружено")
+            return
+
+        if dup_by_user_id or dup_by_name:
+            lines.append("Обнаружены возможные двойные регистрации в Google Sheets.\n")
 
         if dup_by_user_id:
             lines.append("<b>Дубли по user_id:</b>")
@@ -138,10 +188,71 @@ async def scan_guests_for_duplicates_and_notify():
                     )
                 lines.append("")  # пустая строка между группами
 
-        lines.append(
-            "\nПроверьте вкладку 'Список гостей' в Google Sheets и при необходимости "
-            "объедините или удалите дубли вручную."
-        )
+        # Гости с подтверждением, но без user_id
+        if missing_ids:
+            lines.append(
+                "\n<b>Зарегистрированы, но не идентифицированы (пустой user_id в столбце F):</b>"
+            )
+            for info in missing_ids:
+                lines.append(
+                    f"• строка {info.get('row')}: {info.get('full_name') or '—'} (user_id=—)"
+                )
+
+        # Гости, у которых в столбце F хранится username — пробуем автоматически проставить user_id
+        auto_fixed_count = 0
+        failed_username_fixes: list[str] = []
+        for item in username_ids:
+            row = item.get("row")
+            full_name = item.get("full_name") or ""
+            username = (item.get("username") or "").strip()
+            if not row or not username:
+                continue
+
+            user_id = await _resolve_username_to_user_id(username)
+            if not user_id:
+                failed_username_fixes.append(
+                    f"• строка {row}: {full_name} (username @{username}) — "
+                    f"не удалось получить user_id"
+                )
+                continue
+
+            try:
+                ok = await update_guest_user_id(row, user_id)
+                if ok:
+                    auto_fixed_count += 1
+                    lines.append(
+                        f"\n✅ Автоматически обновлён user_id по username @{username}:\n"
+                        f"   строка {row}: {full_name} → user_id={user_id}"
+                    )
+                else:
+                    failed_username_fixes.append(
+                        f"• строка {row}: {full_name} (username @{username}) — "
+                        f"ошибка при записи user_id={user_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка автообновления user_id для @{username} (row={row}): {e}"
+                )
+                failed_username_fixes.append(
+                    f"• строка {row}: {full_name} (username @{username}) — "
+                    f"исключение при записи user_id"
+                )
+
+        if failed_username_fixes:
+            lines.append(
+                "\n<b>Не удалось автоматически обновить user_id по username для следующих гостей:</b>"
+            )
+            lines.extend(failed_username_fixes)
+
+        if not dup_by_user_id and not dup_by_name:
+            lines.append(
+                "\nДубликатов по user_id и имени не найдено. Проверены только идентификация гостей."
+            )
+        else:
+            lines.append(
+                "\nПроверьте вкладку 'Список гостей' в Google Sheets и при необходимости "
+                "объедините или удалите дубли вручную."
+            )
 
         await notify_admins("\n".join(lines))
     except Exception as e:
