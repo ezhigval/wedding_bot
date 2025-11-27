@@ -440,6 +440,92 @@ async def admin_menu_bot(message: Message, state: FSMContext):
     )
 
 
+async def _start_telegram_client_auth(message: Message, state: FSMContext, admin_user_id: int):
+    """Общая логика авторизации Telegram Client для админа."""
+    # Получаем данные админа
+    admins_list = await get_admins_list()
+    admin_data = None
+
+    for admin in admins_list:
+        if admin.get("user_id") == admin_user_id:
+            admin_data = admin
+            break
+
+    if (
+        not admin_data
+        or not admin_data.get("api_id")
+        or not admin_data.get("api_hash")
+        or not admin_data.get("phone")
+    ):
+        await message.answer(
+            "⚠️ <b>Telegram Client API не настроен</b>\n\n"
+            "Добавьте в Google Sheets (вкладка 'Админ бота'):\n"
+            "• API_ID (столбец D)\n"
+            "• API_HASH (столбец E)\n"
+            "• PHONE (столбец F)\n\n"
+            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
+            parse_mode="HTML",
+        )
+        return
+
+    # Пытаемся получить уже авторизованный клиент (без отправки кода)
+    client = await get_or_init_client(
+        admin_user_id,
+        admin_data["api_id"],
+        admin_data["api_hash"],
+        admin_data["phone"],
+    )
+
+    if client:
+        await message.answer(
+            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+            "Вы можете использовать поиск username по номеру телефона.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Явно инициируем отправку кода подтверждения
+    await message.answer("📱 Отправляю код подтверждения в ваш Telegram...")
+    status, msg, code_type = await start_phone_login(
+        admin_user_id,
+        admin_data["api_id"],
+        admin_data["api_hash"],
+        admin_data["phone"],
+    )
+
+    if status == "authorized":
+        await message.answer(
+            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
+            "Вы можете использовать поиск username по номеру телефона.",
+            parse_mode="HTML",
+        )
+        return
+
+    if status in {"code_sent", "pending"}:
+        # Есть действующий код, переводим в состояние ожидания ввода
+        await state.set_state(TelegramClientAuthStates.waiting_code)
+        await state.update_data(admin_user_id=admin_user_id)
+
+        await message.answer(
+            "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
+            f"{msg}\n\n"
+            "⚡ <b>ВАЖНО: введите код как можно быстрее!</b>\n\n"
+            "Коды подтверждения действительны ограниченное время (обычно 1–2 минуты).\n\n"
+            "Введите код:\n"
+            "<code>/auth_code [код]</code>\n\n"
+            "Или просто отправьте код как обычное сообщение.\n\n"
+            "💡 <b>Совет:</b>\n"
+            "• Откройте Telegram заранее, чтобы быстро скопировать код\n"
+            "• Код приходит в ваш Telegram (не в бота)\n"
+            "• Если код не пришёл или устарел, воспользуйтесь «Запросить новый код».",
+            parse_mode="HTML",
+        )
+        return
+
+    # Ошибка при старте логина
+    await message.answer(msg, parse_mode="HTML")
+
+
 @dp.message(F.text == "🆔 Найти user_id")
 async def admin_menu_find_userid(message: Message, state: FSMContext):
     """Запрос username для получения user_id."""
@@ -525,6 +611,14 @@ async def admin_menu_bot_status(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await cmd_bot_status(message)
+
+
+@dp.message(F.text == "🔐 Авторизовать клиент")
+async def admin_menu_auth_client(message: Message, state: FSMContext):
+    """Старт авторизации Telegram Client из реплай-меню 'Бот'."""
+    if not is_admin(message.from_user.id):
+        return
+    await _start_telegram_client_auth(message, state, message.from_user.id)
 
 
 @dp.message(F.text == "Начать с нуля")
