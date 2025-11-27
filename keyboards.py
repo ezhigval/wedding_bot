@@ -5,7 +5,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
-from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE, GROOM_TELEGRAM, BRIDE_TELEGRAM, GROUP_LINK
+from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE, GROOM_TELEGRAM, BRIDE_TELEGRAM, GROUP_LINK, GOOGLE_SHEETS_ID
 from datetime import datetime
 
 
@@ -95,6 +95,81 @@ def get_group_link_keyboard() -> InlineKeyboardMarkup:
                 )
             ]
         ]
+    )
+
+
+# ========== РЕПЛАЙ-КЛАВИАТУРЫ ДЛЯ АДМИН-МЕНЮ ==========
+
+
+def get_admin_root_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Корневое меню администратора."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Гости"), KeyboardButton(text="Таблица")],
+            [KeyboardButton(text="Группа"), KeyboardButton(text="Бот")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Админ-меню…",
+    )
+
+
+def get_admin_guests_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: гости."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Список гостей"), KeyboardButton(text="Рассадка")],
+            [
+                KeyboardButton(text="Отправить приглашение"),
+                KeyboardButton(text="Исправить имя/фамилию"),
+            ],
+            [KeyboardButton(text="Рассылка в ЛС")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Гости — выберите действие…",
+    )
+
+
+def get_admin_table_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: таблица."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Открыть таблицу")],
+            [KeyboardButton(text="Проверить связь")],
+            [KeyboardButton(text="Закрепить рассадку")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Таблица — выберите действие…",
+    )
+
+
+def get_admin_group_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: группа."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Написать сообщение")],
+            [KeyboardButton(text="Посмотреть участников")],
+            [KeyboardButton(text="Добавить/Удалить")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Группа — выберите действие…",
+    )
+
+
+def get_admin_bot_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: бот."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Статус бота")],
+            [KeyboardButton(text="Начать с нуля")],
+            [KeyboardButton(text="Добавить админа")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Бот — выберите действие…",
     )
 
 

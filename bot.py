@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST, GROUP_LINK, GROUP_ID
+from config import BOT_TOKEN, GROOM_NAME, BRIDE_NAME, PHOTO_PATH, ADMIN_USER_ID, WEBAPP_URL, WEDDING_ADDRESS, ADMINS_FILE, ADMINS_LIST, GROUP_LINK, GROUP_ID, GOOGLE_SHEETS_ID
 import json
 import os
 from utils import format_wedding_date
@@ -21,6 +21,11 @@ from keyboards import (
     get_main_reply_keyboard,
     get_contacts_inline_keyboard,
     get_group_link_keyboard,
+    get_admin_root_reply_keyboard,
+    get_admin_guests_reply_keyboard,
+    get_admin_table_reply_keyboard,
+    get_admin_group_reply_keyboard,
+    get_admin_bot_reply_keyboard,
 )
 from google_sheets import (
     get_invitations_list,
@@ -80,6 +85,16 @@ class BroadcastStates(StatesGroup):
     waiting_custom_button_text = State()
     waiting_custom_button_url = State()
     waiting_confirm = State()
+
+
+# Состояния для навигации по реплай-админ-меню
+class AdminMenuStates(StatesGroup):
+    root = State()
+    guests = State()
+    table = State()
+    group = State()
+    bot_menu = State()
+    add_admin_waiting_username = State()
 
 # Состояния для удаления гостя
 
@@ -268,6 +283,381 @@ async def contact_organizers(message: Message):
     )
 
 
+@dp.message(F.text == "Гости")
+async def admin_menu_guests(message: Message, state: FSMContext):
+    """Переход в подменю 'Гости' админ-панели."""
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminMenuStates.guests)
+    await message.answer(
+        "📂 <b>Админ → Гости</b>\n\nВыберите действие:",
+        reply_markup=get_admin_guests_reply_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Таблица")
+async def admin_menu_table(message: Message, state: FSMContext):
+    """Переход в подменю 'Таблица' админ-панели."""
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminMenuStates.table)
+    await message.answer(
+        "📊 <b>Админ → Таблица</b>\n\nВыберите действие:",
+        reply_markup=get_admin_table_reply_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Группа")
+async def admin_menu_group(message: Message, state: FSMContext):
+    """Переход в подменю 'Группа' админ-панели."""
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminMenuStates.group)
+    await message.answer(
+        "💬 <b>Админ → Группа</b>\n\nВыберите действие:",
+        reply_markup=get_admin_group_reply_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Бот")
+async def admin_menu_bot(message: Message, state: FSMContext):
+    """Переход в подменю 'Бот' админ-панели."""
+    if not is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminMenuStates.bot_menu)
+    await message.answer(
+        "🤖 <b>Админ → Бот</b>\n\nВыберите действие:",
+        reply_markup=get_admin_bot_reply_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Статус бота")
+async def admin_menu_bot_status(message: Message, state: FSMContext):
+    """Показать статус бота из подменю 'Бот'."""
+    if not is_admin(message.from_user.id):
+        return
+    await cmd_bot_status(message)
+
+
+@dp.message(F.text == "Начать с нуля")
+async def admin_menu_reset_me(message: Message, state: FSMContext):
+    """Сбросить свою регистрацию для тестирования (подменю 'Бот')."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await cancel_guest_registration_by_user_id(message.from_user.id)
+    await message.answer(
+        "✅ <b>Данные сброшены!</b>\n\n"
+        "Ваша регистрация удалена из базы данных.\n"
+        "Теперь вы можете пройти весь путь заново, нажав /start",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Добавить админа")
+async def admin_menu_add_admin(message: Message, state: FSMContext):
+    """Старт процесса добавления нового администратора."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.set_state(AdminMenuStates.add_admin_waiting_username)
+    await message.answer(
+        "👤 <b>Добавление администратора</b>\n\n"
+        "Пришлите @username человека, которого хотите сделать админом.\n"
+        "Важно: этот пользователь должен хотя бы раз написать боту /start.",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminMenuStates.add_admin_waiting_username)
+async def admin_menu_add_admin_username(message: Message, state: FSMContext):
+    """Приём @username нового администратора и сохранение его в Google Sheets."""
+    if not is_admin(message.from_user.id):
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Отправьте, пожалуйста, @username администратора.")
+        return
+
+    username = text
+    # Поддерживаем варианты: @user, https://t.me/user, user
+    if username.startswith("@"):
+        username = username[1:]
+    if "t.me/" in username:
+        username = username.split("t.me/")[-1]
+    username = username.split()[0]
+    username = username.strip().lstrip("@")
+
+    if not username:
+        await message.answer("❌ Не смог распарсить username. Попробуйте ещё раз в формате @username.")
+        return
+
+    try:
+        # Пытаемся получить user_id по username
+        chat = await bot.get_chat(username)
+        new_admin_id = chat.id
+    except Exception as e:
+        logger.error(f"Не удалось получить user_id для нового админа @{username}: {e}")
+        await message.answer(
+            "❌ Не удалось найти этого пользователя по username.\n"
+            "Убедитесь, что он уже написал боту /start, и попробуйте ещё раз.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Сохраняем в таблицу админов
+    success = await save_admin_user_id(username.lower(), new_admin_id)
+    if not success:
+        await message.answer(
+            "❌ Не удалось сохранить администратора в Google Sheets.\n"
+            "Проверьте логи сервера.",
+            parse_mode="HTML",
+        )
+        await state.set_state(AdminMenuStates.bot_menu)
+        return
+
+    # Пытаемся отправить новому админу инструкцию
+    try:
+        await bot.send_message(
+            chat_id=new_admin_id,
+            text=(
+                "👋 Вас назначили администратором свадебного бота.\n\n"
+                "1. Убедитесь, что у вас установлен username в Telegram.\n"
+                "2. При необходимости выполните /start ещё раз.\n"
+                "3. Затем используйте /admin для входа в админ-панель.\n\n"
+                "Вы будете получать служебные уведомления о регистрациях и событиях."
+            ),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось отправить инструкцию новому админу @{username}: {e}")
+
+    await message.answer(
+        f"✅ Администратор @{username} добавлен.\n"
+        f"User ID: <code>{new_admin_id}</code>",
+        parse_mode="HTML",
+    )
+    await state.set_state(AdminMenuStates.bot_menu)
+
+
+@dp.message(F.text == "⬅️ Вернуться")
+async def admin_menu_back(message: Message, state: FSMContext):
+    """Кнопка 'Вернуться' для всех уровней админ-меню."""
+    if not is_admin(message.from_user.id):
+        return
+
+    current_state = await state.get_state()
+
+    # Из подменю возвращаемся в корень
+    if current_state in {
+        AdminMenuStates.guests.state,
+        AdminMenuStates.table.state,
+        AdminMenuStates.group.state,
+        AdminMenuStates.bot_menu.state,
+        AdminMenuStates.add_admin_waiting_username.state,
+    }:
+        await state.set_state(AdminMenuStates.root)
+        await message.answer(
+            "🔧 <b>Панель администратора</b>\n\nВыберите раздел:",
+            reply_markup=get_admin_root_reply_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    # Из корня возвращаемся к обычной пользовательской клавиатуре
+    if current_state == AdminMenuStates.root.state:
+        await state.clear()
+        is_admin_user = is_admin(message.from_user.id)
+        await message.answer(
+            "⬅️ Возвращаю обычное меню.",
+            reply_markup=get_main_reply_keyboard(
+                is_admin=is_admin_user,
+                photo_mode_enabled=(message.from_user.id in PHOTO_MODE_USERS),
+            ),
+            parse_mode="HTML",
+        )
+        return
+
+    # Если состояние неизвестно — просто показываем обычное меню
+    await state.clear()
+    is_admin_user = is_admin(message.from_user.id)
+    await message.answer(
+        "⬅️ Возвращаюсь в основное меню.",
+        reply_markup=get_main_reply_keyboard(
+            is_admin=is_admin_user,
+            photo_mode_enabled=(message.from_user.id in PHOTO_MODE_USERS),
+        ),
+        parse_mode="HTML",
+    )
+
+
+@dp.message(F.text == "Список гостей")
+async def admin_menu_guests_list(message: Message, state: FSMContext):
+    """Показать список гостей (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        guests = await get_all_guests_from_sheets()
+
+        if not guests:
+            await message.answer(
+                "📋 <b>Список гостей</b>\n\n"
+                "Пока никто не подтвердил присутствие.",
+                parse_mode="HTML",
+            )
+            return
+
+        guests_text = "📋 <b>Список всех гостей:</b>\n\n"
+        for i, guest in enumerate(guests, 1):
+            first_name = guest.get("first_name", "")
+            last_name = guest.get("last_name", "")
+            category = guest.get("category", "")
+            side = guest.get("side", "")
+            user_id = guest.get("user_id", "")
+
+            guest_line = f"{i}. <b>{first_name} {last_name}</b>"
+            if category:
+                guest_line += f" ({category})"
+            if side:
+                guest_line += f" - {side}"
+            if user_id:
+                guest_line += f" [ID: {user_id}]"
+
+            guests_text += guest_line + "\n"
+
+        guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
+
+        await message.answer(guests_text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка получения списка гостей (реплай-меню): {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        await message.answer(
+            "❌ Ошибка при получении списка гостей. Попробуйте позже.",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(F.text == "Рассадка")
+async def admin_menu_seating(message: Message, state: FSMContext):
+    """Показать рассадку по столам (через реплай-меню)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        seating = await get_seating_from_sheets()
+
+        if not seating:
+            await message.answer(
+                "🍽 <b>Рассадка</b>\n\n"
+                "Пока нет данных по рассадке (лист 'Рассадка' пуст или без гостей).",
+                parse_mode="HTML",
+            )
+            return
+
+        lines = ["🍽 <b>Рассадка по столам</b>\n"]
+        for table in seating:
+            table_name = table.get("table") or "Без названия"
+            guests = table.get("guests") or []
+            lines.append(f"\n<b>{table_name}</b>")
+            if not guests:
+                lines.append("  (пока пусто)")
+            else:
+                for i, name in enumerate(guests, start=1):
+                    lines.append(f"{i}. {name}")
+
+        text = "\n".join(lines)
+        await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка получения рассадки (реплай-меню): {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        await message.answer(
+            "❌ Ошибка при получении рассадки. Попробуйте позже.",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(F.text == "Открыть таблицу")
+async def admin_menu_open_table(message: Message, state: FSMContext):
+    """Открыть Google Sheets с данными свадьбы."""
+    if not is_admin(message.from_user.id):
+        return
+
+    sheets_url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEETS_ID}/edit"
+    await message.answer(
+        "📂 <b>Таблица гостей и настроек</b>\n\n"
+        "Откроется в браузере по ссылке ниже:\n"
+        f"{sheets_url}",
+        parse_mode="HTML",
+    )
+
+
+async def _admin_ping_impl(target_message: Message):
+    """Общая логика проверки связи бот → сервер → Google Sheets."""
+    await target_message.answer("📶 Выполняю проверку связи с Google Sheets...")
+
+    try:
+        latency_ms = await ping_admin_sheet()
+        status = "OK" if latency_ms >= 0 else "ERROR"
+
+        if latency_ms < 0:
+            latency_ms = -1
+
+        await write_ping_to_admin_sheet(
+            source="bot",
+            latency_ms=latency_ms,
+            status=status,
+        )
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if status == "OK":
+            text = (
+                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                f"📄 Лист: <code>Админ бота</code>\n"
+                f"⚙️ Строка: <code>5</code>\n"
+                f"⏱ Задержка: <b>{latency_ms} мс</b>\n"
+                f"✅ Статус: <b>OK</b>\n\n"
+                "Запись о ping сохранена в Google Sheets (строка 5 вкладки 'Админ бота')."
+            )
+        else:
+            text = (
+                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                "❌ Не удалось получить корректный ответ от Google Sheets.\n"
+                "Проверьте лог сервера и настройки доступа к таблице."
+            )
+
+        await target_message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Ошибка в admin_ping_impl: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        await target_message.answer(
+            "❌ Произошла ошибка при проверке связи с Google Sheets.\n"
+            "Подробности смотри в логах сервера.",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(F.text == "Проверить связь")
+async def admin_menu_ping(message: Message, state: FSMContext):
+    """Проверка связи из реплай-меню (бот → сервер → Google Sheets)."""
+    if not is_admin(message.from_user.id):
+        return
+    await _admin_ping_impl(message)
+
 @dp.message(F.text == "🛠 Админ-панель")
 async def open_admin_panel(message: Message, state: FSMContext):
     """Быстрый вход в админ-панель по кнопке."""
@@ -275,7 +665,7 @@ async def open_admin_panel(message: Message, state: FSMContext):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
     # Просто переиспользуем существующий /admin
-    await cmd_admin(message)
+    await cmd_admin(message, state)
 
 async def send_invitation_card(message: Message):
     """Отправляет красивую открытку-приглашение"""
@@ -905,12 +1295,13 @@ async def auth_telegram_client_callback(callback: CallbackQuery, state: FSMConte
         )
 
 @dp.message(Command("admin"))
-async def cmd_admin(message: Message):
+async def cmd_admin(message: Message, state: FSMContext):
     """Панель администратора"""
     if not is_admin(message.from_user.id):
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
-    
+    await state.set_state(AdminMenuStates.root)
+
     admin_text = f"""
 🔧 <b>Панель администратора</b>
 
@@ -918,9 +1309,13 @@ async def cmd_admin(message: Message):
 📅 Дата: {format_wedding_date()}
 🌐 Mini App: {WEBAPP_URL}
 
-Используйте кнопки ниже для управления:
+Выберите раздел в админ-меню снизу:
 """
-    await message.answer(admin_text, reply_markup=get_admin_keyboard(), parse_mode="HTML")
+    await message.answer(
+        admin_text,
+        reply_markup=get_admin_root_reply_keyboard(),
+        parse_mode="HTML",
+    )
 
 
 # ========== РАССЫЛКА В ЛИЧНЫЕ СООБЩЕНИЯ ==========
@@ -1475,56 +1870,7 @@ async def admin_ping(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.answer()
-
-    await callback.message.answer("📶 Выполняю проверку связи с Google Sheets...")
-
-    try:
-        # 1. Измеряем примерную задержку запроса к листу "Админ бота"
-        latency_ms = await ping_admin_sheet()
-        status = "OK" if latency_ms >= 0 else "ERROR"
-
-        # Если при ping была ошибка, фиксируем latency как -1
-        if latency_ms < 0:
-            latency_ms = -1
-
-        # 2. Пишем результат ping в лист "Админ бота", строка 5
-        await write_ping_to_admin_sheet(
-            source="bot",
-            latency_ms=latency_ms,
-            status=status,
-        )
-
-        # 3. Отправляем человеку понятный ответ
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if status == "OK":
-            text = (
-                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
-                f"⏰ Время: <code>{now_str}</code>\n"
-                f"📄 Лист: <code>Админ бота</code>\n"
-                f"⚙️ Строка: <code>5</code>\n"
-                f"⏱ Задержка: <b>{latency_ms} мс</b>\n"
-                f"✅ Статус: <b>OK</b>\n\n"
-                "Запись о ping сохранена в Google Sheets (строка 5 вкладки 'Админ бота')."
-            )
-        else:
-            text = (
-                "📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"
-                f"⏰ Время: <code>{now_str}</code>\n"
-                "❌ Не удалось получить корректный ответ от Google Sheets.\n"
-                "Проверьте лог сервера и настройки доступа к таблице."
-            )
-
-        await callback.message.answer(text, parse_mode="HTML")
-    except Exception as e:
-        logger.error(f"Ошибка в admin_ping: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-
-        await callback.message.answer(
-            "❌ Произошла ошибка при проверке связи с Google Sheets.\n"
-            "Подробности смотри в логах сервера.",
-            parse_mode="HTML",
-        )
+    await _admin_ping_impl(callback.message)
 
 
 @dp.callback_query(F.data == "admin_lock_seating")
@@ -1590,6 +1936,65 @@ async def admin_lock_seating(callback: CallbackQuery, state: FSMContext):
         logger.error(traceback.format_exc())
 
         await callback.message.answer(
+            "❌ Произошла внутренняя ошибка при закреплении рассадки.\n"
+            "Подробности смотри в логах сервера.",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(F.text == "Закрепить рассадку")
+async def admin_menu_lock_seating(message: Message, state: FSMContext):
+    """Одноразовое закрепление рассадки из реплай-меню."""
+    if not is_admin(message.from_user.id):
+        return
+
+    # Проверяем дату: кнопка логически доступна только после 2026-05-01
+    now = datetime.now()
+    lock_available_from = datetime(2026, 5, 1)
+    if now < lock_available_from:
+        await message.answer(
+            "🔒 Закрепить рассадку можно только после 01.05.2026.\n"
+            "Сейчас изменения ещё возможны.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        locked, locked_at = await get_seating_lock_status()
+        if locked:
+            await message.answer(
+                "🔒 Рассадка уже была закреплена ранее.\n"
+                f"Время фиксации: <b>{locked_at}</b>",
+                parse_mode="HTML",
+            )
+            return
+
+        await message.answer(
+            "⏳ Выполняю фиксацию рассадки… Это может занять несколько секунд.",
+            parse_mode="HTML",
+        )
+
+        success, locked_at = await lock_seating()
+        if not success:
+            await message.answer(
+                "❌ Не удалось закрепить рассадку. Проверьте логи сервера.",
+                parse_mode="HTML",
+            )
+            return
+
+        await message.answer(
+            "✅ <b>Рассадка закреплена!</b>\n\n"
+            "Создан снимок текущего листа 'Рассадка' в лист 'Рассадка_фикс'.\n"
+            "Все дальнейшие изменения рассадки игнорируются синхронизацией.\n\n"
+            f"Время фиксации: <b>{locked_at}</b>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при закреплении рассадки (реплай-меню): {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        await message.answer(
             "❌ Произошла внутренняя ошибка при закреплении рассадки.\n"
             "Подробности смотри в логах сервера.",
             parse_mode="HTML",
