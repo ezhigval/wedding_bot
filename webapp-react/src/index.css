@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Основные цвета палитры */
+  --color-primary: #5A7C52;
+  --color-primary-dark: #4A6B42;
+  --color-cream: #FFE9AD;
+  --color-cream-light: #FDFBF5;
+  --color-sand: #DBD0C4;
+  --color-brown: #C8A067;
+
+  /* Фоны */
+  --color-bg-main: #F8F8F8;
+  --color-bg-white: #FFFFFF;
+  --color-bg-light: rgba(248, 248, 248, 0.9);
+  --color-bg-card: rgba(255, 255, 255, 0.9);
+
+  /* Текст */
+  --color-text-main: #2F2F2F;
+  --color-text-secondary: #666;
+  --color-text-light: #ddd;
+  --color-text-dark: #1a1a1a;
+
+  /* Шрифты */
+  --font-family-main: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
+  --font-family-secondary: 'Playfair Display', 'Georgia', serif;
+
+  /* Размеры шрифтов */
+  --font-size-xs: 14px;
+  --font-size-sm: 16px;
+  --font-size-base: 18px;
+  --font-size-md: 20px;
+  --font-size-lg: 24px;
+  --font-size-xl: 28px;
+  --font-size-xxl: 32px;
+  --font-size-hero: 36px;
+
+  /* Отступы */
+  --spacing-xs: 8px;
+  --spacing-sm: 10px;
+  --spacing-md: 15px;
+  --spacing-base: 20px;
+  --spacing-lg: 30px;
+  --spacing-xl: 40px;
+  --spacing-xxl: 60px;
+  --spacing-xxxl: 80px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family-main);
+  font-size: 21.6px; /* Увеличено на 20% с 18px */
+  background: var(--color-bg-main);
+  color: var(--color-text-main);
+  position: relative;
+  overflow-x: hidden;
+  min-height: 100vh;
+  padding-bottom: 80px; /* Отступ для нижнего навбара */
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Стили для скролла */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-dark);
+}
+
+/* 3D перспектива для перелистывания */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
