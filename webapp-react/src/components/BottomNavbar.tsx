@@ -1,18 +1,19 @@
 import { motion } from 'framer-motion'
 import type { TabName } from '../types'
 import { hapticFeedback } from '../utils/telegram'
+import NavIcon from './NavIcon'
 
 interface BottomNavbarProps {
   activeTab: TabName
   onTabChange: (tab: TabName) => void
 }
 
-const navItems: Array<{ id: TabName; icon: string; label: string }> = [
-  { id: 'home', icon: '🏠', label: 'Главная' },
-  { id: 'dresscode', icon: '👔', label: 'Дресс-Код' },
-  { id: 'timeline', icon: '📅', label: 'План-сетка' },
-  { id: 'seating', icon: '🪑', label: 'Рассадка' },
-  { id: 'menu', icon: '📋', label: 'Меню' },
+const navItems: Array<{ id: TabName; label: string }> = [
+  { id: 'home', label: 'Главная' },
+  { id: 'dresscode', label: 'Дресс-Код' },
+  { id: 'timeline', label: 'План-сетка' },
+  { id: 'seating', label: 'Рассадка' },
+  { id: 'menu', label: 'Меню' },
 ]
 
 export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarProps) {
@@ -36,13 +37,17 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
             className="flex flex-col items-center justify-center gap-0.5 px-1 py-0.5 flex-1 min-w-0 transition-colors"
             whileTap={{ scale: 0.95 }}
           >
-            <motion.span
-              className="text-2xl leading-none"
+            <motion.div
               animate={{ scale: activeTab === item.id ? 1.1 : 1 }}
               transition={{ duration: 0.2 }}
+              className="w-6 h-6"
             >
-              {item.icon}
-            </motion.span>
+              <NavIcon
+                name={item.id as 'home' | 'dresscode' | 'timeline' | 'seating' | 'menu'}
+                isActive={activeTab === item.id}
+                className="w-full h-full"
+              />
+            </motion.div>
             <span
               className={`text-xs font-main transition-colors ${
                 activeTab === item.id

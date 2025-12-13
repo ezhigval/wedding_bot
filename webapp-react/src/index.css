@@ -60,9 +60,10 @@ body {
   background: var(--color-bg-main);
   color: var(--color-text-main);
   position: relative;
-  overflow-x: hidden;
-  min-height: 100vh;
-  padding-bottom: 80px; /* Отступ для нижнего навбара */
+  overflow: hidden; /* Убираем скролл с body, скролл будет в контейнере контента */
+  height: 100vh;
+  margin: 0;
+  padding: 0;
 }
 
 #root {
@@ -88,8 +89,21 @@ body {
   background: var(--color-primary-dark);
 }
 
+/* Для Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary) var(--color-bg-main);
+}
+
 /* 3D перспектива для перелистывания */
 .perspective-1000 {
   perspective: 1000px;
+}
+
+/* Стили для Lottie анимации загрузки */
+.lottie-container svg,
+.lottie-container canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 

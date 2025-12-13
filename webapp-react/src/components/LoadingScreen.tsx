@@ -1,57 +1,110 @@
-import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import lottie, { type AnimationItem } from 'lottie-web'
 
-export default function LoadingScreen() {
-  const [animationData, setAnimationData] = useState<any>(null)
+interface LoadingScreenProps {
+  onComplete: () => void
+}
+
+export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const animationRef = useRef<AnimationItem | null>(null)
+  const timeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
-    // Загружаем Lottie анимацию
-    fetch('/ring_animation.json')
-      .then((res) => res.json())
-      .then((data) => setAnimationData(data))
-      .catch(() => {
-        // Fallback если анимация не загрузилась
-        setAnimationData(null)
-      })
-  }, [])
+    if (!containerRef.current) return
+
+    // Функция показа основного содержимого
+    const showApp = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      onComplete()
+    }
+
+    // Инициализация Lottie анимации
+    const initLottieOrFallback = () => {
+      if (!containerRef.current) {
+        setTimeout(showApp, 300)
+        return
+      }
+
+      // Загружаем Lottie анимацию из локального файла ring_animation.json
+      const animationPath = '/ring_animation.json'
+
+      try {
+        const anim = lottie.loadAnimation({
+          container: containerRef.current,
+          renderer: 'svg',
+          loop: false,
+          autoplay: true,
+          path: animationPath,
+        })
+
+        animationRef.current = anim
+
+        // Обработка событий анимации
+        anim.addEventListener('data_ready', () => {
+          console.log('Lottie animation loaded')
+        })
+
+        // Если данные не загрузились — сразу показываем сайт
+        anim.addEventListener('data_failed', () => {
+          console.error('Lottie animation data_failed, showing site')
+          showApp()
+        })
+
+        anim.addEventListener('complete', () => {
+          // Анимация завершена, скрываем загрузчик и показываем сайт
+          showApp()
+        })
+      } catch (error) {
+        console.error('Error loading Lottie animation:', error)
+        showApp()
+      }
+
+      // Жёсткий таймаут: через ~7 секунд обязательно показываем сайт,
+      // даже если анимация зависла или не успела загрузиться
+      timeoutRef.current = setTimeout(() => {
+        console.warn('Lottie animation timeout, showing site')
+        showApp()
+      }, 7000)
+    }
+
+    // Стартуем Lottie/фоллбек
+    initLottieOrFallback()
+
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.destroy()
+        animationRef.current = null
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    }
+  }, [onComplete])
 
   return (
-    <motion.div
-      initial={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#F8F8F8]"
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-white"
+      style={{
+        opacity: 1,
+        transition: 'opacity 0.8s ease-out',
+        pointerEvents: 'all',
+      }}
     >
-      {animationData ? (
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-          className="w-32 h-32"
-        >
-          {/* Здесь можно добавить Lottie player если нужно */}
-          <div className="w-full h-full bg-primary/10 rounded-full flex items-center justify-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full"
-            />
-          </div>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-          className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full"
-        >
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            className="w-full h-full"
-          />
-        </motion.div>
-      )}
-    </motion.div>
+      <div
+        ref={containerRef}
+        className="lottie-container w-full max-w-[420px] aspect-square h-auto flex items-center justify-center overflow-hidden"
+        style={{
+          width: '100vw',
+          maxWidth: '420px',
+          aspectRatio: '1 / 1',
+        }}
+      />
+    </div>
   )
 }
 
