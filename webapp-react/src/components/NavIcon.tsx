@@ -1,5 +1,5 @@
 interface NavIconProps {
-  name: 'home' | 'dresscode' | 'timeline' | 'seating' | 'menu' | 'wishes'
+  name: 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'
   isActive: boolean
   className?: string
 }
@@ -279,6 +279,74 @@ export default function NavIcon({ name, isActive, className = '' }: NavIconProps
           fill={isActive ? '#FFE9AD' : '#FFFFFF'}
           stroke={strokeColor}
           strokeWidth={0.5}
+        />
+      </svg>
+    ),
+    challenge: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+      >
+        {/* Щит/медаль */}
+        <path
+          d="M12 2L4 5V11C4 16.55 7.16 21.74 12 23C16.84 21.74 20 16.55 20 11V5L12 2Z"
+          fill={fillColor}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+        />
+        {/* Звезда внутри */}
+        <path
+          d="M12 7L13.09 9.26L15.5 9.61L13.68 11.39L14.18 13.79L12 12.5L9.82 13.79L10.32 11.39L8.5 9.61L10.91 9.26L12 7Z"
+          fill={isActive ? '#FFE9AD' : '#FFFFFF'}
+          stroke={strokeColor}
+          strokeWidth={0.5}
+        />
+      </svg>
+    ),
+    photo: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+      >
+        {/* Камера */}
+        <rect
+          x="4"
+          y="6"
+          width="16"
+          height="12"
+          rx="2"
+          fill={fillColor}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+        />
+        {/* Объектив */}
+        <circle
+          cx="12"
+          cy="12"
+          r="3"
+          fill={isActive ? '#FFE9AD' : '#FFFFFF'}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+        />
+        {/* Вспышка */}
+        <rect
+          x="16"
+          y="8"
+          width="2"
+          height="2"
+          rx="0.5"
+          fill={strokeColor}
+        />
+        {/* Ремешок */}
+        <path
+          d="M6 8L5 6M18 8L19 6"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
         />
       </svg>
     ),

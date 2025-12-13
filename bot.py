@@ -47,6 +47,7 @@ from google_sheets import (
     lock_seating,
     save_photo_from_user,
     get_admin_login_code_and_clear,
+    check_guest_registration,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, start_phone_login, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
@@ -201,6 +202,7 @@ async def toggle_photo_mode(message: Message):
     is_admin_user = is_admin(user_id)
 
     if user_id in PHOTO_MODE_USERS:
+        # Выключаем фоторежим
         PHOTO_MODE_USERS.remove(user_id)
         await message.answer(
             "📸 Фоторежим <b>выключен</b>.\n"
@@ -211,11 +213,26 @@ async def toggle_photo_mode(message: Message):
             ),
         )
     else:
+        # Включаем фоторежим - проверяем регистрацию
+        try:
+            is_registered = await check_guest_registration(user_id)
+            if not is_registered:
+                await message.answer(
+                    "⚠️ Для использования фоторежима необходимо подтвердить ваше присутствие.\n"
+                    "Используйте Mini App для регистрации.",
+                    reply_markup=get_main_reply_keyboard(
+                        is_admin=is_admin_user, photo_mode_enabled=False
+                    )
+                )
+                return
+        except Exception as e:
+            logger.error(f"Ошибка при проверке регистрации для фоторежима: {e}")
+            # В случае ошибки все равно разрешаем включить фоторежим
+        
         PHOTO_MODE_USERS.add(user_id)
-        is_admin_user = is_admin(user_id)
         await message.answer(
             "📸 Фоторежим <b>включен</b>.\n"
-            "Просто отправляйте фото в этот чат — я всё соберу.",
+            "Просто отправляйте фото в этот чат — я всё соберу в свадебный альбом! 🙌",
             parse_mode="HTML",
             reply_markup=get_main_reply_keyboard(
                 is_admin=is_admin_user, photo_mode_enabled=True
@@ -228,10 +245,42 @@ async def handle_photo(message: Message):
     """
     Обработка входящих фото.
     Если у пользователя включен фоторежим — сохраняем метаданные в Google Sheets.
+    Также проверяем, зарегистрирован ли пользователь.
     """
     user_id = message.from_user.id
+    
+    # Проверяем, включен ли фоторежим
     if user_id not in PHOTO_MODE_USERS:
-        # Фоторежим не включен — ничего не делаем (или можно показать подсказку)
+        # Проверяем, зарегистрирован ли пользователь
+        try:
+            is_registered = await check_guest_registration(user_id)
+            if is_registered:
+                # Пользователь зарегистрирован, но фоторежим не включен
+                await message.answer(
+                    "📸 Чтобы сохранить фото в свадебный альбом, включите фоторежим.\n"
+                    "Нажмите кнопку «📸 Фоторежим ❌» в меню.",
+                    reply_markup=get_main_reply_keyboard(
+                        is_admin=is_admin(user_id),
+                        photo_mode_enabled=False
+                    )
+                )
+            else:
+                # Пользователь не зарегистрирован
+                await message.answer(
+                    "📸 Для сохранения фото в свадебный альбом необходимо подтвердить ваше присутствие.\n"
+                    "Используйте Mini App для регистрации."
+                )
+        except Exception as e:
+            logger.error(f"Ошибка при проверке регистрации для фото: {e}")
+            # В случае ошибки просто показываем подсказку
+            await message.answer(
+                "📸 Чтобы сохранить фото, включите фоторежим.\n"
+                "Нажмите кнопку «📸 Фоторежим ❌» в меню.",
+                reply_markup=get_main_reply_keyboard(
+                    is_admin=is_admin(user_id),
+                    photo_mode_enabled=False
+                )
+            )
         return
 
     try:
@@ -239,6 +288,15 @@ async def handle_photo(message: Message):
         username = message.from_user.username
         photo = message.photo[-1]  # самое большое
         file_id = photo.file_id
+
+        # Дополнительная проверка регистрации перед сохранением
+        is_registered = await check_guest_registration(user_id)
+        if not is_registered:
+            await message.answer(
+                "⚠️ Для сохранения фото необходимо подтвердить ваше присутствие.\n"
+                "Используйте Mini App для регистрации."
+            )
+            return
 
         ok = await save_photo_from_user(
             user_id=user_id,

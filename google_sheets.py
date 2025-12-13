@@ -2014,6 +2014,71 @@ async def save_photo_from_user(
         None, _save_photo_from_user_sync, user_id, username, full_name, file_id
     )
 
+def _save_photo_from_webapp_sync(
+    user_id: int,
+    username: Optional[str],
+    full_name: str,
+    photo_data: str,  # base64 или URL
+) -> bool:
+    """
+    Сохранить информацию о фото из веб-приложения в лист 'Фото'.
+    
+    Формат строки:
+      A: timestamp
+      B: user_id
+      C: username
+      D: full_name
+      E: photo_data (base64 или URL)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, сохранение фото невозможно")
+        return False
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            sheet = spreadsheet.worksheet("Фото")
+        except Exception:
+            sheet = spreadsheet.add_worksheet(title="Фото", rows=100, cols=5)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = [
+            timestamp,
+            str(user_id),
+            (username or "").lstrip("@"),
+            full_name,
+            photo_data[:500] if len(photo_data) > 500 else photo_data,  # Ограничиваем длину
+        ]
+        sheet.append_row(row)
+        logger.info(
+            f"Сохранено фото из веб-приложения от user_id={user_id}, username={username}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении фото из веб-приложения {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def save_photo_from_webapp(
+    user_id: int,
+    username: Optional[str],
+    full_name: str,
+    photo_data: str,
+) -> bool:
+    """
+    Асинхронная обёртка для сохранения фото из веб-приложения.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _save_photo_from_webapp_sync, user_id, username, full_name, photo_data
+    )
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:

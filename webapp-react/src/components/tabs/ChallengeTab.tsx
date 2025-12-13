@@ -3,7 +3,7 @@ import SectionTitle from '../common/SectionTitle'
 import RegistrationRequired from '../common/RegistrationRequired'
 import { useRegistration } from '../../contexts/RegistrationContext'
 
-export default function SeatingTab() {
+export default function ChallengeTab() {
   const { isRegistered, isLoading } = useRegistration()
 
   if (isLoading) {
@@ -21,9 +21,9 @@ export default function SeatingTab() {
   return (
     <div className="min-h-screen px-4 py-4">
       <SectionCard>
-        <SectionTitle>РАССАДКА</SectionTitle>
+        <SectionTitle>ИСПЫТАНИЕ</SectionTitle>
         <p className="text-center text-gray-500 py-4 text-[19.2px]">
-          Информация о рассадке будет доступна позже
+          Раздел в разработке
         </p>
       </SectionCard>
     </div>

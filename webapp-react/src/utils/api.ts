@@ -102,3 +102,147 @@ export async function cancelInvitation(): Promise<{ success: boolean; error?: st
   }
 }
 
+export interface RegistrationStatus {
+  registered: boolean
+  in_group_chat?: boolean
+  error?: string
+}
+
+export async function checkRegistration(): Promise<RegistrationStatus> {
+  const config = await loadConfig()
+  try {
+    // ВРЕМЕННАЯ СИМУЛЯЦИЯ ДЛЯ ТЕСТА - УДАЛИТЬ ПОСЛЕ ПРОВЕРКИ
+    // Симулируем user_id = 1034074077 для локального тестирования
+    const TEST_USER_ID = 1034074077
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    if (isLocalhost) {
+      console.log('[TEST MODE] Simulating user_id:', TEST_USER_ID)
+      // Прямо проверяем регистрацию с тестовым user_id
+      const params = new URLSearchParams({
+        userId: TEST_USER_ID.toString(),
+        firstName: '',
+        lastName: '',
+      })
+      const url = `${config.apiUrl}/check?${params}`
+      const response = await fetch(url)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.registered) {
+          localStorage.setItem('telegram_user_id', TEST_USER_ID.toString())
+        }
+        return data
+      }
+    }
+    // КОНЕЦ ВРЕМЕННОЙ СИМУЛЯЦИИ
+    
+    // Получаем данные пользователя из Telegram WebApp
+    const tg = window.Telegram?.WebApp
+    const initData = (tg as any)?.initData || ''
+    
+    // Пытаемся получить userId из Telegram WebApp
+    let userId: number | null = null
+    let firstName = ''
+    let lastName = ''
+    
+    if (tg) {
+      // Способ 1: Из initData (если доступен)
+      if (initData) {
+        try {
+          const response = await fetch(`${config.apiUrl}/parse-init-data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ initData }),
+          })
+          
+          if (response.ok) {
+            const parsed = await response.json()
+            if (parsed.userId) {
+              userId = parsed.userId
+              firstName = parsed.firstName || ''
+              lastName = parsed.lastName || ''
+              // Сохраняем в localStorage
+              if (userId !== null) {
+                localStorage.setItem('telegram_user_id', userId.toString())
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing initData:', error)
+        }
+      }
+      
+      // Способ 2: Из localStorage (если был сохранен ранее)
+      if (!userId) {
+        const savedUserId = localStorage.getItem('telegram_user_id')
+        if (savedUserId) {
+          userId = parseInt(savedUserId)
+        }
+      }
+      
+      // Способ 3: Из Telegram WebApp (если доступен напрямую)
+      if (!userId && (tg as any).initDataUnsafe?.user) {
+        userId = (tg as any).initDataUnsafe.user.id
+        firstName = (tg as any).initDataUnsafe.user.first_name || ''
+        lastName = (tg as any).initDataUnsafe.user.last_name || ''
+      }
+    }
+    
+    // Если нет userId, но есть имя/фамилия - пробуем поиск только по имени
+    if (!userId && firstName && lastName) {
+      try {
+        const params = new URLSearchParams({
+          firstName,
+          lastName,
+          searchByNameOnly: 'true',
+        })
+        const url = `${config.apiUrl}/check?${params}`
+        const response = await fetch(url)
+        
+        if (response.ok) {
+          const data = await response.json()
+          return data
+        }
+      } catch (error) {
+        console.error('Error checking by name only:', error)
+      }
+    }
+    
+    // Если нет userId вообще - возвращаем ошибку
+    if (!userId) {
+      return { registered: false, error: 'no_user_id' }
+    }
+    
+    // Если userId есть - проверяем регистрацию
+    if (userId === null) {
+      return { registered: false, error: 'no_user_id' }
+    }
+    
+    const params = new URLSearchParams({
+      userId: userId.toString(),
+      firstName,
+      lastName,
+    })
+    const url = `${config.apiUrl}/check?${params}`
+    const response = await fetch(url)
+    
+    if (response.ok) {
+      const data = await response.json()
+      
+      // Если регистрация успешна, сохраняем userId в localStorage
+      if (data.registered && userId !== null) {
+        localStorage.setItem('telegram_user_id', userId.toString())
+      }
+      
+      return data
+    } else {
+      return { registered: false, error: 'server_error' }
+    }
+  } catch (error) {
+    console.error('Error checking registration:', error)
+    return { registered: false, error: 'network_error' }
+  }
+}
+

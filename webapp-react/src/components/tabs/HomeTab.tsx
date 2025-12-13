@@ -3,15 +3,24 @@ import { motion } from 'framer-motion'
 import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
 import CountdownTimer from '../common/CountdownTimer'
+import RSVPForm from '../RSVPForm'
 import { loadConfig } from '../../utils/api'
+import { useRegistration } from '../../contexts/RegistrationContext'
 import type { Config } from '../../types'
 
 export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
+  const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
+  const [formSubmitted, setFormSubmitted] = useState(false)
 
   useEffect(() => {
     loadConfig().then(setConfig)
   }, [])
+
+  const handleFormSuccess = () => {
+    setFormSubmitted(true)
+    refreshRegistration() // Обновляем статус регистрации
+  }
 
   return (
     <div className="min-h-screen">
@@ -98,6 +107,15 @@ export default function HomeTab() {
           </motion.p>
         </SectionCard>
       </section>
+
+      {/* RSVP Form for unregistered users */}
+      {!registrationLoading && !isRegistered && !formSubmitted && (
+        <section className="px-4 pt-4 pb-0">
+          <SectionCard className="rsvp-section">
+            <RSVPForm mode="full" onSuccess={handleFormSuccess} />
+          </SectionCard>
+        </section>
+      )}
 
       {/* Countdown Timer Section */}
       {config && (

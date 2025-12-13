@@ -10,11 +10,15 @@ interface BottomNavbarProps {
 }
 
 // Все кнопки в одном массиве для сетки 4xN
-const allNavItems: Array<{ id: TabName; label: string }> = [
+// Первый ряд: Главная, Испытание, Меню, Сделать фото
+// Второй ряд: План-сетка, Дресс-код, Рассадка, Пожелания
+const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = [
   { id: 'home', label: 'Главная' },
-  { id: 'dresscode', label: 'Дресс-Код' },
-  { id: 'timeline', label: 'План-сетка' },
+  { id: 'challenge', label: 'Испытание' },
   { id: 'menu', label: 'Меню' },
+  { id: 'photo', label: 'Сделать фото', isSpecial: true }, // Особенная кнопка
+  { id: 'timeline', label: 'План-сетка' },
+  { id: 'dresscode', label: 'Дресс-Код' },
   { id: 'seating', label: 'Рассадка' },
   { id: 'wishes', label: 'Пожелания' },
 ]
@@ -117,35 +121,92 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     }
   }, [isDragging, isExpanded, dragY])
 
-  const renderNavButton = (item: { id: TabName; label: string }) => (
-    <motion.button
-      key={item.id}
-      onClick={() => handleTabClick(item.id)}
-      className="flex flex-col items-center justify-center gap-0.5 px-1 py-2 h-20 min-w-0 transition-colors"
-      whileTap={{ scale: 0.95 }}
-    >
-      <motion.div
-        animate={{ scale: activeTab === item.id ? 1.1 : 1 }}
-        transition={{ duration: 0.2 }}
-        className="w-6 h-6"
+  const renderNavButton = (item: { id: TabName; label: string; isSpecial?: boolean }) => {
+    const isSpecial = item.isSpecial || false
+    const isActive = activeTab === item.id
+    
+    if (isSpecial) {
+      // Круглая кнопка для "Сделать фото"
+      return (
+        <motion.button
+          key={item.id}
+          onClick={() => handleTabClick(item.id)}
+          className="flex flex-col items-center justify-center gap-0.5 h-20 min-w-0 transition-all"
+          whileTap={{ scale: 0.95 }}
+        >
+          <motion.div
+            className={`w-14 h-14 bg-[#FFE9AD] rounded-full shadow-lg hover:shadow-xl flex items-center justify-center transition-all relative ${
+              isActive ? 'bg-[#F5D98A] shadow-xl ring-2 ring-[#FFE9AD] ring-offset-1' : ''
+            }`}
+            whileHover={{ scale: 1.05 }}
+            animate={{ 
+              boxShadow: isActive 
+                ? '0 10px 25px rgba(255, 233, 173, 0.4)' 
+                : '0 5px 15px rgba(255, 233, 173, 0.3)'
+            }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-[#FFE9AD] rounded-full opacity-20"
+              animate={{ 
+                scale: [1, 1.1, 1],
+                opacity: [0.2, 0.3, 0.2]
+              }}
+              transition={{ 
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+            />
+            <motion.div
+              animate={{ scale: isActive ? 1.1 : 1 }}
+              transition={{ duration: 0.2 }}
+              className="relative z-10 w-7 h-7"
+            >
+              <NavIcon
+                name={item.id as 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'}
+                isActive={true}
+                className="w-full h-full"
+              />
+            </motion.div>
+          </motion.div>
+          <span className="text-xs font-main text-primary-dark font-bold drop-shadow-sm">
+            {item.label}
+          </span>
+        </motion.button>
+      )
+    }
+    
+    // Обычная кнопка
+    return (
+      <motion.button
+        key={item.id}
+        onClick={() => handleTabClick(item.id)}
+        className="flex flex-col items-center justify-center gap-0.5 px-1 py-2 h-20 min-w-0 transition-colors"
+        whileTap={{ scale: 0.95 }}
       >
-        <NavIcon
-          name={item.id as 'home' | 'dresscode' | 'timeline' | 'seating' | 'menu' | 'wishes'}
-          isActive={activeTab === item.id}
-          className="w-full h-full"
-        />
-      </motion.div>
-      <span
-        className={`text-xs font-main transition-colors ${
-          activeTab === item.id
-            ? 'text-primary font-semibold'
-            : 'text-gray-600'
-        }`}
-      >
-        {item.label}
-      </span>
-    </motion.button>
-  )
+        <motion.div
+          animate={{ scale: isActive ? 1.1 : 1 }}
+          transition={{ duration: 0.2 }}
+          className="w-6 h-6"
+        >
+          <NavIcon
+            name={item.id as 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'}
+            isActive={isActive}
+            className="w-full h-full"
+          />
+        </motion.div>
+        <span
+          className={`text-xs font-main transition-colors ${
+            isActive
+              ? 'text-primary font-semibold'
+              : 'text-gray-600'
+          }`}
+        >
+          {item.label}
+        </span>
+      </motion.button>
+    )
+  }
 
   // Разделяем кнопки на видимые и скрытые
   const visibleItems = allNavItems.slice(0, visibleRows * ITEMS_PER_ROW)
@@ -176,15 +237,11 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
 
       {/* Сетка кнопок 4xN */}
       <div className="grid grid-cols-4 gap-0">
-        {/* Видимые кнопки */}
+        {/* Видимые кнопки (первый ряд) */}
         {visibleItems.map(renderNavButton)}
         
         {/* Скрытые кнопки (показываются при вытягивании) */}
-        {hiddenItems.length > 0 && (
-          <>
-            {isExpanded && hiddenItems.map(renderNavButton)}
-          </>
-        )}
+        {isExpanded && hiddenItems.map(renderNavButton)}
       </div>
     </motion.nav>
   )

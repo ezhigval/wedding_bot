@@ -2,19 +2,36 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
+import RegistrationRequired from '../common/RegistrationRequired'
 import { loadTimeline } from '../../utils/api'
+import { useRegistration } from '../../contexts/RegistrationContext'
 import type { TimelineItem } from '../../types'
 
 export default function TimelineTab() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { isRegistered, isLoading: registrationLoading } = useRegistration()
 
   useEffect(() => {
-    loadTimeline().then((data) => {
-      setTimeline(data)
-      setLoading(false)
-    })
-  }, [])
+    if (isRegistered) {
+      loadTimeline().then((data) => {
+        setTimeline(data)
+        setLoading(false)
+      })
+    }
+  }, [isRegistered])
+
+  if (registrationLoading) {
+    return (
+      <div className="min-h-screen px-4 py-4 flex items-center justify-center">
+        <div className="text-center text-gray-500">Загрузка...</div>
+      </div>
+    )
+  }
+
+  if (!isRegistered) {
+    return <RegistrationRequired />
+  }
 
   return (
     <div className="min-h-screen px-4 py-4">

@@ -28,5 +28,5 @@ export interface VenueInfo {
   lon: number
 }
 
-export type TabName = 'home' | 'dresscode' | 'timeline' | 'seating' | 'menu' | 'wishes'
+export type TabName = 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'
 

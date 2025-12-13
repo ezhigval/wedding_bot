@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import urllib.parse
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 
 from config import (
     BOT_TOKEN,
@@ -40,6 +40,7 @@ from google_sheets import (
     write_ping_to_admin_sheet,
     get_seating_lock_status,
     get_guest_table_and_neighbors,
+    save_photo_from_webapp,
 )
 import seating_sync
 import traceback
@@ -298,6 +299,7 @@ async def init_api():
     api.router.add_get('/timeline', get_timeline_endpoint)
     api.router.add_post('/confirm-identity', confirm_identity)
     api.router.add_post('/parse-init-data', parse_init_data)
+    api.router.add_post('/upload-photo', upload_photo)
 
     # Seating sync endpoints (для вызова из Google Apps Script)
     api.router.add_post('/seating/sync-from-guests', seating_sync_from_guests)
@@ -623,16 +625,11 @@ async def ping_from_sheets(request: web.Request):
         logger.error(traceback.format_exc())
         return web.json_response({"error": "server_error"}, status=500)
 
-async def parse_init_data(request):
-    """Парсинг initData от Telegram для извлечения user_id"""
+async def parse_init_data_internal(init_data: str) -> Optional[dict]:
+    """Внутренняя функция для парсинга initData"""
     try:
-        data = await request.json()
-        init_data = data.get('initData', '')
-        
         if not init_data:
-            return web.json_response({
-                'error': 'initData required'
-            }, status=400)
+            return None
         
         # Парсим initData
         parsed_data = {}
@@ -650,16 +647,38 @@ async def parse_init_data(request):
                 user_id = user.get('id')
                 first_name = user.get('first_name', '')
                 last_name = user.get('last_name', '')
+                username = user.get('username', '')
                 
-                logger.info(f"parse_init_data: extracted user_id {user_id} from initData")
-                
-                return web.json_response({
+                return {
                     'userId': user_id,
                     'firstName': first_name,
-                    'lastName': last_name
-                })
+                    'lastName': last_name,
+                    'username': username
+                }
             except json.JSONDecodeError:
-                logger.error("parse_init_data: failed to parse user JSON")
+                logger.error("parse_init_data_internal: failed to parse user JSON")
+        
+        return None
+    except Exception as e:
+        logger.error(f"Error in parse_init_data_internal: {e}")
+        return None
+
+async def parse_init_data(request):
+    """Парсинг initData от Telegram для извлечения user_id"""
+    try:
+        data = await request.json()
+        init_data = data.get('initData', '')
+        
+        if not init_data:
+            return web.json_response({
+                'error': 'initData required'
+            }, status=400)
+        
+        result = await parse_init_data_internal(init_data)
+        
+        if result:
+            logger.info(f"parse_init_data: extracted user_id {result.get('userId')} from initData")
+            return web.json_response(result)
         
         return web.json_response({
             'error': 'user not found in initData'
@@ -1173,4 +1192,64 @@ async def get_timeline_endpoint(request):
         logger.error(f"Ошибка получения тайминга: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
+
+async def upload_photo(request):
+    """Загрузка фото из веб-приложения"""
+    try:
+        data = await request.json()
+        photo_data = data.get('photo')  # base64 строка
+        init_data = data.get('initData', '')
+        
+        if not photo_data:
+            return web.json_response({'error': 'Фото не предоставлено'}, status=400)
+        
+        # Получаем user_id из initData
+        user_id = None
+        username = None
+        full_name = ''
+        
+        if init_data:
+            try:
+                parsed = await parse_init_data_internal(init_data)
+                if parsed and parsed.get('userId'):
+                    user_id = parsed['userId']
+                    username = parsed.get('username', '')
+                    first_name = parsed.get('firstName', '')
+                    last_name = parsed.get('lastName', '')
+                    full_name = f"{first_name} {last_name}".strip()
+            except Exception as e:
+                logger.error(f"Ошибка парсинга initData: {e}")
+        
+        # Если не получили из initData, пробуем из localStorage (через userId в запросе)
+        if not user_id:
+            user_id_str = data.get('userId')
+            if user_id_str:
+                try:
+                    user_id = int(user_id_str)
+                except (ValueError, TypeError):
+                    pass
+        
+        if not user_id:
+            return web.json_response({'error': 'Не удалось определить пользователя'}, status=400)
+        
+        # Сохраняем фото в Google Sheets
+        success = await save_photo_from_webapp(
+            user_id=user_id,
+            username=username,
+            full_name=full_name or 'Неизвестный',
+            photo_data=photo_data,
+        )
+        
+        if success:
+            return web.json_response({
+                'success': True,
+                'message': 'Фото успешно сохранено'
+            })
+        else:
+            return web.json_response({'error': 'Не удалось сохранить фото'}, status=500)
+            
+    except Exception as e:
+        logger.error(f"Ошибка загрузки фото: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
 

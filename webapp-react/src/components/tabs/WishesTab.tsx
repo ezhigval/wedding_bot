@@ -1,10 +1,25 @@
 import { motion } from 'framer-motion'
+import RegistrationRequired from '../common/RegistrationRequired'
+import { useRegistration } from '../../contexts/RegistrationContext'
 
 export default function WishesTab() {
+  const { isRegistered, isLoading } = useRegistration()
   const wishes = [
     'Просим не дарить нам цветы, прекрасной альтернативой станет бутылка хорошего вина для нашей семейной винотеки.',
     'Если хотите сделать нам ценный и нужный подарок, мы будем признательны за вклад в бюджет нашей молодой семьи.',
   ]
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen px-4 py-4 flex items-center justify-center">
+        <div className="text-center text-gray-500">Загрузка...</div>
+      </div>
+    )
+  }
+
+  if (!isRegistered) {
+    return <RegistrationRequired />
+  }
 
   return (
     <div className="min-h-screen px-4 py-4">
