@@ -86,6 +86,17 @@ async def serve_static(request):
                 logger.warning(f"Lottie JSON not found: {rings_json_path}")
                 return Response(text='Lottie JSON not found', status=404)
         
+        # Специальная обработка для файлов из res/ (dresscode, venue и т.д.)
+        if path.startswith('res/') or path.startswith('/res/'):
+            # Убираем начальный слэш если есть
+            clean_path = path.lstrip('/')
+            res_path = Path(clean_path)
+            if res_path.exists():
+                file_path = res_path
+            else:
+                logger.warning(f"Res file not found: {res_path}")
+                return Response(text='File not found', status=404)
+        
         # Если это директория или файл не существует, возвращаем index.html
         if file_path.is_dir() or (not file_path.exists()
                                   and path != 'welcome_photo.jpeg'
@@ -93,7 +104,8 @@ async def serve_static(request):
                                   and path != 'res/ring_animation.lottie'
                                   and path != 'ring_animation.json'
                                   and path != 'rings.json'
-                                  and path != 'res/rings.json'):
+                                  and path != 'res/rings.json'
+                                  and not path.startswith('res/')):
             file_path = Path(WEBAPP_PATH) / 'index.html'
         
         # Если index.html не существует, это критическая ошибка
@@ -118,6 +130,8 @@ async def serve_static(request):
             content_type = 'image/jpeg'
         elif path.endswith('.png'):
             content_type = 'image/png'
+        elif path.endswith('.gif'):
+            content_type = 'image/gif'
         elif path.endswith('.svg'):
             content_type = 'image/svg+xml'
         elif path.endswith('.mp4'):
