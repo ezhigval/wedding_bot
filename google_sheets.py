@@ -4,8 +4,10 @@
 import os
 import json
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import asyncio
+from datetime import datetime
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,14 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME
+from config import (
+    GOOGLE_SHEETS_ID,
+    GOOGLE_SHEETS_CREDENTIALS,
+    GOOGLE_SHEETS_SHEET_NAME,
+    GOOGLE_SHEETS_INVITATIONS_SHEET_NAME,
+    GOOGLE_SHEETS_ADMINS_SHEET_NAME,
+    GOOGLE_SHEETS_TIMELINE_SHEET_NAME,
+)
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -631,32 +640,36 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                 start_row = 1
         
         # Обрабатываем данные
-        # Столбец A - username, столбец B - user_id, столбец D - api_id, столбец E - api_hash, столбец F - phone
-        for row in all_values[start_row:]:
+        # Столбец A - username, столбец B - user_id,
+        # столбец D - api_id, столбец E - api_hash, столбец F - phone,
+        # столбец G - login_code (используем для авторизации Telegram Client)
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
             if len(row) >= 1:
                 username = row[0].strip() if row[0] else ""
                 user_id = row[1].strip() if len(row) >= 2 and row[1] else None
                 api_id = row[3].strip() if len(row) >= 4 and row[3] else None  # Столбец D
                 api_hash = row[4].strip() if len(row) >= 5 and row[4] else None  # Столбец E
                 phone = row[5].strip() if len(row) >= 6 and row[5] else None  # Столбец F
-                
+                login_code = row[6].strip() if len(row) >= 7 and row[6] else None  # Столбец G
+
                 # Пропускаем пустые строки
                 if not username:
                     continue
-                
+
                 # Убираем @ если есть
-                username = username.replace('@', '').lower()
-                
+                username_clean = username.replace('@', '').lower()
+
                 admin_data = {
-                    'username': username,
-                    'name': username,
-                    'telegram': username
+                    'username': username_clean,
+                    'name': username_clean,
+                    'telegram': username_clean,
+                    'row_index': row_idx,
                 }
-                
+
                 # Если есть user_id, добавляем его
                 if user_id and user_id.isdigit():
                     admin_data['user_id'] = int(user_id)
-                
+
                 # Добавляем данные Telegram Client API
                 if api_id:
                     admin_data['api_id'] = api_id
@@ -664,7 +677,9 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
                     admin_data['api_hash'] = api_hash
                 if phone:
                     admin_data['phone'] = phone
-                
+                if login_code:
+                    admin_data['login_code'] = login_code
+
                 admins.append(admin_data)
         
         logger.info(f"Получено {len(admins)} админов из Google Sheets")
@@ -675,6 +690,83 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
         import traceback
         logger.error(traceback.format_exc())
         return []
+
+
+def _get_admin_login_code_and_clear_sync(admin_user_id: int) -> str:
+    """
+    Считает одноразовый код авторизации из вкладки \"Админ бота\" и сразу очищает ячейку.
+
+    Логика:
+    - ищем строку, где столбец B (user_id) совпадает с admin_user_id;
+    - берём значение из столбца G (login_code);
+    - если код есть — очищаем ячейку G и возвращаем код.
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return ""
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f\"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}\")
+            return ""
+
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            return ""
+
+        start_row = 0
+        if all_values:
+            first_row = all_values[0]
+            if any(keyword in str(first_row[0]).lower() for keyword in ['username', 'админ', 'admin']):
+                start_row = 1
+
+        for row_idx, row in enumerate(all_values[start_row:], start=start_row + 1):
+            if len(row) < 2:
+                continue
+
+            user_id_cell = row[1].strip() if row[1] else ""
+            try:
+                user_id_value = int(user_id_cell) if user_id_cell else None
+            except ValueError:
+                user_id_value = None
+
+            if user_id_value != admin_user_id:
+                continue
+
+            # Нашли строку текущего админа
+            code = row[6].strip() if len(row) >= 7 and row[6] else ""
+            if not code:
+                logger.info(f\"В столбце G для админа {admin_user_id} код не найден (строка {row_idx})\")
+                return ""
+
+            # Очищаем ячейку с кодом (столбец G = 7)
+            worksheet.update_cell(row_idx, 7, \"\")
+            logger.info(f\"Считан и очищен код авторизации для админа {admin_user_id} из строки {row_idx}\")
+            return code
+
+        logger.info(f\"Строка для админа {admin_user_id} в листе 'Админ бота' не найдена\")
+        return ""
+
+    except Exception as e:
+        logger.error(f\"Ошибка при чтении кода авторизации из 'Админ бота': {e}\")
+        import traceback
+        logger.error(traceback.format_exc())
+        return \"\"
+
+
+async def get_admin_login_code_and_clear(admin_user_id: int) -> str:
+    """
+    Асинхронная обёртка для _get_admin_login_code_and_clear_sync.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning(\"Google Sheets недоступен, не можем считать код авторизации\")
+        return \"\"
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_admin_login_code_and_clear_sync, admin_user_id)
 
 async def save_admin_to_sheets(username: str, user_id: int):
     """
@@ -845,16 +937,27 @@ def _get_timeline_sync() -> List[Dict[str, str]]:
             logger.warning(f"Вкладка '{GOOGLE_SHEETS_TIMELINE_SHEET_NAME}' не найдена")
             return []
         
-        # Получаем все данные (столбец A - время, столбец B - событие)
-        values = worksheet.get_all_values()
+        # Получаем данные ТОЛЬКО из первых двух столбцов (A: время, B: событие),
+        # чтобы любые дополнительные столбцы (C, D, ...) не ломали план-сетку.
+        values = worksheet.get("A:B") or []
         
-        timeline = []
-        for row in values:
-            if len(row) >= 2 and row[0].strip() and row[1].strip():
-                timeline.append({
-                    'time': row[0].strip(),
-                    'event': row[1].strip()
-                })
+        timeline: List[Dict[str, str]] = []
+        for raw_row in values:
+            # Гарантируем, что у нас всегда есть как минимум 2 ячейки
+            row = (raw_row + ["", ""])[:2]
+            time_cell = (row[0] or "").strip()
+            event_cell = (row[1] or "").strip()
+
+            # Пропускаем полностью пустые строки и строки без события
+            if not event_cell:
+                continue
+
+            timeline.append(
+                {
+                    "time": time_cell,
+                    "event": event_cell,
+                }
+            )
         
         return timeline
     except Exception as e:
@@ -1271,6 +1374,8 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
         
         by_user_id: Dict[str, List[Dict]] = {}
         by_name_key: Dict[str, List[Dict]] = {}
+        missing_ids: List[Dict] = []      # подтверждён, но без user_id
+        username_ids: List[Dict] = []     # в столбце F лежит @username / t.me/...
         
         for row_idx, row in enumerate(all_values, start=1):
             if not row or len(row) == 0:
@@ -1286,7 +1391,8 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
                 # Интересуют только подтверждённые гости
                 continue
             
-            user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            raw_user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            numeric_user_id = raw_user_id if raw_user_id.isdigit() else ""
             
             # Разбираем имя и фамилию для нормализации (учитываем возможную перестановку)
             parts = full_name.split()
@@ -1302,11 +1408,34 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
             info = {
                 "row": row_idx,
                 "full_name": full_name,
-                "user_id": user_id,
+                "user_id": raw_user_id,
             }
-            
-            if user_id:
-                by_user_id.setdefault(user_id, []).append(info)
+
+            # Кейс 1: подтверждённый гость без user_id вообще
+            if not raw_user_id:
+                missing_ids.append(info)
+            # Кейс 2: в ячейке что-то есть, но это не цифры — пытаемся распознать username
+            elif not numeric_user_id:
+                # Пробуем вытащить чистый username из разных форматов
+                candidate = raw_user_id.strip()
+                candidate = candidate.replace("https://t.me/", "").replace("http://t.me/", "")
+                candidate = candidate.replace("t.me/", "")
+                if candidate.startswith("@"):
+                    candidate = candidate[1:]
+                candidate = candidate.split()[0].strip()
+                if candidate:
+                    username_ids.append(
+                        {
+                            "row": row_idx,
+                            "full_name": full_name,
+                            "raw_value": raw_user_id,
+                            "username": candidate,
+                        }
+                    )
+
+            # Для поиска дубликатов по user_id учитываем только числовые ID
+            if numeric_user_id:
+                by_user_id.setdefault(numeric_user_id, []).append(info)
             by_name_key.setdefault(name_key, []).append(info)
         
         # Дубликаты по user_id.
@@ -1344,19 +1473,25 @@ def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
                 dup_by_user_id.append({"user_id": uid, "rows": problem_rows})
         
         # Дубликаты по имени (независимо от user_id) оставляем как есть
-        dup_by_name = [
-            rows for key, rows in by_name_key.items() if len(rows) > 1
-        ]
+        dup_by_name = [rows for key, rows in by_name_key.items() if len(rows) > 1]
         
-        if dup_by_user_id or dup_by_name:
+        if dup_by_user_id or dup_by_name or missing_ids or username_ids:
             logger.warning(
-                f"Найдены возможные дубликаты гостей: "
-                f"{len(dup_by_user_id)} по user_id, {len(dup_by_name)} по имени"
+                "Найдены возможные проблемы в списке гостей: "
+                f"{len(dup_by_user_id)} по user_id, "
+                f"{len(dup_by_name)} по имени, "
+                f"{len(missing_ids)} без user_id, "
+                f"{len(username_ids)} с username вместо user_id"
             )
         else:
             logger.info("Дубликаты гостей не обнаружены")
         
-        return {"by_user_id": dup_by_user_id, "by_name": dup_by_name}
+        return {
+            "by_user_id": dup_by_user_id,
+            "by_name": dup_by_name,
+            "missing_ids": missing_ids,
+            "username_ids": username_ids,
+        }
     except Exception as e:
         logger.error(f"Ошибка при поиске дубликатов гостей: {e}")
         import traceback
@@ -1388,6 +1523,497 @@ async def update_guest_user_id(row: int, user_id: int) -> bool:
         logger.error(traceback.format_exc())
         return False
 
+
+# ========== PING / СВЯЗЬ С GOOGLE SHEETS ДЛЯ ДИАГНОСТИКИ ==========
+
+
+def _ping_admin_sheet_sync() -> int:
+    """
+    Небольшой "ping" к листу "Админ бота".
+
+    Делает одно лёгкое чтение ячейки и возвращает примерную задержку в мс.
+    Возвращает -1 в случае ошибки.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, ping невозможен")
+        return -1
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return -1
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+
+        start = time.monotonic()
+        # Лёгкое чтение одной ячейки
+        _ = worksheet.acell("A1").value
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        logger.info(f"Ping Google Sheets (Админ бота): {latency_ms} ms")
+        return latency_ms
+    except Exception as e:
+        logger.error(f"Ошибка при ping листа 'Админ бота': {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return -1
+
+
+async def ping_admin_sheet() -> int:
+    """
+    Асинхронный ping к листу "Админ бота".
+
+    Returns:
+        Задержка в мс (int) или -1 при ошибке.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _ping_admin_sheet_sync)
+
+
+def _write_ping_to_admin_sheet_sync(source: str, latency_ms: int, status: str) -> bool:
+    """
+    Записать информацию о последнем ping в лист "Админ бота", строка 5.
+
+    Формат:
+        A5: timestamp (YYYY-MM-DD HH:MM:SS)
+        B5: source ("bot" / "sheets" / др.)
+        C5: latency (мс)
+        D5: status ("OK" / "ERROR: ...")
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, запись ping невозможна")
+        return False
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
+
+        row = 5
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        values = [[timestamp, source, str(latency_ms), status]]
+        worksheet.update(f"A{row}:D{row}", values)
+
+        logger.info(
+            f"Записан ping в 'Админ бота': time={timestamp}, source={source}, "
+            f"latency_ms={latency_ms}, status={status}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при записи ping в 'Админ бота': {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def write_ping_to_admin_sheet(source: str, latency_ms: int, status: str) -> bool:
+    """
+    Асинхронная обёртка для записи ping в лист "Админ бота".
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _write_ping_to_admin_sheet_sync, source, latency_ms, status
+    )
+
+
+# ========== КОНФИГ / ФЛАГИ ==========
+
+
+def _get_or_create_config_sheet_sync():
+    """
+    Получить (или создать) лист 'Config'.
+
+    Используется для хранения флагов:
+      - SEATING_LOCKED (true/false)
+      - SEATING_LOCKED_AT (timestamp)
+    """
+    client = get_google_sheets_client()
+    if not client:
+        raise RuntimeError("Google Sheets клиент недоступен")
+
+    spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+    try:
+        sheet = spreadsheet.worksheet("Config")
+    except Exception:
+        sheet = spreadsheet.add_worksheet(title="Config", rows=20, cols=4)
+    return sheet
+
+
+def _get_seating_lock_status_sync() -> Dict:
+    """
+    Прочитать статус закрепления рассадки из листа Config.
+    """
+    try:
+        sheet = _get_or_create_config_sheet_sync()
+        values = sheet.get_all_values()
+
+        data: Dict[str, str] = {}
+        for row in values:
+            if len(row) < 2:
+                continue
+            key = (row[0] or "").strip()
+            value = (row[1] or "").strip()
+            if key:
+                data[key] = value
+
+        locked = data.get("SEATING_LOCKED", "").lower() in ("1", "true", "yes")
+        locked_at = data.get("SEATING_LOCKED_AT") or ""
+
+        return {"locked": locked, "locked_at": locked_at}
+    except Exception as e:
+        logger.error(f"Ошибка при чтении статуса закрепления рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"locked": False, "locked_at": ""}
+
+
+async def get_seating_lock_status() -> Dict:
+    """
+    Асинхронная обёртка для чтения статуса закрепления рассадки.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_seating_lock_status_sync)
+
+
+def _lock_seating_sync() -> Dict:
+    """
+    Закрепить текущую рассадку:
+      - Создать/обновить лист 'Рассадка_фикс' (копия текущей 'Рассадка')
+      - Записать флаги SEATING_LOCKED и SEATING_LOCKED_AT в лист Config
+
+    Возвращает словарь с информацией о статусе:
+      {'locked': True/False, 'locked_at': '...', 'reason': str}
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return {"locked": False, "locked_at": "", "reason": "no_client"}
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+
+        # Проверяем текущий статус
+        status = _get_seating_lock_status_sync()
+        if status.get("locked"):
+            return {
+                "locked": True,
+                "locked_at": status.get("locked_at", ""),
+                "reason": "already_locked",
+            }
+
+        # Читаем текущую рассадку
+        try:
+            seating_sheet = spreadsheet.worksheet("Рассадка")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка' не найден при закреплении: {e}")
+            return {"locked": False, "locked_at": "", "reason": "no_seating_sheet"}
+
+        values = seating_sheet.get_all_values()
+
+        # Создаём/очищаем лист 'Рассадка_фикс'
+        try:
+            fixed_sheet = spreadsheet.worksheet("Рассадка_фикс")
+            fixed_sheet.clear()
+        except Exception:
+            fixed_sheet = spreadsheet.add_worksheet(title="Рассадка_фикс", rows=100, cols=26)
+
+        if values:
+            rows = len(values)
+            cols = max(len(row) for row in values)
+            # Нормализуем размеры
+            norm_values = []
+            for row in values:
+                r = list(row)
+                if len(r) < cols:
+                    r.extend([""] * (cols - len(r)))
+                norm_values.append(r)
+
+            end_col_letter = chr(ord("A") + cols - 1)
+            fixed_sheet.update(f"A1:{end_col_letter}{rows}", norm_values)
+
+        # Обновляем Config
+        config_sheet = _get_or_create_config_sheet_sync()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        config_sheet.update("A1:B2", [
+            ["SEATING_LOCKED", "1"],
+            ["SEATING_LOCKED_AT", now_str],
+        ])
+
+        logger.info(f"Рассадка закреплена в листе 'Рассадка_фикс' в {now_str}")
+        return {"locked": True, "locked_at": now_str, "reason": "ok"}
+    except Exception as e:
+        logger.error(f"Ошибка при закреплении рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"locked": False, "locked_at": "", "reason": "exception"}
+
+
+async def lock_seating() -> Dict:
+    """
+    Асинхронная обёртка для закрепления рассадки.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _lock_seating_sync)
+
+
+# ========== РАССАДКА: ЧТЕНИЕ С ЛИСТА «РАССАДКА» / «РАССАДКА_ФИКС» ==========
+
+
+def _get_seating_from_sheets_sync() -> List[Dict]:
+    """
+    Получить текущую рассадку из листа "Рассадка".
+
+    Формат:
+        [
+          {
+            "table": "Стол №1",
+            "guests": ["Фамилия Имя", ...]
+          },
+          ...
+        ]
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, чтение рассадки невозможно")
+        return []
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            seating = spreadsheet.worksheet("Рассадка")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка' не найден: {e}")
+            return []
+
+        values = seating.get_all_values()
+        if not values:
+            return []
+
+        header_row = values[0]
+        cols = len(header_row)
+        if cols < 2:
+            # Нет ни одного столика
+            return []
+
+        # Заголовки столов начинаются с колонки B (индекс 1)
+        tables: List[Dict] = []
+        for idx in range(1, cols):
+            table_name = (header_row[idx] or "").strip()
+            if not table_name:
+                continue
+
+            guests: List[str] = []
+            # Строки 2..N (индексы 1..len(values)-1)
+            for r in range(1, len(values)):
+                row = values[r]
+                if idx >= len(row):
+                    continue
+                guest_name = (row[idx] or "").strip()
+                if not guest_name:
+                    continue
+                guests.append(guest_name)
+
+            tables.append({"table": table_name, "guests": guests})
+
+        logger.info(
+            f"Прочитана рассадка: {len(tables)} столов "
+            f"({sum(len(t['guests']) for t in tables)} гостей)"
+        )
+        return tables
+    except Exception as e:
+        logger.error(f"Ошибка при чтении рассадки: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+async def get_seating_from_sheets() -> List[Dict]:
+    """
+    Асинхронная обёртка для получения рассадки с листа "Рассадка".
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_seating_from_sheets_sync)
+
+
+def _get_guest_table_and_neighbors_sync(user_id: int) -> Optional[Dict]:
+    """
+    Найти для гостя по user_id:
+      - зафиксированный стол (из 'Рассадка_фикс')
+      - список соседей (другие имена в том же столбце)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, поиск стола невозможен")
+        return None
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+
+        # 1. Находим полное имя гостя по user_id на листе "Список гостей"
+        try:
+            guest_sheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        except Exception as e:
+            logger.error(f"Лист гостей '{GOOGLE_SHEETS_SHEET_NAME}' не найден: {e}")
+            return None
+
+        guest_values = guest_sheet.get_all_values()
+        if not guest_values:
+            return None
+
+        full_name = ""
+        for row in guest_values[1:]:
+            if len(row) <= 5:
+                continue
+            uid_cell = (row[5] or "").strip()
+            if uid_cell == str(user_id):
+                full_name = (row[0] or "").strip()
+                break
+
+        if not full_name:
+            logger.info(f"Гость с user_id={user_id} не найден в 'Список гостей'")
+            return None
+
+        # 2. Ищем это имя в зафиксированной рассадке ('Рассадка_фикс')
+        try:
+            seating_sheet = spreadsheet.worksheet("Рассадка_фикс")
+        except Exception as e:
+            logger.error(f"Лист 'Рассадка_фикс' не найден: {e}")
+            return None
+
+        values = seating_sheet.get_all_values()
+        if not values or len(values) < 2:
+            return None
+
+        header_row = values[0]
+        cols = len(header_row)
+        target_table = None
+        neighbors: List[str] = []
+
+        for col_idx in range(1, cols):
+            table_name = (header_row[col_idx] or "").strip()
+            if not table_name:
+                continue
+
+            column_names: List[str] = []
+            for r in range(1, len(values)):
+                row = values[r]
+                if col_idx >= len(row):
+                    continue
+                name = (row[col_idx] or "").strip()
+                if not name:
+                    continue
+                column_names.append(name)
+
+            # ищем полное совпадение имени в этом столе
+            if any(n == full_name for n in column_names):
+                target_table = table_name
+                neighbors = [n for n in column_names if n != full_name]
+                break
+
+        if not target_table:
+            logger.info(
+                f"Гость '{full_name}' (user_id={user_id}) не найден "
+                f"в зафиксированной рассадке"
+            )
+            return None
+
+        return {
+            "full_name": full_name,
+            "table": target_table,
+            "neighbors": neighbors,
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при поиске стола и соседей для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def get_guest_table_and_neighbors(user_id: int) -> Optional[Dict]:
+    """
+    Асинхронная обёртка для get_guest_table_and_neighbors.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_guest_table_and_neighbors_sync, user_id)
+
+
+# ========== ФОТОГОСТИ: СОХРАНЕНИЕ МЕТАДАННЫХ ФОТО В ОТДЕЛЬНУЮ ВКЛАДКУ ==========
+
+
+def _save_photo_from_user_sync(
+    user_id: int,
+    username: Optional[str],
+    full_name: str,
+    file_id: str,
+) -> bool:
+    """
+    Сохранить информацию о фото, присланном гостем, в лист 'Фото'.
+
+    Формат строки:
+      A: timestamp
+      B: user_id
+      C: username
+      D: full_name
+      E: file_id (Telegram)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, сохранение фото невозможно")
+        return False
+
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            sheet = spreadsheet.worksheet("Фото")
+        except Exception:
+            sheet = spreadsheet.add_worksheet(title="Фото", rows=100, cols=5)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = [
+            timestamp,
+            str(user_id),
+            (username or "").lstrip("@"),
+            full_name,
+            file_id,
+        ]
+        sheet.append_row(row)
+        logger.info(
+            f"Сохранено фото от user_id={user_id}, username={username}, file_id={file_id}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении фото пользователя {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def save_photo_from_user(
+    user_id: int,
+    username: Optional[str],
+    full_name: str,
+    file_id: str,
+) -> bool:
+    """
+    Асинхронная обёртка для сохранения фото гостя.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _save_photo_from_user_sync, user_id, username, full_name, file_id
+    )
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:
@@ -1408,3 +2034,130 @@ def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
         import traceback
         logger.error(traceback.format_exc())
         return False
+
+
+# ========== СЕРВИСНЫЕ ФУНКЦИИ ДЛЯ АДМИНА (СПИСОК ГОСТЕЙ И ПЕРЕСТАНОВКА ИМЯ/ФАМИЛИЯ) ==========
+
+def _list_confirmed_guests_sync() -> List[Dict]:
+    """
+    Синхронная функция: получить список всех подтверждённых гостей.
+
+    Возвращает список словарей:
+    [{'row': int, 'full_name': str}, ...]
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+
+        all_values = worksheet.get_all_values()
+
+        guests: List[Dict] = []
+        for row_idx, row in enumerate(all_values, start=1):
+            if not row or len(row) == 0:
+                continue
+
+            full_name = row[0].strip() if row[0] else ""
+            if not full_name:
+                continue
+
+            # Столбец C — подтверждение "ДА"/"НЕТ"
+            confirmation = row[2].strip().upper() if len(row) > 2 and row[2] else ""
+            if confirmation != "ДА":
+                continue
+
+            guests.append({
+                "row": row_idx,
+                "full_name": full_name,
+            })
+
+        return guests
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка подтверждённых гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+def _swap_guest_name_order_sync(row_index: int) -> Tuple[str, str]:
+    """
+    Синхронная функция: поменять местами Имя и Фамилию в первой колонке для заданной строки.
+
+    Возвращает кортеж (old_full_name, new_full_name).
+    Если изменить не удалось, возвращает ("", "").
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return "", ""
+
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+
+        cell = worksheet.cell(row_index, 1)
+        old_full_name = (cell.value or "").strip()
+        if not old_full_name:
+            return "", ""
+
+        parts = old_full_name.split()
+        if len(parts) < 2:
+            # Одно слово — нечего переставлять
+            return old_full_name, old_full_name
+
+        first = parts[0]
+        last = " ".join(parts[1:])
+
+        new_full_name = f"{last} {first}".strip()
+        worksheet.update_cell(row_index, 1, new_full_name)
+
+        logger.info(
+            f"Переставлены Имя/Фамилия в строке {row_index}: "
+            f"'{old_full_name}' -> '{new_full_name}'"
+        )
+        return old_full_name, new_full_name
+    except Exception as e:
+        logger.error(f"Ошибка при перестановке Имя/Фамилия в строке {row_index}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return "", ""
+
+
+async def list_confirmed_guests() -> List[Dict]:
+    """
+    Асинхронная обёртка для получения списка подтверждённых гостей.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, список подтверждённых гостей недоступен")
+        return []
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _list_confirmed_guests_sync)
+    except Exception as e:
+        logger.error(f"Ошибка (async) при получении списка подтверждённых гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+async def swap_guest_name_order(row_index: int) -> Tuple[str, str]:
+    """
+    Асинхронная обёртка для перестановки Имя/Фамилия для одной строки.
+
+    Возвращает (old_full_name, new_full_name).
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, перестановка Имя/Фамилия невозможна")
+        return "", ""
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _swap_guest_name_order_sync, row_index)
+    except Exception as e:
+        logger.error(f"Ошибка (async) при перестановке Имя/Фамилия: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return "", ""

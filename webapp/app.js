@@ -267,11 +267,11 @@ function renderGuests() {
             </div>
             <div class="guest-item-fields">
                 <div class="form-group">
-                    <label>Имя, Фамилия</label>
-                    <input type="text" placeholder="Имя" value="${guest.firstName}" 
-                           onchange="updateGuest(${guest.id}, 'firstName', this.value)">
+                    <label>Фамилия, Имя</label>
                     <input type="text" placeholder="Фамилия" value="${guest.lastName}" 
                            onchange="updateGuest(${guest.id}, 'lastName', this.value)">
+                    <input type="text" placeholder="Имя" value="${guest.firstName}" 
+                           onchange="updateGuest(${guest.id}, 'firstName', this.value)">
                 </div>
                 <div class="form-group">
                     <label>Telegram (username)</label>
@@ -433,10 +433,10 @@ async function checkRegistrationWithUserId(userId, firstName, lastName) {
 }
 
 // Управление видимостью блока "СВАДЕБНЫЙ ЧАТ"
-function updateGroupSectionVisibility(isRegistered) {
+function updateGroupSectionVisibility(shouldShow) {
     const groupSection = document.getElementById('groupSection');
     if (!groupSection) return;
-    groupSection.style.display = isRegistered ? 'block' : 'none';
+    groupSection.style.display = shouldShow ? 'block' : 'none';
 }
 
 // Функция для показа сообщения об успешной регистрации
@@ -479,9 +479,11 @@ async function initRsvpForCurrentUser() {
         const status = await checkRegistration();
         // Серверная истина: зарегистрирован ли пользователь в таблице гостей
         isUserRegistered = !!(status && status.registered);
+        const inGroupChat = !!(status && status.in_group_chat);
 
-        // Блок "СВАДЕБНЫЙ ЧАТ" показываем только зарегистрированным гостям
-        updateGroupSectionVisibility(isUserRegistered);
+        // Блок "СВАДЕБНЫЙ ЧАТ" показываем только зарегистрированным гостям,
+        // которые ЕЩЁ НЕ состоят в общем чате Telegram
+        updateGroupSectionVisibility(isUserRegistered && !inGroupChat);
 
         if (isUserRegistered) {
             setupAddGuestOnlyView();
@@ -626,6 +628,11 @@ async function loadMainPageData() {
     
     // Обновляем контакты
     updateMainContacts();
+
+    // Пытаемся загрузить информацию о столе и соседях (если доступна)
+    loadSeatingInfoForCurrentUser().catch(err => {
+        console.error('Error loading seating info:', err);
+    });
 }
 
 // Обновление UI основной страницы
@@ -736,6 +743,63 @@ function updateMainContacts() {
     }
     if (brideContact) {
         brideContact.href = `https://t.me/${CONFIG.brideTelegram || 'mrfilmpro'}`;
+    }
+}
+
+// Загрузка информации о столе и соседях для текущего пользователя
+async function loadSeatingInfoForCurrentUser() {
+    try {
+        const userData = getTelegramUserId();
+        const userId = userData.userId;
+
+        if (!userId) {
+            console.log('loadSeatingInfoForCurrentUser: no userId, skipping');
+            return;
+        }
+
+        const url = `${CONFIG.apiUrl}/seating-info?userId=${encodeURIComponent(userId)}`;
+        console.log('loadSeatingInfoForCurrentUser: fetching', url);
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.log('loadSeatingInfoForCurrentUser: response not ok', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        console.log('loadSeatingInfoForCurrentUser: data', data);
+
+        if (!data.visible) {
+            return;
+        }
+
+        const tableName = data.table || '';
+        const neighbors = Array.isArray(data.neighbors) ? data.neighbors : [];
+
+        const greetingSection = document.querySelector('.greeting-section');
+        if (!greetingSection) return;
+
+        const titleEl = greetingSection.querySelector('.section-title');
+        const textEl = greetingSection.querySelector('.greeting-text');
+
+        if (titleEl) {
+            const tableText = tableName ? `ВАШ СТОЛ ${tableName}` : 'ВАШ СТОЛ';
+            titleEl.textContent = tableText;
+        }
+
+        if (textEl) {
+            if (!neighbors.length) {
+                textEl.textContent = 'Ваш стол готов. Список соседей будет доступен позже.';
+            } else {
+                const lines = ['Ваши соседи:'];
+                for (const name of neighbors) {
+                    lines.push(`• ${name}`);
+                }
+                textEl.textContent = lines.join('\n');
+            }
+        }
+    } catch (error) {
+        console.error('loadSeatingInfoForCurrentUser error:', error);
     }
 }
 

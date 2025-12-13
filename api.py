@@ -3,6 +3,7 @@ API для Mini App и управления
 """
 from aiohttp import web
 from aiohttp.web import Response
+import aiohttp
 import json
 import sqlite3
 import os
@@ -11,14 +12,36 @@ import hashlib
 import hmac
 import urllib.parse
 import asyncio
+from typing import Optional
 
-from config import BOT_TOKEN, WEDDING_DATE, GROOM_NAME, BRIDE_NAME, GROOM_TELEGRAM, BRIDE_TELEGRAM, WEDDING_ADDRESS
-from google_sheets import (
-    add_guest_to_sheets, cancel_invitation, get_timeline,
-    check_guest_registration, get_all_guests_from_sheets, 
-    get_guests_count_from_sheets, cancel_guest_registration_by_user_id,
-    find_guest_by_name, update_guest_user_id, find_duplicate_guests
+from config import (
+    BOT_TOKEN,
+    WEDDING_DATE,
+    GROOM_NAME,
+    BRIDE_NAME,
+    GROOM_TELEGRAM,
+    BRIDE_TELEGRAM,
+    WEDDING_ADDRESS,
+    SEATING_API_TOKEN,
+    GROUP_ID,
 )
+from google_sheets import (
+    add_guest_to_sheets,
+    cancel_invitation,
+    get_timeline,
+    check_guest_registration,
+    get_all_guests_from_sheets,
+    get_guests_count_from_sheets,
+    cancel_guest_registration_by_user_id,
+    find_guest_by_name,
+    update_guest_user_id,
+    find_duplicate_guests,
+    ping_admin_sheet,
+    write_ping_to_admin_sheet,
+    get_seating_lock_status,
+    get_guest_table_and_neighbors,
+)
+import seating_sync
 import traceback
 import logging
 
@@ -38,6 +61,88 @@ async def notify_admins(message_text):
         await _notify_admins_func(message_text)
 
 
+async def is_user_in_group_chat(user_id: int) -> bool:
+    """
+    Проверка, состоит ли пользователь в общем чате гостей.
+
+    Используем прямой вызов Telegram Bot API getChatMember.
+    Если BOT_TOKEN или GROUP_ID не заданы, считаем, что пользователь не в чате.
+    """
+    if not BOT_TOKEN or not GROUP_ID:
+        return False
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember"
+    params = {"chat_id": GROUP_ID, "user_id": user_id}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        f"is_user_in_group_chat: getChatMember HTTP {resp.status}"
+                    )
+                    return False
+                data = await resp.json()
+    except Exception as e:
+        logger.warning(f"is_user_in_group_chat: error {e}")
+        return False
+
+    try:
+        ok = data.get("ok", False)
+        if not ok:
+            # Например, user not found, kicked и т.п.
+            return False
+        status = (data.get("result") or {}).get("status") or ""
+        # статусы: creator, administrator, member, restricted, left, kicked
+        return status in {"creator", "administrator", "member"}
+    except Exception as e:
+        logger.warning(f"is_user_in_group_chat: parse error {e}")
+        return False
+
+
+async def _resolve_username_to_user_id(username: str) -> Optional[int]:
+    """
+    Получить numeric user_id по username через Bot API.
+    Требует корректного BOT_TOKEN.
+    """
+    if not BOT_TOKEN or not username:
+        return None
+
+    # Допускаем, что username может приходить без @
+    if not username.startswith("@"):
+        chat_id = f"@{username}"
+    else:
+        chat_id = username
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChat"
+    params = {"chat_id": chat_id}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        f"_resolve_username_to_user_id: getChat HTTP {resp.status} for {chat_id}"
+                    )
+                    return None
+                data = await resp.json()
+    except Exception as e:
+        logger.warning(f"_resolve_username_to_user_id: error {e}")
+        return None
+
+    try:
+        if not data.get("ok"):
+            return None
+        result = data.get("result") or {}
+        uid = result.get("id")
+        if isinstance(uid, int):
+            return uid
+        return None
+    except Exception as e:
+        logger.warning(f"_resolve_username_to_user_id: parse error {e}")
+        return None
+
+
 async def scan_guests_for_duplicates_and_notify():
     """
     Одноразовая проверка гостей на возможную двойную регистрацию при старте сервера.
@@ -46,14 +151,20 @@ async def scan_guests_for_duplicates_and_notify():
         duplicates = await find_duplicate_guests()
         dup_by_user_id = duplicates.get("by_user_id") or []
         dup_by_name = duplicates.get("by_name") or []
-
-        if not dup_by_user_id and not dup_by_name:
-            logger.info("Проверка гостей на дубликаты: дубликаты не найдены")
-            return
+        missing_ids = duplicates.get("missing_ids") or []
+        username_ids = duplicates.get("username_ids") or []
 
         lines = []
         lines.append("⚠️ <b>Проведена проверка гостей</b>")
-        lines.append("Обнаружены возможные двойные регистрации в Google Sheets.\n")
+
+        if not dup_by_user_id and not dup_by_name and not missing_ids and not username_ids:
+            lines.append("Проблем не обнаружено. Дубликаты и незаполненные user_id не найдены.")
+            await notify_admins("\n".join(lines))
+            logger.info("Проверка гостей: проблем не обнаружено")
+            return
+
+        if dup_by_user_id or dup_by_name:
+            lines.append("Обнаружены возможные двойные регистрации в Google Sheets.\n")
 
         if dup_by_user_id:
             lines.append("<b>Дубли по user_id:</b>")
@@ -77,10 +188,71 @@ async def scan_guests_for_duplicates_and_notify():
                     )
                 lines.append("")  # пустая строка между группами
 
-        lines.append(
-            "\nПроверьте вкладку 'Список гостей' в Google Sheets и при необходимости "
-            "объедините или удалите дубли вручную."
-        )
+        # Гости с подтверждением, но без user_id
+        if missing_ids:
+            lines.append(
+                "\n<b>Зарегистрированы, но не идентифицированы (пустой user_id в столбце F):</b>"
+            )
+            for info in missing_ids:
+                lines.append(
+                    f"• строка {info.get('row')}: {info.get('full_name') or '—'} (user_id=—)"
+                )
+
+        # Гости, у которых в столбце F хранится username — пробуем автоматически проставить user_id
+        auto_fixed_count = 0
+        failed_username_fixes: list[str] = []
+        for item in username_ids:
+            row = item.get("row")
+            full_name = item.get("full_name") or ""
+            username = (item.get("username") or "").strip()
+            if not row or not username:
+                continue
+
+            user_id = await _resolve_username_to_user_id(username)
+            if not user_id:
+                failed_username_fixes.append(
+                    f"• строка {row}: {full_name} (username @{username}) — "
+                    f"не удалось получить user_id"
+                )
+                continue
+
+            try:
+                ok = await update_guest_user_id(row, user_id)
+                if ok:
+                    auto_fixed_count += 1
+                    lines.append(
+                        f"\n✅ Автоматически обновлён user_id по username @{username}:\n"
+                        f"   строка {row}: {full_name} → user_id={user_id}"
+                    )
+                else:
+                    failed_username_fixes.append(
+                        f"• строка {row}: {full_name} (username @{username}) — "
+                        f"ошибка при записи user_id={user_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка автообновления user_id для @{username} (row={row}): {e}"
+                )
+                failed_username_fixes.append(
+                    f"• строка {row}: {full_name} (username @{username}) — "
+                    f"исключение при записи user_id"
+                )
+
+        if failed_username_fixes:
+            lines.append(
+                "\n<b>Не удалось автоматически обновить user_id по username для следующих гостей:</b>"
+            )
+            lines.extend(failed_username_fixes)
+
+        if not dup_by_user_id and not dup_by_name:
+            lines.append(
+                "\nДубликатов по user_id и имени не найдено. Проверены только идентификация гостей."
+            )
+        else:
+            lines.append(
+                "\nПроверьте вкладку 'Список гостей' в Google Sheets и при необходимости "
+                "объедините или удалите дубли вручную."
+            )
 
         await notify_admins("\n".join(lines))
     except Exception as e:
@@ -126,6 +298,15 @@ async def init_api():
     api.router.add_get('/timeline', get_timeline_endpoint)
     api.router.add_post('/confirm-identity', confirm_identity)
     api.router.add_post('/parse-init-data', parse_init_data)
+
+    # Seating sync endpoints (для вызова из Google Apps Script)
+    api.router.add_post('/seating/sync-from-guests', seating_sync_from_guests)
+    api.router.add_post('/seating/sync-from-seating', seating_sync_from_seating)
+    api.router.add_post('/seating/full-reconcile', seating_full_reconcile)
+    api.router.add_post('/seating/rebuild-header', seating_rebuild_header)
+    api.router.add_post('/seating/on-edit', seating_on_edit)
+    api.router.add_post('/ping/from-sheets', ping_from_sheets)
+    api.router.add_get('/seating-info', get_seating_info)
     
     # Запускаем фоновую проверку гостей на дубликаты сразу после старта API
     asyncio.create_task(scan_guests_for_duplicates_and_notify())
@@ -147,6 +328,300 @@ async def get_config(request):
         import logging
         logging.error(f"Error in get_config: {e}")
         return web.json_response({'error': str(e)}, status=500)
+
+
+async def get_seating_info(request):
+    """
+    Получить информацию о столе и соседях для текущего пользователя.
+
+    Условия показа:
+      - рассадка закреплена (SEATING_LOCKED = 1 в Config)
+      - текущая дата >= 2026-06-04 00:00 по Москве
+      - найден гость с таким user_id и его стол в 'Рассадка_фикс'
+
+    Ответ:
+      {
+        "visible": true/false,
+        "table": "Стол №1",
+        "neighbors": ["Фамилия Имя", ...],
+        "full_name": "Фамилия Имя"
+      }
+    """
+    try:
+        user_id_str = request.query.get("userId")
+        if not user_id_str:
+            return web.json_response({"visible": False})
+
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            return web.json_response({"visible": False})
+
+        # 1. Проверяем, закреплена ли рассадка
+        lock_status = await get_seating_lock_status()
+        if not lock_status.get("locked"):
+            return web.json_response({"visible": False})
+
+        # 2. Проверяем дату раскрытия (2026-06-04 00:00 по Москве)
+        from datetime import timedelta
+
+        now_utc = datetime.utcnow()
+        now_msk = now_utc + timedelta(hours=3)  # Москва = UTC+3, без переходов
+        reveal_dt_msk = datetime(2026, 6, 4, 0, 0, 0)
+
+        if now_msk < reveal_dt_msk:
+            return web.json_response({"visible": False})
+
+        # 3. Ищем стол и соседей в зафиксированной рассадке
+        info = await get_guest_table_and_neighbors(user_id)
+        if not info:
+            return web.json_response({"visible": False})
+
+        return web.json_response(
+            {
+                "visible": True,
+                "table": info.get("table"),
+                "neighbors": info.get("neighbors") or [],
+                "full_name": info.get("full_name") or "",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в get_seating_info: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"visible": False, "error": "server_error"}, status=500)
+
+
+def _check_seating_token(request: web.Request) -> bool:
+    """
+    Проверка токена для эндпоинтов рассадки.
+
+    Если SEATING_API_TOKEN не задан, проверка считается пройденной.
+    Если задан — сравниваем с заголовком X-Api-Token.
+    """
+    if not SEATING_API_TOKEN:
+        return True
+
+    header_token = (request.headers.get("X-Api-Token") or "").strip()
+    return header_token == SEATING_API_TOKEN
+
+
+async def seating_sync_from_guests(request: web.Request):
+    """Вызов sync_from_guests() из Apps Script (Список гостей → Рассадка)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        # Тело нам пока не нужно, но читаем для совместимости
+        _ = await request.json()
+    except Exception:
+        # Игнорируем ошибки парсинга — логика не зависит от payload
+        pass
+
+    try:
+        await seating_sync.sync_from_guests()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_sync_from_guests: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_sync_from_seating(request: web.Request):
+    """Вызов sync_from_seating() из Apps Script (Рассадка → Список гостей)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        await seating_sync.sync_from_seating()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_sync_from_seating: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_full_reconcile(request: web.Request):
+    """Полная пересборка рассадки (rebuild header + обе синхронизации)."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        await seating_sync.full_reconcile()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_full_reconcile: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_rebuild_header(request: web.Request):
+    """Только перестроение шапки рассадки из Data Validation G2."""
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        _ = await request.json()
+    except Exception:
+        pass
+
+    try:
+        ok = await seating_sync.rebuild_seating_header()
+        return web.json_response({"status": "ok", "updated": bool(ok)})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_rebuild_header: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def seating_on_edit(request: web.Request):
+    """
+    Универсальный хук onEdit из Google Apps Script.
+
+    Backend сам решает, какие действия выполнять, исходя из:
+    - имени листа (Список гостей / Рассадка)
+    - затронутого диапазона (строки/колонки)
+    """
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        # Если рассадка уже закреплена — просто игнорируем любые onEdit-события
+        lock_status = await get_seating_lock_status()
+        if lock_status.get("locked"):
+            logger.info(
+                "[seating_on_edit] Рассадка уже закреплена, onEdit-событие игнорируется"
+            )
+            return web.json_response({"status": "locked"})
+
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    sheet_name = (data.get("sheetName") or "").strip()
+    row_start = int(data.get("rowStart") or 0)
+    col_start = int(data.get("colStart") or 0)
+    num_rows = int(data.get("numRows") or 1)
+    num_cols = int(data.get("numCols") or 1)
+    event = data.get("event") or "onEdit"
+    range_a1 = data.get("rangeA1") or ""
+
+    col_end = col_start + num_cols - 1
+
+    logger.info(
+        f"[seating_on_edit] event={event}, sheet={sheet_name}, "
+        f"range={range_a1 or f'R{row_start}C{col_start} ({num_rows}x{num_cols})'}"
+    )
+
+    try:
+        # 1) Изменения на листе «Список гостей»
+        if sheet_name == seating_sync.GUEST_SHEET:
+            touches_table_col = (
+                seating_sync.COL_TABLE >= col_start
+                and seating_sync.COL_TABLE <= col_end
+            )
+            if touches_table_col:
+                logger.info(
+                    "[seating_on_edit] Изменение в столбце столов на листе "
+                    f"'{sheet_name}', запускаем sync_from_guests()"
+                )
+                await seating_sync.sync_from_guests()
+            else:
+                logger.info(
+                    "[seating_on_edit] Изменение на листе гостей, "
+                    "но вне столбца столов — пока игнорируем"
+                )
+
+        # 2) Любые изменения на листе «Рассадка»
+        elif sheet_name == seating_sync.SEATING_SHEET:
+            logger.info(
+                "[seating_on_edit] Изменение на листе рассадки, "
+                "запускаем sync_from_seating()"
+            )
+            await seating_sync.sync_from_seating()
+
+        else:
+            logger.info(
+                f"[seating_on_edit] Лист '{sheet_name}' не относится к рассадке, "
+                "ничего не делаем"
+            )
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в seating_on_edit: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+async def ping_from_sheets(request: web.Request):
+    """
+    Пинг, инициированный из интерфейса Google Sheets (через Apps Script меню).
+
+    Поток:
+    - проверяем токен
+    - меряем ping к листу "Админ бота"
+    - пишем запись в строку 5 вкладки "Админ бота"
+    - шлём сообщение всем админам от лица бота
+    """
+    if not _check_seating_token(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    event = data.get("event") or "ping_from_sheets"
+    logger.info(f"[ping_from_sheets] event={event}")
+
+    try:
+        # 1. Ping Google Sheets (лист "Админ бота")
+        latency_ms = await ping_admin_sheet()
+        status = "OK" if latency_ms >= 0 else "ERROR"
+        if latency_ms < 0:
+            latency_ms = -1
+
+        # 2. Запись результата в таблицу
+        await write_ping_to_admin_sheet(
+            source="sheets",
+            latency_ms=latency_ms,
+            status=status,
+        )
+
+        # 3. Уведомление админов через бота
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if status == "OK":
+            text = (
+                "📶 <b>Пинг из Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                f"⏱ Задержка: <b>{latency_ms} мс</b>\n"
+                f"✅ Статус: <b>OK</b>\n\n"
+                "Запись о ping сохранена в Google Sheets (строка 5 вкладки 'Админ бота')."
+            )
+        else:
+            text = (
+                "📶 <b>Пинг из Google Sheets</b>\n\n"
+                f"⏰ Время: <code>{now_str}</code>\n"
+                "❌ Не удалось корректно обратиться к Google Sheets.\n"
+                "Проверьте лог сервера и настройки доступа к таблице."
+            )
+
+        await notify_admins(text)
+
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Ошибка в ping_from_sheets: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def parse_init_data(request):
     """Парсинг initData от Telegram для извлечения user_id"""
@@ -278,16 +753,19 @@ async def check_registration(request):
                 'registered': False,
                 'error': 'user_id_or_name_required'
             }, status=400)
-        
         user_id = int(user_id_str)
         logger.info(f"check_registration: checking user_id {user_id} (from Telegram) against column F in Google Sheets")
+
+        # Дополнительно проверяем, состоит ли пользователь в общем чате
+        in_group_chat = await is_user_in_group_chat(user_id)
         
         # 1. Проверяем по user_id в столбце F таблицы
         registered = await check_guest_registration(user_id)
         if registered:
             logger.info(f"check_registration: user_id {user_id} found and registered")
             return web.json_response({
-                'registered': True
+                'registered': True,
+                'in_group_chat': in_group_chat,
             })
         
         # 2. Если не найден по user_id, проверяем по имени/фамилии
@@ -310,13 +788,15 @@ async def check_registration(request):
                     logger.error(traceback.format_exc())
                 
                 return web.json_response({
-                    'registered': True
+                    'registered': True,
+                    'in_group_chat': in_group_chat,
                 })
         
         # Не найден ни по user_id, ни по имени
         logger.info(f"check_registration: user_id {user_id} not found")
         return web.json_response({
-            'registered': False
+            'registered': False,
+            'in_group_chat': in_group_chat,
         })
         
     except ValueError as e:

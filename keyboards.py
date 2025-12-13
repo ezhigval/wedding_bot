@@ -1,6 +1,13 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    WebAppInfo,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
+from config import WEBAPP_URL, GROOM_NAME, BRIDE_NAME, WEDDING_DATE, GROOM_TELEGRAM, BRIDE_TELEGRAM, GROUP_LINK, GOOGLE_SHEETS_ID
 from datetime import datetime
+
 
 def get_invitation_keyboard():
     """Клавиатура для приглашения с Mini App"""
@@ -12,6 +19,162 @@ def get_invitation_keyboard():
     ])
     return keyboard
 
+
+def get_main_reply_keyboard(is_admin: bool = False, photo_mode_enabled: bool = False) -> ReplyKeyboardMarkup:
+    """
+    Основная пользовательская клавиатура:
+    - 📱 Приглашение (Mini App)
+    - 📸 Фоторежим (вкл/выкл)
+    - 💬 Общий чат
+    - 📞 Связаться с нами
+    """
+    photo_label = "📸 Фоторежим ✅" if photo_mode_enabled else "📸 Фоторежим ❌"
+
+    rows = [
+        [
+            KeyboardButton(
+                text="📱 Приглашение",
+                web_app=WebAppInfo(url=WEBAPP_URL),
+            ),
+            KeyboardButton(text=photo_label),
+        ],
+        [
+            KeyboardButton(text="💬 Общий чат"),
+            KeyboardButton(text="📞 Связаться с нами"),
+        ],
+    ]
+
+    if is_admin:
+        rows.append([KeyboardButton(text="🛠 Админ-панель")])
+
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
+        resize_keyboard=True,
+        input_field_placeholder="Выберите действие…",
+    )
+
+
+def get_contacts_inline_keyboard() -> InlineKeyboardMarkup:
+    """Кнопки для быстрого перехода в диалог с организаторами."""
+    buttons = []
+    if GROOM_TELEGRAM:
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"Валентин (@{GROOM_TELEGRAM})",
+                url=f"https://t.me/{GROOM_TELEGRAM}",
+            )
+        )
+    if BRIDE_TELEGRAM:
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"Мария (@{BRIDE_TELEGRAM})",
+                url=f"https://t.me/{BRIDE_TELEGRAM}",
+            )
+        )
+
+    if not buttons:
+        # fallback
+        buttons.append(
+            InlineKeyboardButton(
+                text="Организатор",
+                url=f"https://t.me/{GROOM_TELEGRAM or BRIDE_TELEGRAM}",
+            )
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=[[b] for b in buttons])
+
+
+def get_group_link_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка для перехода в общий чат."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Перейти в общий чат",
+                    url=GROUP_LINK,
+                )
+            ]
+        ]
+    )
+
+
+# ========== РЕПЛАЙ-КЛАВИАТУРЫ ДЛЯ АДМИН-МЕНЮ ==========
+
+
+def get_admin_root_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Корневое меню администратора."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Гости"), KeyboardButton(text="Таблица")],
+            [KeyboardButton(text="Группа"), KeyboardButton(text="Бот")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Админ-меню…",
+    )
+
+
+def get_admin_guests_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: гости."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Список гостей"), KeyboardButton(text="Рассадка")],
+            [
+                KeyboardButton(text="Отправить приглашение"),
+                KeyboardButton(text="Исправить имя/фамилию"),
+            ],
+            [KeyboardButton(text="Рассылка в ЛС")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Гости — выберите действие…",
+    )
+
+
+def get_admin_table_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: таблица."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Открыть таблицу")],
+            [KeyboardButton(text="Проверить связь")],
+            [KeyboardButton(text="Закрепить рассадку")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Таблица — выберите действие…",
+    )
+
+
+def get_admin_group_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: группа."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Написать сообщение")],
+            [KeyboardButton(text="Посмотреть участников")],
+            [KeyboardButton(text="Добавить/Удалить")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Группа — выберите действие…",
+    )
+
+
+def get_admin_bot_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Подменю администратора: бот."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Статус бота")],
+            [KeyboardButton(text="🔐 Авторизовать клиент")],
+            [KeyboardButton(text="Начать с нуля")],
+            [KeyboardButton(text="Добавить админа")],
+            [KeyboardButton(text="🆔 Найти user_id")],
+            [KeyboardButton(text="⬅️ Вернуться")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Бот — выберите действие…",
+    )
+
+
 def get_registration_keyboard():
     """Клавиатура для отмены регистрации"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -19,18 +182,24 @@ def get_registration_keyboard():
     ])
     return keyboard
 
+
 def get_admin_keyboard():
     """Клавиатура для администратора"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Список гостей", callback_data="admin_guests")],
+        [InlineKeyboardButton(text="🍽 Рассадка", callback_data="admin_seating")],
         [InlineKeyboardButton(text="💌 Отправить приглашение", callback_data="admin_send_invite")],
         [InlineKeyboardButton(text="📨 Рассылка в ЛС", callback_data="admin_broadcast_dm")],
+        [InlineKeyboardButton(text="🔁 Исправить Имя/Фамилию", callback_data="admin_fix_names")],
+        [InlineKeyboardButton(text="📶 Проверка связи", callback_data="admin_ping")],
+        [InlineKeyboardButton(text="🔒 Закрепить рассадку", callback_data="admin_lock_seating")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
         [InlineKeyboardButton(text="🤖 Статус бота", callback_data="admin_bot_status")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
     ])
     return keyboard
+
 
 def get_delete_guest_confirmation_keyboard(guest_user_id: int):
     """Клавиатура для подтверждения удаления гостя из группы"""
@@ -40,6 +209,7 @@ def get_delete_guest_confirmation_keyboard(guest_user_id: int):
         [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_back")]
     ])
     return keyboard
+
 
 def get_group_management_keyboard():
     """Клавиатура для управления группой"""
@@ -52,10 +222,11 @@ def get_group_management_keyboard():
     ])
     return keyboard
 
+
 def get_guests_selection_keyboard(invitations: list):
     """Клавиатура с кнопками для выбора гостя из списка приглашений"""
     keyboard_buttons = []
-    
+
     # Создаем кнопки для каждого гостя (максимум 2 кнопки в ряд)
     for i in range(0, len(invitations), 2):
         row = []
@@ -84,14 +255,15 @@ def get_guests_selection_keyboard(invitations: list):
                 callback_data=f"invite_guest_{i + 1}"
             ))
         keyboard_buttons.append(row)
-    
+
     # Кнопка возврата
     keyboard_buttons.append([InlineKeyboardButton(
         text="⬅️ Вернуться",
         callback_data="admin_back"
     )])
-    
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
 
 def get_invitation_dialog_keyboard(telegram_id: str, invitation_text: str = ""):
     """Клавиатура для открытия диалога с гостем"""
@@ -111,7 +283,7 @@ def get_invitation_dialog_keyboard(telegram_id: str, invitation_text: str = ""):
     else:
         # Fallback: просто открываем диалог
         deep_link = f"tg://resolve?domain={telegram_id}"
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="💬 Открыть диалог с текстом",
@@ -123,4 +295,52 @@ def get_invitation_dialog_keyboard(telegram_id: str, invitation_text: str = ""):
         )]
     ])
     return keyboard
+
+
+# ========== КЛАВИАТУРА ДЛЯ ИСПРАВЛЕНИЯ ИМЕНИ/ФАМИЛИИ ГОСТЕЙ ==========
+
+GUESTS_PER_PAGE = 10
+
+
+def build_guest_swap_page(guests: list, page: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для просмотра гостей и смены порядка Имя/Фамилия.
+
+    guests: список словарей {'row': int, 'full_name': str}
+    page: номер страницы (0-based)
+    """
+    kb = InlineKeyboardMarkup(row_width=1)
+
+    start = page * GUESTS_PER_PAGE
+    end = start + GUESTS_PER_PAGE
+    page_guests = guests[start:end]
+
+    for g in page_guests:
+        text = g.get("full_name", "")
+        row = g.get("row")
+        if not row:
+            continue
+        # В callback передаём строку и текущую страницу
+        kb.add(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"swapname:{row}:{page}"
+            )
+        )
+
+    # Навигация по страницам
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(
+            InlineKeyboardButton("⬅️ Назад", callback_data=f"fixnames_page:{page - 1}")
+        )
+    if end < len(guests):
+        nav_buttons.append(
+            InlineKeyboardButton("Вперёд ➡️", callback_data=f"fixnames_page:{page + 1}")
+        )
+    if nav_buttons:
+        kb.row(*nav_buttons)
+
+    kb.add(InlineKeyboardButton("🔙 В админ-меню", callback_data="admin_back"))
+    return kb
 
