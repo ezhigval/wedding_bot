@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
 import RegistrationRequired from '../common/RegistrationRequired'
+import RankIcon from '../common/RankIcon'
 import DragonGame from '../games/DragonGame'
+import FlappyBirdGame from '../games/FlappyBirdGame'
 import { useRegistration } from '../../contexts/RegistrationContext'
 import { loadConfig, getGameStats, updateGameScore, type GameStats } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -86,6 +88,8 @@ export default function ChallengeTab() {
     hapticFeedback('light')
     if (gameType === 'dragon') {
       setActiveGame('dragon')
+    } else if (gameType === 'flappy') {
+      setActiveGame('flappy')
     } else {
       alert(`Игра "${gameType}" будет доступна в ближайшее время!`)
     }
@@ -128,20 +132,18 @@ export default function ChallengeTab() {
     }
 
     // БАЛАНС ОЧКОВ ПО ИГРАМ:
-    // - Дракончик (простая): счет / 10
-    //   Пример: 100 очков в игре = 10 очков в статистике
-    // - ФлэппиБёрд (средняя): счет / 8
-    //   Пример: 100 очков в игре = 12.5 → 12 очков в статистике
+    // - Дракончик (простая): 200 очков в игре = 1 очко в рейтинге
+    //   Пример: 200 очков в игре = 1 очко в статистике, 1000 очков = 5 очков
+    // - ФлэппиБёрд (средняя): 2 очка в игре = 1 очко в рейтинге
+    //   Пример: 2 очка в игре = 1 очко в статистике, 100 очков = 50 очков
     // - Кроссворд (сложная): счет / 5
     //   Пример: 100 очков в игре = 20 очков в статистике
-    // 
-    // Это означает, что сложные игры дают больше очков за одинаковый результат
     
     let gamePoints = 0
     if (gameType === 'dragon') {
-      gamePoints = Math.floor(score / 10)
+      gamePoints = Math.floor(score / 200)
     } else if (gameType === 'flappy') {
-      gamePoints = Math.floor(score / 8)
+      gamePoints = Math.floor(score / 2)
     } else if (gameType === 'crossword') {
       gamePoints = Math.floor(score / 5)
     }
@@ -185,6 +187,10 @@ export default function ChallengeTab() {
   if (activeGame === 'dragon') {
     return <DragonGame onScore={(score) => handleGameScore(score, 'dragon')} onClose={handleGameClose} />
   }
+  
+  if (activeGame === 'flappy') {
+    return <FlappyBirdGame onScore={(score) => handleGameScore(score, 'flappy')} onClose={handleGameClose} />
+  }
 
   return (
     <div className="min-h-screen px-4 py-4 pb-24">
@@ -201,17 +207,14 @@ export default function ChallengeTab() {
             className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
           >
             🐉 Дракончик
-            <span className="block text-sm font-normal mt-1 opacity-90">Простая игра</span>
           </motion.button>
 
           <motion.button
             onClick={() => handleGameClick('flappy')}
             whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all opacity-60"
-            disabled
+            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
           >
             🐦 ФлэппиБёрд
-            <span className="block text-sm font-normal mt-1 opacity-90">Средняя сложность</span>
           </motion.button>
 
           <motion.button
@@ -221,7 +224,6 @@ export default function ChallengeTab() {
             disabled
           >
             📝 Кроссворд про молодожен
-            <span className="block text-sm font-normal mt-1 opacity-90">Сложная игра</span>
           </motion.button>
         </div>
       </SectionCard>
@@ -233,19 +235,33 @@ export default function ChallengeTab() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg border-2 border-primary/30"
         >
-          <div className="text-center">
-            {loadingStats ? (
-              <div className="text-gray-500 text-sm">Загрузка статистики...</div>
-            ) : (
-              <>
-                <div className="text-xs text-gray-600 mb-1">Ваше звание</div>
-                <div className="text-xl font-bold text-primary mb-2 capitalize">
-                  {currentRank}
+          {loadingStats ? (
+            <div className="text-gray-500 text-sm text-center">Загрузка статистики...</div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              {/* Левая часть - Звание с иконкой */}
+              <div className="flex items-center gap-3 flex-1">
+                <RankIcon 
+                  rank={currentRank as 'новичок' | 'любитель' | 'профи'} 
+                  className="flex-shrink-0"
+                />
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Ваше звание</div>
+                  <div className="text-2xl font-bold text-primary capitalize">
+                    {currentRank}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-600">Общий счет: <span className="font-semibold text-primary">{currentScore}</span></div>
-              </>
-            )}
-          </div>
+              </div>
+              
+              {/* Правая часть - Рейтинг */}
+              <div className="flex-1 text-right">
+                <div className="text-xs text-gray-600 mb-1">Ваш рейтинг</div>
+                <div className="text-2xl font-bold text-primary">
+                  {currentScore}
+                </div>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>
