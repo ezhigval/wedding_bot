@@ -41,6 +41,8 @@ from google_sheets import (
     get_seating_lock_status,
     get_guest_table_and_neighbors,
     save_photo_from_webapp,
+    get_game_stats,
+    update_game_score,
 )
 import seating_sync
 import traceback
@@ -300,6 +302,8 @@ async def init_api():
     api.router.add_post('/confirm-identity', confirm_identity)
     api.router.add_post('/parse-init-data', parse_init_data)
     api.router.add_post('/upload-photo', upload_photo)
+    api.router.add_get('/game-stats', get_game_stats_endpoint)
+    api.router.add_post('/game-score', update_game_score_endpoint)
 
     # Seating sync endpoints (для вызова из Google Apps Script)
     api.router.add_post('/seating/sync-from-guests', seating_sync_from_guests)
@@ -1252,4 +1256,79 @@ async def upload_photo(request):
         logger.error(f"Ошибка загрузки фото: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
+
+async def get_game_stats_endpoint(request):
+    """Получить статистику игрока"""
+    try:
+        # Получаем user_id из запроса
+        user_id_str = request.query.get('userId')
+        if not user_id_str:
+            return web.json_response({'error': 'userId required'}, status=400)
+        
+        user_id = int(user_id_str)
+        stats = await get_game_stats(user_id)
+        
+        if stats is None:
+            # Если статистики нет, возвращаем дефолтные значения
+            return web.json_response({
+                'user_id': user_id,
+                'first_name': '',
+                'last_name': '',
+                'total_score': 0,
+                'dragon_score': 0,
+                'flappy_score': 0,
+                'crossword_score': 0,
+                'rank': 'новичок',
+            })
+        
+        return web.json_response(stats)
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': str(e)}, status=500)
+
+async def update_game_score_endpoint(request):
+    """Обновить счет игрока"""
+    try:
+        data = await request.json()
+        user_id_str = data.get('userId')
+        game_type = data.get('gameType')  # 'dragon', 'flappy', 'crossword'
+        score = data.get('score')
+        
+        if not user_id_str or not game_type or score is None:
+            return web.json_response({'error': 'Недостаточно данных'}, status=400)
+        
+        user_id = int(user_id_str)
+        score = int(score)
+        
+        if game_type not in ['dragon', 'flappy', 'crossword']:
+            return web.json_response({'error': 'Неизвестный тип игры'}, status=400)
+        
+        success = await update_game_score(user_id, game_type, score)
+        
+        if success:
+            # Возвращаем обновленную статистику
+            stats = await get_game_stats(user_id)
+            if stats is None:
+                stats = {
+                    'user_id': user_id,
+                    'first_name': '',
+                    'last_name': '',
+                    'total_score': score,
+                    'dragon_score': score if game_type == 'dragon' else 0,
+                    'flappy_score': score if game_type == 'flappy' else 0,
+                    'crossword_score': score if game_type == 'crossword' else 0,
+                    'rank': 'новичок' if score < 100 else ('любитель' if score < 500 else 'профи'),
+                }
+            return web.json_response({
+                'success': True,
+                'stats': stats
+            })
+        else:
+            return web.json_response({'error': 'Не удалось обновить счет'}, status=500)
+            
+    except Exception as e:
+        logger.error(f"Ошибка обновления счета: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': str(e)}, status=500)
 

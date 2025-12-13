@@ -242,7 +242,74 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
     }
   } catch (error) {
     console.error('Error checking registration:', error)
-    return { registered: false, error: 'network_error' }
+        return { registered: false, error: 'network_error' }
+  }
+}
+
+export interface GameStats {
+  user_id: number
+  first_name?: string
+  last_name?: string
+  total_score: number
+  dragon_score: number
+  flappy_score: number
+  crossword_score: number
+  rank: string
+}
+
+export async function getGameStats(userId: number): Promise<GameStats> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/game-stats?userId=${userId}`)
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    }
+  } catch (error) {
+    console.error('Error loading game stats:', error)
+  }
+  // Возвращаем дефолтные значения
+  return {
+    user_id: userId,
+    first_name: '',
+    last_name: '',
+    total_score: 0,
+    dragon_score: 0,
+    flappy_score: 0,
+    crossword_score: 0,
+    rank: 'новичок',
+  }
+}
+
+export async function updateGameScore(
+  userId: number,
+  gameType: 'dragon' | 'flappy' | 'crossword',
+  score: number
+): Promise<{ success: boolean; stats?: GameStats; error?: string }> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/game-score`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        gameType,
+        score,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return { success: true, stats: data.stats }
+    } else {
+      const data = await response.json()
+      return { success: false, error: data.error || 'Ошибка обновления счета' }
+    }
+  } catch (error) {
+    console.error('Error updating game score:', error)
+    return { success: false, error: 'Ошибка сети' }
   }
 }
 

@@ -2079,6 +2079,271 @@ async def save_photo_from_webapp(
         None, _save_photo_from_webapp_sync, user_id, username, full_name, photo_data
     )
 
+# ========== ИГРЫ: СТАТИСТИКА И ОЧКИ ==========
+
+def _get_guest_name_by_user_id(user_id: int) -> Tuple[str, str]:
+    """
+    Получить имя и фамилию гостя по user_id из основной таблицы гостей.
+    Возвращает (first_name, last_name) или ("", "") если не найдено.
+    """
+    if not GSPREAD_AVAILABLE:
+        return ("", "")
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return ("", "")
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        except Exception:
+            return ("", "")
+        
+        all_values = worksheet.get_all_values()
+        for row in all_values:
+            if len(row) > 5 and str(row[5]).strip() == str(user_id):
+                # Нашли user_id в столбце F (индекс 5)
+                full_name = row[0].strip() if row[0] else ""
+                if full_name:
+                    name_parts = full_name.split(maxsplit=1)
+                    first_name = name_parts[0] if name_parts else ""
+                    last_name = name_parts[1] if len(name_parts) > 1 else ""
+                    return (first_name, last_name)
+        
+        return ("", "")
+    except Exception as e:
+        logger.error(f"Ошибка получения имени гостя {user_id}: {e}")
+        return ("", "")
+
+
+def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
+    """
+    Получить статистику игрока по user_id из листа 'Игры'.
+    
+    Формат строки:
+      A: user_id
+      B: first_name
+      C: last_name
+      D: total_score (общий счет)
+      E: dragon_score (счет в Дракончике)
+      F: flappy_score (счет в ФлэппиБёрд)
+      G: crossword_score (счет в Кроссворде)
+      H: rank (звание)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return None
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            sheet = spreadsheet.worksheet("Игры")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=8)
+            # Добавляем заголовки
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"])
+            return None
+        
+        # Ищем строку с user_id
+        all_values = sheet.get_all_values()
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]) == str(user_id):
+                return {
+                    'user_id': int(row[0]) if row[0] else user_id,
+                    'first_name': row[1] if len(row) > 1 and row[1] else "",
+                    'last_name': row[2] if len(row) > 2 and row[2] else "",
+                    'total_score': int(row[3]) if len(row) > 3 and row[3] else 0,
+                    'dragon_score': int(row[4]) if len(row) > 4 and row[4] else 0,
+                    'flappy_score': int(row[5]) if len(row) > 5 and row[5] else 0,
+                    'crossword_score': int(row[6]) if len(row) > 6 and row[6] else 0,
+                    'rank': row[7] if len(row) > 7 and row[7] else 'новичок',
+                }
+        
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики игрока {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+def _update_game_score_sync(
+    user_id: int,
+    game_type: str,  # 'dragon', 'flappy', 'crossword'
+    score: int,
+) -> bool:
+    """
+    Обновить счет игрока в конкретной игре.
+    Также обновляет общий счет и звание.
+    Сохраняет имя и фамилию пользователя из таблицы гостей.
+    
+    Формат строки в листе "Игры":
+      A: user_id
+      B: first_name
+      C: last_name
+      D: total_score (общий счет)
+      E: dragon_score (счет в Дракончике)
+      F: flappy_score (счет в ФлэппиБёрд)
+      G: crossword_score (счет в Кроссворде)
+      H: rank (звание)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        # Получаем имя и фамилию пользователя
+        first_name, last_name = _get_guest_name_by_user_id(user_id)
+        if not first_name and not last_name:
+            logger.warning(f"Не удалось найти имя для user_id={user_id}, используем пустые значения")
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        try:
+            sheet = spreadsheet.worksheet("Игры")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=8)
+            # Добавляем заголовки
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"])
+        
+        # Определяем индекс столбца для конкретной игры (0-based для списков, 1-based для gspread)
+        # Теперь индексы сдвинуты из-за добавления first_name и last_name
+        game_col_index = {
+            'dragon': 4,    # E (индекс 4 в списке, столбец 5 в gspread)
+            'flappy': 5,    # F (индекс 5 в списке, столбец 6 в gspread)
+            'crossword': 6, # G (индекс 6 в списке, столбец 7 в gspread)
+        }
+        
+        if game_type not in game_col_index:
+            logger.error(f"Неизвестный тип игры: {game_type}")
+            return False
+        
+        game_col_list = game_col_index[game_type]  # Индекс в списке (0-based)
+        game_col_gspread = game_col_list + 1  # Столбец в gspread (1-based)
+        
+        # Ищем строку с user_id
+        all_values = sheet.get_all_values()
+        user_row_gspread = None  # Номер строки для gspread (1-based)
+        
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок, начинаем с 2
+            if row and len(row) > 0 and str(row[0]) == str(user_id):
+                user_row_gspread = i
+                break
+        
+        if user_row_gspread:
+            # Обновляем существующую строку
+            row_data = all_values[user_row_gspread - 1]  # -1 потому что all_values 0-based
+            current_score = int(row_data[game_col_list]) if len(row_data) > game_col_list and row_data[game_col_list] else 0
+            
+            # Обновляем только если новый счет больше
+            if score > current_score:
+                sheet.update_cell(user_row_gspread, game_col_gspread, score)
+                
+                # Обновляем имя и фамилию (на случай если они изменились)
+                sheet.update_cell(user_row_gspread, 2, first_name)  # B - first_name
+                sheet.update_cell(user_row_gspread, 3, last_name)   # C - last_name
+                
+                # Пересчитываем общий счет из текущих значений
+                dragon_score = int(row_data[4]) if len(row_data) > 4 and row_data[4] else 0
+                flappy_score = int(row_data[5]) if len(row_data) > 5 and row_data[5] else 0
+                crossword_score = int(row_data[6]) if len(row_data) > 6 and row_data[6] else 0
+                
+                # Обновляем счет для текущей игры
+                if game_type == 'dragon':
+                    dragon_score = score
+                elif game_type == 'flappy':
+                    flappy_score = score
+                elif game_type == 'crossword':
+                    crossword_score = score
+                
+                total_score = dragon_score + flappy_score + crossword_score
+                sheet.update_cell(user_row_gspread, 4, total_score)  # D - total_score (столбец 4 в gspread)
+                
+                # Определяем звание
+                if total_score < 100:
+                    rank = 'новичок'
+                elif total_score < 500:
+                    rank = 'любитель'
+                else:
+                    rank = 'профи'
+                
+                sheet.update_cell(user_row_gspread, 8, rank)  # H - rank (столбец 8 в gspread)
+        else:
+            # Создаем новую строку
+            total_score = score
+            dragon_score = score if game_type == 'dragon' else 0
+            flappy_score = score if game_type == 'flappy' else 0
+            crossword_score = score if game_type == 'crossword' else 0
+            
+            if total_score < 100:
+                rank = 'новичок'
+            elif total_score < 500:
+                rank = 'любитель'
+            else:
+                rank = 'профи'
+            
+            if total_score < 100:
+                rank = 'новичок'
+            elif total_score < 500:
+                rank = 'любитель'
+            else:
+                rank = 'профи'
+            
+            row = [
+                str(user_id),
+                first_name,
+                last_name,
+                total_score,
+                dragon_score,
+                flappy_score,
+                crossword_score,
+                rank,
+            ]
+            sheet.append_row(row)
+        
+        # Определяем звание для логирования (если еще не определено)
+        if 'rank' not in locals():
+            if total_score < 100:
+                rank = 'новичок'
+            elif total_score < 500:
+                rank = 'любитель'
+            else:
+                rank = 'профи'
+        
+        logger.info(f"Обновлен счет для user_id={user_id} ({first_name} {last_name}), игра={game_type}, счет={score}, звание={rank}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка обновления счета игрока {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def get_game_stats(user_id: int) -> Optional[Dict]:
+    """Асинхронная обёртка для получения статистики игрока"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_game_stats_sync, user_id)
+
+
+async def update_game_score(
+    user_id: int,
+    game_type: str,
+    score: int,
+) -> bool:
+    """Асинхронная обёртка для обновления счета"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _update_game_score_sync, user_id, game_type, score)
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:
