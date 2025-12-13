@@ -694,7 +694,7 @@ def _get_admins_list_sync() -> List[Dict[str, any]]:
 
 def _get_admin_login_code_and_clear_sync(admin_user_id: int) -> str:
     """
-    Считает одноразовый код авторизации из вкладки \"Админ бота\" и сразу очищает ячейку.
+    Считает одноразовый код авторизации из вкладки "Админ бота" и сразу очищает ячейку.
 
     Логика:
     - ищем строку, где столбец B (user_id) совпадает с admin_user_id;
@@ -739,22 +739,22 @@ def _get_admin_login_code_and_clear_sync(admin_user_id: int) -> str:
             # Нашли строку текущего админа
             code = row[6].strip() if len(row) >= 7 and row[6] else ""
             if not code:
-                logger.info(f\"В столбце G для админа {admin_user_id} код не найден (строка {row_idx})\")
+                logger.info(f"В столбце G для админа {admin_user_id} код не найден (строка {row_idx})")
                 return ""
 
             # Очищаем ячейку с кодом (столбец G = 7)
-            worksheet.update_cell(row_idx, 7, \"\")
-            logger.info(f\"Считан и очищен код авторизации для админа {admin_user_id} из строки {row_idx}\")
+            worksheet.update_cell(row_idx, 7, "")
+            logger.info(f"Считан и очищен код авторизации для админа {admin_user_id} из строки {row_idx}")
             return code
 
-        logger.info(f\"Строка для админа {admin_user_id} в листе 'Админ бота' не найдена\")
+        logger.info(f"Строка для админа {admin_user_id} в листе 'Админ бота' не найдена")
         return ""
 
     except Exception as e:
-        logger.error(f\"Ошибка при чтении кода авторизации из 'Админ бота': {e}\")
+        logger.error(f"Ошибка при чтении кода авторизации из 'Админ бота': {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return \"\"
+        return ""
 
 
 async def get_admin_login_code_and_clear(admin_user_id: int) -> str:
@@ -762,8 +762,8 @@ async def get_admin_login_code_and_clear(admin_user_id: int) -> str:
     Асинхронная обёртка для _get_admin_login_code_and_clear_sync.
     """
     if not GSPREAD_AVAILABLE:
-        logger.warning(\"Google Sheets недоступен, не можем считать код авторизации\")
-        return \"\"
+        logger.warning("Google Sheets недоступен, не можем считать код авторизации")
+        return ""
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_admin_login_code_and_clear_sync, admin_user_id)
