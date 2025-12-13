@@ -1,7 +1,46 @@
 /* ============================================
-   CSS ПЕРЕМЕННЫЕ ДЛЯ ЦВЕТОВ
+   CSS ПЕРЕМЕННЫЕ - ЕДИНАЯ СИСТЕМА ДИЗАЙНА
    ============================================ */
 :root {
+    /* ========== ШРИФТЫ ========== */
+    --font-family-main: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
+    --font-weight-light: 300;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    
+    /* ========== РАЗМЕРЫ ШРИФТОВ ========== */
+    --font-size-xs: 14px;        /* Очень мелкий текст */
+    --font-size-sm: 16px;        /* Мелкий текст */
+    --font-size-base: 18px;      /* Основной текст */
+    --font-size-md: 20px;        /* Средний текст */
+    --font-size-lg: 24px;        /* Подзаголовки */
+    --font-size-xl: 28px;        /* Заголовки секций */
+    --font-size-xxl: 32px;       /* Большие заголовки */
+    --font-size-hero: 36px;      /* Герой-заголовки */
+    
+    /* ========== МЕЖСТРОЧНЫЕ ИНТЕРВАЛЫ ========== */
+    --line-height-tight: 1.2;    /* Для заголовков */
+    --line-height-normal: 1.5;   /* Для основного текста */
+    --line-height-relaxed: 1.6;  /* Для длинного текста */
+    
+    /* ========== ОТСТУПЫ ========== */
+    --spacing-xs: 8px;
+    --spacing-sm: 10px;
+    --spacing-md: 15px;
+    --spacing-base: 20px;
+    --spacing-lg: 30px;
+    --spacing-xl: 40px;
+    --spacing-xxl: 60px;
+    
+    /* ========== ОТСТУПЫ СЕКЦИЙ ========== */
+    --section-padding: 40px 20px;
+    --section-margin: 20px 0;
+    --card-padding: 40px 20px;
+    --card-margin: 20px 0;
+    
+    /* ========== ЦВЕТА ========== */
     /* Основные цвета палитры */
     --color-primary: #5A7C52;              /* Основной зеленый */
     --color-primary-dark: #4A6B42;        /* Темно-зеленый */
@@ -72,10 +111,12 @@
 }
 
 body {
-    font-family: 'Cormorant Garamond', 'Georgia', 'Times New Roman', serif;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     background: var(--color-bg-main);
     color: var(--color-text-main);
-    line-height: 1.12;
     position: relative;
     overflow-x: hidden;
     min-height: 100vh;
@@ -632,26 +673,29 @@ body {
     left: 0;
     right: 0;
     background: transparent;
-    padding: 20px 20px 30px;
+    padding: var(--spacing-base) var(--spacing-base) var(--spacing-lg);
     text-align: center;
     z-index: 2;
 }
 
 .couple-names {
-    font-size: 36px;
-    font-weight: 700;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-hero);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-tight);
     color: white;
-    margin-bottom: 10px;
+    margin-bottom: var(--spacing-sm);
     text-transform: uppercase;
     letter-spacing: 2px;
-    font-family: 'Playfair Display', 'Georgia', serif;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .wedding-date-hero {
-    font-size: 24px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-light);
+    line-height: var(--line-height-tight);
     color: var(--color-cream);
-    font-weight: 300;
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
@@ -659,8 +703,8 @@ body {
 .section-card {
     background: var(--color-bg-light);
     backdrop-filter: blur(2px);
-    padding: 40px 20px;
-    margin: 20px 0;
+    padding: var(--section-padding);
+    margin: var(--section-margin);
     border-top: 2px solid var(--color-overlay-green-border-medium);
     border-bottom: 2px solid var(--color-overlay-green-border-medium);
     position: relative;
@@ -669,21 +713,22 @@ body {
 }
 
 .section-title {
-    font-size: 28px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
     text-align: center;
     color: var(--color-primary);
-    margin-bottom: 30px;
+    margin-bottom: var(--spacing-lg);
     text-transform: uppercase;
     letter-spacing: 1px;
-    font-weight: 600;
-    font-family: 'Playfair Display', 'Georgia', serif;
 }
 
 /* Heartbeat Line */
 .heartbeat-line {
     width: 100%;
     height: 30px;
-    margin: 30px 0;
+    margin: var(--spacing-lg) 0;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -724,52 +769,34 @@ body {
 
 /* Greeting */
 .greeting-text {
-    font-size: 20px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     text-align: center;
     color: var(--color-text-main);
-    line-height: 1.26;
-    margin-bottom: 20px;
+    margin-bottom: var(--spacing-base);
 }
 
 /* Текст под заголовком "ПРИСУТСТВИЕ" — делаем заметно меньше */
 .rsvp-text {
-    font-size: 14px;
-    line-height: 1.4;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-primary);
 }
 
 /* Countdown Clock */
+/* Стили для обертки таймера убраны - используется внешний скрипт MegaTimer */
 .countdown-clock {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
-    margin: 40px 0 80px; /* увеличен нижний отступ, чтобы добавить ~30px пространства после таймера */
-    padding-bottom: 20px; /* дополнительный отступ для предотвращения наложения */
-}
-
-/* старый локальный флип-таймер удалён, сейчас используется внешний MegaTimer */
-
-.clock-label {
-    font-size: 15px;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    margin-top: 4px;
-}
-
-.clock-separator {
-    font-size: 32px;
-    font-weight: bold;
-    color: var(--color-primary);
-    margin: 0 4px;
-    line-height: 49px;
+    /* Убраны все стили, чтобы не ломать внешний скрипт */
 }
 
 .calendar-preview {
     text-align: center;
-    margin-top: 40px; /* увеличен отступ сверху для предотвращения наложения */
-    padding: 20px;
+    margin-top: 120px;
+    padding: var(--spacing-base);
     background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 10px;
@@ -777,20 +804,22 @@ body {
 }
 
 .calendar-date-full {
-    font-size: 24px;
-    font-weight: bold;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-tight);
     color: var(--color-primary-dark);
     text-transform: uppercase;
 }
 
 /* Guest List */
 .guests-list {
-    margin: 20px 0;
+    margin: var(--spacing-base) 0;
 }
 
 .guest-item {
-    margin-bottom: 20px;
-    padding: 20px;
+    margin-bottom: var(--spacing-base);
+    padding: var(--spacing-base);
     background: var(--color-overlay-cream-card);
     backdrop-filter: blur(3px);
     border-radius: 8px;
@@ -808,8 +837,10 @@ body {
 }
 
 .guest-item-title {
-    font-size: 20px;
-    font-weight: bold;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-tight);
     color: var(--color-primary);
     margin: 0;
 }
@@ -827,12 +858,14 @@ body {
 .guest-item input,
 .guest-item select {
     width: 100%;
-    padding: 12px 15px;
-    padding-right: 40px;
+    padding: var(--spacing-md) var(--spacing-md);
+    padding-right: var(--spacing-xl);
     border: 2px solid var(--color-primary);
     border-radius: 8px;
-    font-size: 20px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     background: var(--color-bg-light);
     color: var(--color-primary-dark);
     cursor: pointer;
@@ -842,7 +875,7 @@ body {
     -moz-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235A7C52' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 15px center;
+    background-position: right var(--spacing-md) center;
     background-size: 12px;
     font-weight: 500;
     box-shadow: 0 2px 4px var(--color-shadow-green);
@@ -867,18 +900,21 @@ body {
 .guest-item select option {
     background: var(--color-cream);
     color: var(--color-primary-dark);
-    padding: 10px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    padding: var(--spacing-sm);
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
 }
 
 .guest-item .btn-remove {
-    padding: 8px 15px;
+    padding: var(--spacing-xs) var(--spacing-md);
     background: var(--color-btn-danger);
     color: white;
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 14px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
 }
 
 .guest-item .btn-remove:hover {
@@ -887,11 +923,14 @@ body {
 
 .btn-add-guest {
     width: 100%;
-    padding: 12px;
+    padding: var(--spacing-md);
     background: var(--color-cream);
     border: 2px dashed var(--color-primary);
     border-radius: 5px;
-    font-size: 20px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-primary-dark);
     cursor: pointer;
     transition: all 0.3s;
@@ -911,7 +950,7 @@ body {
 /* Forms */
 .rsvp-form,
 .questionnaire-form {
-    margin-top: 30px;
+    margin-top: var(--spacing-lg);
 }
 
 /* Кремовый фон для блока присутствия */
@@ -920,26 +959,30 @@ body {
 }
 
 .form-group {
-    margin-bottom: 25px;
+    margin-bottom: var(--spacing-lg);
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 10px;
-    font-weight: bold;
+    margin-bottom: var(--spacing-sm);
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-normal);
     color: var(--color-text-main);
-    font-size: 20px;
 }
 
 .form-group input[type="text"],
 .form-group input[type="number"],
 .form-group textarea {
     width: 100%;
-    padding: 12px 15px;
+    padding: var(--spacing-md) var(--spacing-md);
     border: 2px solid var(--color-border-light);
     border-radius: 5px;
-    font-size: 20px;
-    font-family: inherit;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     transition: border-color 0.3s;
     background: var(--color-cream);
 }
@@ -954,11 +997,14 @@ body {
 
 .form-select {
     width: 100%;
-    padding: 14px 18px;
+    padding: var(--spacing-md) var(--spacing-base);
+    padding-right: var(--spacing-xl);
     border: 2px solid var(--color-primary);
     border-radius: 8px;
-    font-size: 20px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-normal);
     background: var(--color-cream);
     color: var(--color-primary-dark);
     cursor: pointer;
@@ -968,10 +1014,8 @@ body {
     -moz-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235A7C52' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 15px center;
+    background-position: right var(--spacing-md) center;
     background-size: 12px;
-    padding-right: 40px;
-    font-weight: 500;
     box-shadow: 0 2px 4px var(--color-shadow-green);
 }
 
@@ -992,8 +1036,9 @@ body {
 .form-select option {
     background: var(--color-cream);
     color: var(--color-primary-dark);
-    padding: 10px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    padding: var(--spacing-sm);
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-md);
 }
 
 .form-group input[type="text"] + input[type="text"] {
@@ -1202,7 +1247,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 2px;
     margin-bottom: 20px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    font-family: var(--font-family-main);
 }
 
 /* Анимации появления при скролле */
@@ -1237,32 +1282,7 @@ body {
 
 /* Responsive */
 @media (max-width: 480px) {
-    .countdown-clock {
-        gap: 10px;
-    }
-    
-    .clock-row {
-        gap: 4px;
-    }
-    
-    .clock-flip {
-        width: 50px;
-        height: 60px;
-    }
-    
-    .clock-flip-top,
-    .clock-flip-bottom {
-        font-size: 28px;
-    }
-    
-    .clock-separator {
-        font-size: 24px;
-        line-height: 42px;
-    }
-    
-    .clock-label {
-        font-size: 9px;
-    }
+    /* Стили для таймера убраны - используется внешний скрипт */
     
     .couple-names {
         font-size: 24px;
@@ -1476,7 +1496,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 2px;
     margin-bottom: 20px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    font-family: var(--font-family-main);
 }
 
 /* Анимации появления при скролле */
@@ -1511,32 +1531,7 @@ body {
 
 /* Responsive */
 @media (max-width: 480px) {
-    .countdown-clock {
-        gap: 10px;
-    }
-    
-    .clock-row {
-        gap: 4px;
-    }
-    
-    .clock-flip {
-        width: 50px;
-        height: 60px;
-    }
-    
-    .clock-flip-top,
-    .clock-flip-bottom {
-        font-size: 28px;
-    }
-    
-    .clock-separator {
-        font-size: 24px;
-        line-height: 42px;
-    }
-    
-    .clock-label {
-        font-size: 9px;
-    }
+    /* Стили для таймера убраны - используется внешний скрипт */
     
     .couple-names {
         font-size: 24px;
@@ -1576,20 +1571,22 @@ body {
 }
 
 .timeline-time {
-    font-size: 18px;
-    font-weight: 600;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
     color: var(--color-primary);
     min-width: 100px;
-    margin-right: 20px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    margin-right: var(--spacing-base);
 }
 
 .timeline-event {
-    font-size: 16px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-text-main);
-    line-height: 1.12;
     flex: 1;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
 
 /* Дресс-код */
@@ -1600,8 +1597,8 @@ body {
 .dresscode-card {
     background: var(--color-bg-card);
     backdrop-filter: blur(3px);
-    padding: 40px 20px;
-    margin: 20px 0;
+    padding: var(--card-padding);
+    margin: var(--card-margin);
     border-top: 2px solid var(--color-overlay-green-border-medium);
     border-bottom: 2px solid var(--color-overlay-green-border-medium);
     position: relative;
@@ -1611,12 +1608,13 @@ body {
 
 .dresscode-intro {
     text-align: center;
-    font-size: 18px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-text-main);
-    line-height: 1.26;
-    margin: 20px 0 30px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
-    padding: 0 20px;
+    margin: var(--spacing-base) 0 var(--spacing-lg);
+    padding: 0 var(--spacing-base);
 }
 
 .color-palette {
@@ -1644,16 +1642,37 @@ body {
     transition: transform 0.3s ease;
 }
 
+/* Блок анимации дресс-кода */
+.dresscode-animation-section {
+    margin: 20px 0;
+}
+
+.dresscode-animation-container {
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    /* Высота будет определяться первым изображением */
+}
+
+.dresscode-animation-final {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 8px;
+    /* Картинка занимает 100% ширины контейнера */
+}
+
 .color-circle:hover {
     transform: scale(1.1);
 }
 
 .color-name {
-    font-size: 14px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-tight);
     color: var(--color-text-main);
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
     text-align: center;
-    line-height: 0.98;
 }
 
 /* Пожелания */
@@ -1698,11 +1717,12 @@ body {
 }
 
 .wishes-text {
-    font-size: 18px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-bg-white);
-    line-height: 0.7; /* Высота строки равна размеру шрифта */
     text-align: left;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
     flex: 1;
     margin: 0;
 }
@@ -1719,26 +1739,28 @@ body {
 }
 
 .group-description {
-    font-size: 16px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-text-main);
-    line-height: 1.12;
-    margin-bottom: 25px;
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    margin-bottom: var(--spacing-lg);
 }
 
 .btn-group-link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 18px 40px;
+    gap: var(--spacing-md);
+    padding: var(--spacing-base) var(--spacing-xl);
     background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
     color: white;
     text-decoration: none;
     border-radius: 12px;
-    font-size: 18px;
-    font-weight: 600;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-normal);
     text-transform: uppercase;
     letter-spacing: 1px;
     box-shadow: 0 4px 15px var(--color-shadow-green-strong);
@@ -1771,26 +1793,30 @@ body {
 }
 
 .venue-name {
-    font-size: 28px;
-    font-weight: 600;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
     color: var(--color-primary);
-    margin-bottom: 5px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    margin-bottom: var(--spacing-xs);
 }
 
 .venue-hall {
-    font-size: 22px;
-    font-weight: 500;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
     color: var(--color-primary-dark);
-    margin-bottom: 10px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    margin-bottom: var(--spacing-sm);
     font-style: italic;
 }
 
 .venue-address {
-    font-size: 18px;
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
     color: var(--color-primary-dark);
-    font-family: 'Cormorant Garamond', 'Georgia', serif;
 }
 
 .venue-image-container {
@@ -1876,7 +1902,7 @@ body {
     color: var(--color-primary);
     font-size: 32px;
     margin-bottom: 15px;
-    font-family: 'Playfair Display', 'Georgia', serif;
+    font-family: var(--font-family-main);
 }
 
 .success-message p {
@@ -1922,13 +1948,7 @@ body {
         font-size: calc(20px + 8px);
     }
     
-    .clock-label {
-        font-size: calc(15px + 8px);
-    }
-    
-    .clock-separator {
-        font-size: calc(32px + 8px);
-    }
+    /* Стили для таймера убраны */
     
     .calendar-date-full {
         font-size: calc(24px + 8px);
@@ -2055,26 +2075,16 @@ body {
         font-size: calc(20px + 4px);
     }
     
-    .clock-label {
-        font-size: calc(15px + 4px);
-    }
-    
-    .clock-separator {
-        font-size: calc(32px + 4px);
-    }
+    /* Стили для таймера убраны */
     
     .calendar-date-full {
         font-size: calc(24px + 4px);
     }
     
-    .calendar-section .countdown-clock {
-        margin: 40px 0 60px;
-        padding-bottom: 30px;
-        min-height: 200px;
-    }
+    /* Стили для обертки таймера убраны */
     
     .calendar-section .calendar-preview {
-        margin-top: 60px;
+        margin-top: 160px;
         padding: 25px;
     }
     
@@ -2186,10 +2196,7 @@ body {
         font-size: calc(24px + 4px);
     }
     
-    .clock-flip-top,
-    .clock-flip-bottom {
-        font-size: calc(28px + 4px);
-    }
+    /* Стили для таймера убраны */
     
     h1, h2, h3, h4, h5, h6 {
         font-size: calc(1em + 4px);

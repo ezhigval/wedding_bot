@@ -1184,4 +1184,36 @@ function initScrollReveal() {
     revealItems.forEach(item => {
         observer.observe(item);
     });
+    
+    // Инициализация анимации дресс-кода
+    initDresscodeAnimation();
+}
+
+// Инициализация изображения дресс-кода
+function initDresscodeAnimation() {
+    const container = document.getElementById('dresscodeAnimationContainer');
+    const finalElement = document.getElementById('dresscodeAnimationFinal');
+    
+    if (!container || !finalElement) {
+        return;
+    }
+    
+    // Просто показываем картинку при появлении в viewport
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                // Плавное появление картинки
+                finalElement.style.transition = 'opacity 0.6s ease-in';
+                finalElement.style.opacity = '1';
+                observer.unobserve(container);
+            }
+        });
+    }, {
+        threshold: 0.3,
+        rootMargin: '0px'
+    });
+    
+    // Изначально картинка невидима
+    finalElement.style.opacity = '0';
+    observer.observe(container);
 }
