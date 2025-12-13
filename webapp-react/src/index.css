@@ -46,6 +46,19 @@
   --spacing-xl: 40px;
   --spacing-xxl: 60px;
   --spacing-xxxl: 80px;
+
+  /* Веса шрифтов */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Высота строк */
+  --line-height-normal: 1.5;
+  --line-height-tight: 1.2;
+
+  /* Границы */
+  --color-border-light: #DBD0C4;
 }
 
 * {
@@ -105,5 +118,212 @@ body {
 .lottie-container canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* Стили для формы */
+.rsvp-section .section-card {
+  background: var(--color-cream);
+  padding: var(--spacing-base) !important; /* Уменьшаем padding карточки */
+}
+
+.rsvp-form {
+  margin-top: var(--spacing-base); /* Уменьшаем отступ сверху формы */
+}
+
+.form-group {
+  margin-bottom: var(--spacing-base); /* Уменьшаем отступ между группами */
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: var(--spacing-xs); /* Уменьшаем отступ под label */
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-main);
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group textarea {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-sm); /* Уменьшаем padding */
+  border: 2px solid var(--color-border-light);
+  border-radius: 5px;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+  transition: border-color 0.3s;
+  background: var(--color-cream);
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.form-select {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-sm); /* Уменьшаем padding */
+  padding-right: var(--spacing-xl);
+  border: 2px solid var(--color-primary);
+  border-radius: 8px;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+  background: var(--color-cream);
+  color: var(--color-primary-dark);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235A7C52' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-sm) center; /* Уменьшаем отступ стрелки */
+  background-size: 12px;
+  box-shadow: 0 2px 4px rgba(90, 124, 82, 0.2);
+}
+
+.form-select:hover {
+  background-color: var(--color-bg-main);
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 4px 8px rgba(90, 124, 82, 0.3);
+  transform: translateY(-1px);
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  background-color: var(--color-bg-main);
+  box-shadow: 0 0 0 3px rgba(90, 124, 82, 0.2);
+}
+
+.form-select option {
+  background: var(--color-cream);
+  color: var(--color-primary-dark);
+  padding: var(--spacing-sm);
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+}
+
+.form-group input[type="text"] + input[type="text"] {
+  margin-top: var(--spacing-xs); /* Уменьшаем отступ между двумя input */
+}
+
+.btn-add-guest {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-base); /* Уменьшаем padding */
+  background: var(--color-cream);
+  border: 2px dashed var(--color-primary);
+  border-radius: 5px;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+  color: var(--color-primary-dark);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-add-guest:hover {
+  background: var(--color-bg-main);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-add-guest:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-confirm {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-base); /* Уменьшаем padding */
+  border: none;
+  border-radius: 5px;
+  font-size: var(--font-size-md);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-confirm:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(90, 124, 82, 0.4);
+}
+
+.btn-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-buttons {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-base); /* Уменьшаем отступ сверху */
+}
+
+/* Стили для гостей */
+.guest-item {
+  background: var(--color-cream);
+  border: 2px solid var(--color-primary);
+  border-radius: 8px;
+  padding: var(--spacing-sm); /* Уменьшаем padding */
+  margin-bottom: var(--spacing-sm); /* Уменьшаем отступ снизу */
+}
+
+.guest-item .form-group {
+  margin-bottom: 0;
+}
+
+.guest-item input[type="text"] {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-sm); /* Уменьшаем padding */
+  border: 2px solid var(--color-primary);
+  border-radius: 8px;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+  background: var(--color-bg-light);
+  color: var(--color-primary-dark);
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(90, 124, 82, 0.2);
+  margin-top: var(--spacing-xs); /* Уменьшаем отступ сверху */
+}
+
+.guest-item input[type="text"]:focus {
+  outline: none;
+  border-color: var(--color-primary-dark);
+  background-color: var(--color-cream);
+  box-shadow: 0 0 0 3px rgba(90, 124, 82, 0.2);
+}
+
+.guest-item .btn-remove {
+  padding: var(--spacing-xs) var(--spacing-sm); /* Уменьшаем padding */
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+}
+
+.guest-item .btn-remove:hover {
+  background: #b91c1c;
 }
 

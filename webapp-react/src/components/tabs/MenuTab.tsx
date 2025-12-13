@@ -112,7 +112,8 @@ export default function MenuTab() {
   return (
     <div className="min-h-screen px-4 py-4">
       {/* RSVP Form */}
-      <SectionCard>
+      <section className="rsvp-section">
+        <SectionCard>
         <AnimatePresence>
           {isSuccess ? (
             <motion.div
@@ -133,7 +134,7 @@ export default function MenuTab() {
               exit={{ opacity: 0 }}
             >
               <SectionTitle>ПРИСУТСТВИЕ</SectionTitle>
-              <p className="text-center text-gray-600 mb-3 leading-[1.2] text-[19.2px]">
+              <p className="text-center text-gray-600 mb-2 leading-[1.2] text-[19.2px]">
                 Пожалуйста, подтвердите ваше присутствие на нашем празднике.
                 Заполните форму ниже:
               </p>
@@ -142,130 +143,117 @@ export default function MenuTab() {
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-red-50 border-2 border-red-200 rounded-lg p-[3.2px] mb-3 text-red-700"
+                  className="bg-red-50 border-2 border-red-200 rounded-lg p-2 mb-2 text-red-700"
                 >
                   ⚠️ {error}
                 </motion.div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="rsvp-form">
                 {/* Main Guest */}
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-[16.8px] font-semibold text-gray-700 mb-1 leading-[1.2]">
-                      Фамилия, Имя
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input
-                        type="text"
-                        required
-                        minLength={2}
-                        placeholder="Фамилия"
-                        value={formData.lastName}
-                        onChange={(e) =>
-                          setFormData({ ...formData, lastName: e.target.value })
-                        }
-                        className="px-[3.2px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <input
-                        type="text"
-                        required
-                        minLength={2}
-                        placeholder="Имя"
-                        value={formData.firstName}
-                        onChange={(e) =>
-                          setFormData({ ...formData, firstName: e.target.value })
-                        }
-                        className="px-[3.2px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                  </div>
+                <div className="form-group">
+                  <label htmlFor="lastName">Фамилия, Имя</label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    required
+                    minLength={2}
+                    placeholder="Фамилия"
+                    value={formData.lastName}
+                    onChange={(e) =>
+                      setFormData({ ...formData, lastName: e.target.value })
+                    }
+                  />
+                  <input
+                    type="text"
+                    id="firstName"
+                    required
+                    minLength={2}
+                    placeholder="Имя"
+                    value={formData.firstName}
+                    onChange={(e) =>
+                      setFormData({ ...formData, firstName: e.target.value })
+                    }
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-[16.8px] font-semibold text-gray-700 mb-1 leading-[1.2]">
-                      Родство
-                    </label>
-                    <select
-                      required
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData({ ...formData, category: e.target.value })
-                      }
-                      className="w-full px-[3.2px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Выберите...</option>
-                      <option value="Семья">Семья</option>
-                      <option value="Друзья">Друзья</option>
-                      <option value="Родственники">Родственники</option>
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label htmlFor="category">Родство</label>
+                  <select
+                    id="category"
+                    required
+                    value={formData.category}
+                    onChange={(e) =>
+                      setFormData({ ...formData, category: e.target.value })
+                    }
+                    className="form-select"
+                  >
+                    <option value="">Выберите...</option>
+                    <option value="Семья">Семья</option>
+                    <option value="Друзья">Друзья</option>
+                    <option value="Родственники">Родственники</option>
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="block text-[16.8px] font-semibold text-gray-700 mb-1 leading-[1.2]">
-                      Сторона
-                    </label>
-                    <select
-                      required
-                      value={formData.side}
-                      onChange={(e) =>
-                        setFormData({ ...formData, side: e.target.value })
-                      }
-                      className="w-full px-[3.2px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Выберите...</option>
-                      <option value="Жених">Жених</option>
-                      <option value="Невеста">Невеста</option>
-                      <option value="Общие">Общие</option>
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label htmlFor="side">Сторона</label>
+                  <select
+                    id="side"
+                    required
+                    value={formData.side}
+                    onChange={(e) =>
+                      setFormData({ ...formData, side: e.target.value })
+                    }
+                    className="form-select"
+                  >
+                    <option value="">Выберите...</option>
+                    <option value="Жених">Жених</option>
+                    <option value="Невеста">Невеста</option>
+                    <option value="Общие">Общие</option>
+                  </select>
                 </div>
 
                 {/* Additional Guests */}
-                <AnimatePresence>
-                  {guests.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-2"
-                    >
-                      <h3 className="text-[21.6px] font-semibold text-gray-700">
-                        Дополнительные гости
-                      </h3>
-                      {guests.map((guest) => (
-                        <GuestForm
-                          key={guest.id}
-                          guest={guest}
-                          onUpdate={(field, value) =>
-                            updateGuest(guest.id, field, value)
-                          }
-                          onRemove={() => removeGuest(guest.id)}
-                        />
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <div className="guests-list">
+                  <AnimatePresence>
+                    {guests.map((guest) => (
+                      <GuestForm
+                        key={guest.id}
+                        guest={guest}
+                        onUpdate={(field, value) =>
+                          updateGuest(guest.id, field, value)
+                        }
+                        onRemove={() => removeGuest(guest.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={addGuest}
-                  className="w-full py-[1.6px] px-[3.2px] bg-cream text-primary-dark rounded-lg font-semibold hover:bg-cream/80 transition-colors"
-                >
-                  + Добавить гостя
-                </button>
+                <div className="form-group">
+                  <button
+                    type="button"
+                    onClick={addGuest}
+                    className="btn-add-guest"
+                  >
+                    + Добавить гостя
+                  </button>
+                </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-[2.4px] px-[4.8px] bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? 'Отправка...' : 'Подтвердить'}
-                </button>
+                <div className="form-buttons">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="btn-confirm"
+                  >
+                    {isSubmitting ? 'Отправка...' : 'Подтвердить'}
+                  </button>
+                </div>
               </form>
             </motion.div>
           )}
         </AnimatePresence>
-      </SectionCard>
+        </SectionCard>
+      </section>
 
       {/* Contact Section */}
       <SectionCard>
@@ -309,41 +297,42 @@ function GuestForm({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="p-[3.2px] bg-cream/30 rounded-lg border border-primary/20"
+      className="guest-item"
     >
-      <div className="flex justify-between items-center mb-1.5">
+      <div className="flex justify-between items-center mb-1">
         <h4 className="font-semibold text-gray-700">Гость</h4>
         <button
           type="button"
           onClick={onRemove}
-          className="text-red-500 hover:text-red-700 text-xl"
+          className="btn-remove"
         >
-          ×
+          Удалить
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+      <div className="form-group">
+        <div className="grid grid-cols-2 gap-1.5">
+          <input
+            type="text"
+            placeholder="Фамилия"
+            value={guest.lastName}
+            onChange={(e) => onUpdate('lastName', e.target.value)}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Имя"
+            value={guest.firstName}
+            onChange={(e) => onUpdate('firstName', e.target.value)}
+            required
+          />
+        </div>
         <input
           type="text"
-          placeholder="Фамилия"
-          value={guest.lastName}
-          onChange={(e) => onUpdate('lastName', e.target.value)}
-          className="px-[2.4px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-        />
-        <input
-          type="text"
-          placeholder="Имя"
-          value={guest.firstName}
-          onChange={(e) => onUpdate('firstName', e.target.value)}
-          className="px-[2.4px] py-[1.6px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+          placeholder="Telegram (необязательно)"
+          value={guest.telegram || ''}
+          onChange={(e) => onUpdate('telegram', e.target.value)}
         />
       </div>
-      <input
-        type="text"
-        placeholder="Telegram (необязательно)"
-        value={guest.telegram || ''}
-        onChange={(e) => onUpdate('telegram', e.target.value)}
-        className="w-full px-2.4 py-1.6 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-      />
     </motion.div>
   )
 }
