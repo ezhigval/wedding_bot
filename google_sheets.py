@@ -710,7 +710,7 @@ def _get_admin_login_code_and_clear_sync(admin_user_id: int) -> str:
         try:
             worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_ADMINS_SHEET_NAME)
         except Exception as e:
-            logger.error(f\"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}\")
+            logger.error(f"Вкладка '{GOOGLE_SHEETS_ADMINS_SHEET_NAME}' не найдена: {e}")
             return ""
 
         all_values = worksheet.get_all_values()
