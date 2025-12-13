@@ -17,7 +17,7 @@ except ImportError:
     GSPREAD_AVAILABLE = False
     logger.warning("gspread не установлен. Интеграция с Google Sheets недоступна.")
 
-from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME, GOOGLE_SHEETS_RULES_SHEET_NAME
+from config import GOOGLE_SHEETS_ID, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SHEET_NAME, GOOGLE_SHEETS_INVITATIONS_SHEET_NAME, GOOGLE_SHEETS_ADMINS_SHEET_NAME, GOOGLE_SHEETS_TIMELINE_SHEET_NAME
 
 def get_google_sheets_client():
     """Получить клиент Google Sheets"""
@@ -1157,16 +1157,222 @@ def _delete_guest_from_sheets_sync(user_id: int) -> bool:
         logger.error(traceback.format_exc())
         return False
 
-async def save_ai_rule_to_sheets(rule_text: str, admin_name: str = None) -> bool:
+async def find_guest_by_name(first_name: str, last_name: str) -> Optional[Dict]:
     """
-    Сохранить правило ИИ в Google Sheets (вкладка "Правила ИИ")
+    Найти гостя по имени и фамилии (без user_id)
     
     Args:
-        rule_text: Текст правила
-        admin_name: Имя админа, который добавил правило (опционально)
-    
+        first_name: Имя
+        last_name: Фамилия
+        
     Returns:
-        True если успешно сохранено, False в случае ошибки
+        Словарь с информацией о госте или None если не найден
+        {'first_name': str, 'last_name': str, 'row': int, 'user_id': str}
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return None
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _find_guest_by_name_sync, first_name, last_name)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка поиска гостя по имени: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+def _find_guest_by_name_sync(first_name: str, last_name: str) -> Optional[Dict]:
+    """Синхронная функция для поиска гостя по имени.
+    
+    Учитывает возможную перестановку имени и фамилии местами.
+    """
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        all_values = worksheet.get_all_values()
+        
+        # Ищем по имени и фамилии (столбец A)
+        full_name = f"{first_name} {last_name}".strip()
+        alt_full_name = f"{last_name} {first_name}".strip()
+        full_name_lower = full_name.lower()
+        alt_full_name_lower = alt_full_name.lower()
+        
+        for row_idx, row in enumerate(all_values, start=1):
+            if len(row) > 0:
+                existing_name = row[0].strip() if row[0] else ""
+                confirmation = row[2].strip() if len(row) > 2 and row[2] else ""  # Столбец C
+                
+                # Проверяем совпадение имени (в обоих порядках, без учета регистра) и подтверждение
+                existing_lower = existing_name.lower()
+                if existing_lower in (full_name_lower, alt_full_name_lower) and confirmation.upper() == "ДА":
+                    user_id = row[5].strip() if len(row) > 5 and row[5] else ""  # Столбец F (индекс 5)
+                    
+                    # Парсим имя и фамилию из существующей строки
+                    name_parts = existing_name.split(maxsplit=1)
+                    found_first_name = name_parts[0] if name_parts else first_name
+                    found_last_name = name_parts[1] if len(name_parts) > 1 else last_name
+                    
+                    logger.info(f"Найден гость по имени: {existing_name} (строка {row_idx}, user_id: {user_id})")
+                    return {
+                        'first_name': found_first_name,
+                        'last_name': found_last_name,
+                        'row': row_idx,
+                        'user_id': user_id
+                    }
+        
+        logger.info(f"Гость {full_name} / {alt_full_name} не найден по имени")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка поиска гостя по имени: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def find_duplicate_guests() -> Dict[str, List[Dict]]:
+    """
+    Поиск возможных дубликатов гостей:
+    - по совпадающему user_id (столбец F)
+    - по совпадающим имени/фамилии, с учетом возможной перестановки местами.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен, поиск дубликатов невозможен")
+        return {"by_user_id": [], "by_name": []}
+    
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _find_duplicate_guests_sync)
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка поиска дубликатов гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"by_user_id": [], "by_name": []}
+
+
+def _find_duplicate_guests_sync() -> Dict[str, List[Dict]]:
+    """Синхронная функция для поиска дубликатов гостей в основной таблице."""
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return {"by_user_id": [], "by_name": []}
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
+        
+        all_values = worksheet.get_all_values()
+        
+        by_user_id: Dict[str, List[Dict]] = {}
+        by_name_key: Dict[str, List[Dict]] = {}
+        
+        for row_idx, row in enumerate(all_values, start=1):
+            if not row or len(row) == 0:
+                continue
+            
+            full_name = row[0].strip() if row[0] else ""
+            if not full_name:
+                continue
+            
+            # Столбец C — подтверждение "ДА"/"НЕТ"
+            confirmation = row[2].strip().upper() if len(row) > 2 and row[2] else ""
+            if confirmation != "ДА":
+                # Интересуют только подтверждённые гости
+                continue
+            
+            user_id = row[5].strip() if len(row) > 5 and row[5] else ""
+            
+            # Разбираем имя и фамилию для нормализации (учитываем возможную перестановку)
+            parts = full_name.split()
+            first = parts[0] if parts else ""
+            last = " ".join(parts[1:]) if len(parts) > 1 else ""
+            
+            if first and last:
+                key_parts = sorted([first.lower(), last.lower()])
+                name_key = "|".join(key_parts)
+            else:
+                name_key = full_name.lower()
+            
+            info = {
+                "row": row_idx,
+                "full_name": full_name,
+                "user_id": user_id,
+            }
+            
+            if user_id:
+                by_user_id.setdefault(user_id, []).append(info)
+            by_name_key.setdefault(name_key, []).append(info)
+        
+        # Дубликаты по user_id.
+        # Новая логика: один и тот же user_id может принадлежать основному гостю
+        # и его дополнительным гостям БЕЗ собственного Telegram — это нормально.
+        # Проблемой считаем только случаи, когда у ОДНОГО user_id
+        # несколько строк с ОДНИМ И ТЕМ ЖЕ именем/фамилией (с учётом перестановки).
+        dup_by_user_id = []
+        for uid, rows in by_user_id.items():
+            if len(rows) <= 1:
+                continue
+
+            # Группируем строки по нормализованному имени (учёт перестановки Имя/Фамилия)
+            name_groups: dict[str, list[dict]] = {}
+            for info in rows:
+                full_name = (info.get("full_name") or "").strip()
+                parts = full_name.split()
+                first = parts[0] if parts else ""
+                last = " ".join(parts[1:]) if len(parts) > 1 else ""
+                if first and last:
+                    key_parts = sorted([first.lower(), last.lower()])
+                    name_key = "|".join(key_parts)
+                else:
+                    name_key = full_name.lower()
+                name_groups.setdefault(name_key, []).append(info)
+
+            # Собираем только те строки, где для одного user_id
+            # одно и то же нормализованное имя встречается более одного раза
+            problem_rows: list[dict] = []
+            for group_rows in name_groups.values():
+                if len(group_rows) > 1:
+                    problem_rows.extend(group_rows)
+
+            if problem_rows:
+                dup_by_user_id.append({"user_id": uid, "rows": problem_rows})
+        
+        # Дубликаты по имени (независимо от user_id) оставляем как есть
+        dup_by_name = [
+            rows for key, rows in by_name_key.items() if len(rows) > 1
+        ]
+        
+        if dup_by_user_id or dup_by_name:
+            logger.warning(
+                f"Найдены возможные дубликаты гостей: "
+                f"{len(dup_by_user_id)} по user_id, {len(dup_by_name)} по имени"
+            )
+        else:
+            logger.info("Дубликаты гостей не обнаружены")
+        
+        return {"by_user_id": dup_by_user_id, "by_name": dup_by_name}
+    except Exception as e:
+        logger.error(f"Ошибка при поиске дубликатов гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"by_user_id": [], "by_name": []}
+
+async def update_guest_user_id(row: int, user_id: int) -> bool:
+    """
+    Обновить user_id для существующего гостя
+    
+    Args:
+        row: Номер строки в Google Sheets
+        user_id: Telegram user_id
+        
+    Returns:
+        True если успешно обновлено
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -1174,113 +1380,31 @@ async def save_ai_rule_to_sheets(rule_text: str, admin_name: str = None) -> bool
     
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _save_ai_rule_to_sheets_sync, rule_text, admin_name)
+        result = await loop.run_in_executor(None, _update_guest_user_id_sync, row, user_id)
         return result
     except Exception as e:
-        logger.error(f"Ошибка сохранения правила ИИ в Google Sheets: {e}")
+        logger.error(f"Ошибка обновления user_id гостя: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
 
-def _save_ai_rule_to_sheets_sync(rule_text: str, admin_name: str = None) -> bool:
-    """Синхронная функция для сохранения правила ИИ в Google Sheets"""
+def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
+    """Синхронная функция для обновления user_id"""
     try:
         client = get_google_sheets_client()
         if not client:
             return False
         
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_SHEET_NAME)
         
-        # Пытаемся получить вкладку, если её нет - создаем
-        try:
-            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_RULES_SHEET_NAME)
-        except Exception:
-            logger.info(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' не найдена, создаем...")
-            worksheet = spreadsheet.add_worksheet(title=GOOGLE_SHEETS_RULES_SHEET_NAME, rows=1000, cols=3)
-            # Добавляем заголовки
-            worksheet.update('A1:C1', [['Правило', 'Админ', 'Дата']])
-            logger.info(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' создана")
+        # Обновляем столбец F (индекс 6, так как update_cell использует 1-based индексы) - user_id
+        worksheet.update_cell(row, 6, str(user_id))
         
-        # Получаем все данные
-        all_values = worksheet.get_all_values()
-        
-        # Определяем следующую пустую строку (пропускаем заголовок)
-        empty_row = len(all_values) + 1
-        if len(all_values) == 0:
-            # Если лист пустой, добавляем заголовки
-            worksheet.update('A1:C1', [['Правило', 'Админ', 'Дата']])
-            empty_row = 2
-        
-        # Подготавливаем данные для записи
-        from datetime import datetime
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        row_data = [rule_text, admin_name or "Система", current_date]
-        
-        # Записываем в таблицу
-        worksheet.update(f'A{empty_row}:C{empty_row}', [row_data])
-        
-        logger.info(f"Правило ИИ сохранено в Google Sheets (строка {empty_row})")
+        logger.info(f"Обновлен user_id для строки {row}: {user_id}")
         return True
-        
     except Exception as e:
-        logger.error(f"Ошибка сохранения правила ИИ в Google Sheets: {e}")
+        logger.error(f"Ошибка обновления user_id: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return False
-
-async def get_ai_rules_from_sheets() -> List[str]:
-    """
-    Получить все правила ИИ из Google Sheets (вкладка "Правила ИИ")
-    
-    Returns:
-        Список текстов правил
-    """
-    if not GSPREAD_AVAILABLE:
-        logger.warning("Google Sheets недоступен")
-        return []
-    
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _get_ai_rules_from_sheets_sync)
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка получения правил ИИ из Google Sheets: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return []
-
-def _get_ai_rules_from_sheets_sync() -> List[str]:
-    """Синхронная функция для получения правил ИИ из Google Sheets"""
-    try:
-        client = get_google_sheets_client()
-        if not client:
-            return []
-        
-        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        
-        try:
-            worksheet = spreadsheet.worksheet(GOOGLE_SHEETS_RULES_SHEET_NAME)
-        except Exception:
-            logger.warning(f"Вкладка '{GOOGLE_SHEETS_RULES_SHEET_NAME}' не найдена")
-            return []
-        
-        # Получаем все данные (столбец A - правило)
-        all_values = worksheet.get_all_values()
-        
-        if len(all_values) <= 1:
-            return []  # Только заголовок или пусто
-        
-        # Пропускаем заголовок и собираем правила
-        rules = []
-        for row in all_values[1:]:  # Пропускаем первую строку (заголовок)
-            if row and len(row) > 0 and row[0].strip():  # Проверяем, что есть правило
-                rules.append(row[0].strip())
-        
-        return rules
-        
-    except Exception as e:
-        logger.error(f"Ошибка получения правил ИИ из Google Sheets: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return []

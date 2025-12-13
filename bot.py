@@ -13,7 +13,7 @@ import os
 from utils import format_wedding_date
 from keyboards import (
     get_invitation_keyboard, get_admin_keyboard, 
-    get_group_management_keyboard, get_delete_guest_confirmation_keyboard,
+    get_group_management_keyboard,
     get_guests_selection_keyboard, get_invitation_dialog_keyboard
 )
 from google_sheets import (
@@ -40,11 +40,7 @@ dp = Dispatcher(storage=MemoryStorage())
 # Бот будет создан в init_bot() после проверки токена
 bot = None
 
-# Состояния для регистрации (больше не используются, оставлены для совместимости)
-class RegistrationStates(StatesGroup):
-    waiting_first_name = State()
-    waiting_last_name = State()
-    confirming = State()
+# RegistrationStates удален - больше не используется (регистрация через Mini App)
 
 # Состояния для рассылки приглашений
 class InvitationStates(StatesGroup):
@@ -57,9 +53,16 @@ class GroupManagementStates(StatesGroup):
     waiting_add_member = State()
     waiting_remove_member = State()
 
+# Состояния для рассылки в личные сообщения
+class BroadcastStates(StatesGroup):
+    waiting_text = State()
+    waiting_photo = State()
+    waiting_button_choice = State()
+    waiting_custom_button_text = State()
+    waiting_custom_button_url = State()
+    waiting_confirm = State()
+
 # Состояния для удаления гостя
-class DeleteGuestStates(StatesGroup):
-    waiting_guest_selection = State()
 
 # Состояния для авторизации Telegram Client
 class TelegramClientAuthStates(StatesGroup):
@@ -366,6 +369,23 @@ async def notify_admins(message_text):
             logger.error(f"Ошибка отправки уведомления админу {admin_id}: {e}")
             import traceback
             logger.error(traceback.format_exc())
+
+async def get_broadcast_recipients() -> list[int]:
+    """
+    Получить список получателей рассылки в ЛС.
+    Используем всех гостей из Google Sheets, у которых есть user_id и подтверждение.
+    """
+    guests = await get_all_guests_from_sheets()
+    user_ids: set[int] = set()
+    for guest in guests:
+        uid = guest.get('user_id')
+        if not uid:
+            continue
+        try:
+            user_ids.add(int(uid))
+        except (TypeError, ValueError):
+            continue
+    return list(user_ids)
 
 @dp.message(Command("set_me_admins"))
 async def cmd_set_me_admins(message: Message):
@@ -778,93 +798,472 @@ async def cmd_admin(message: Message):
 """
     await message.answer(admin_text, reply_markup=get_admin_keyboard(), parse_mode="HTML")
 
-@dp.callback_query(F.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    """Статистика для администратора"""
+
+# ========== РАССЫЛКА В ЛИЧНЫЕ СООБЩЕНИЯ ==========
+
+@dp.callback_query(F.data == "admin_broadcast_dm")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    """Старт сценария рассылки в личные сообщения"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
-    
-    guests_count = await get_guests_count_from_sheets()
-    guests = await get_all_guests_from_sheets()
-    
-    stats_text = f"""
-📊 <b>Статистика</b>
 
-👥 Всего гостей: {guests_count}
-
-📋 Последние регистрации:
-"""
-    for i, (first_name, last_name, username, confirmed_at) in enumerate(guests[:5], 1):
-        username_text = f" (@{username})" if username else ""
-        stats_text += f"{i}. {first_name} {last_name}{username_text}\n"
-    
-    if len(guests) > 5:
-        stats_text += f"\n... и еще {len(guests) - 5} гостей"
-    
-    # Добавляем кнопку "Вернуться"
-    from keyboards import get_admin_keyboard
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    await callback.message.answer(stats_text, reply_markup=keyboard, parse_mode="HTML")
+    await state.clear()
     await callback.answer()
 
-@dp.callback_query(F.data == "admin_guests")
-async def admin_guests_list(callback: CallbackQuery):
-    """Список гостей для администратора"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    guests = await get_all_guests()
-    
-    if not guests:
-        await callback.message.answer("Пока никто не подтвердил присутствие.")
-        await callback.answer()
-        return
-    
-    guests_text = "📋 <b>Список всех гостей:</b>\n\n"
-    for i, guest in enumerate(guests, 1):
-        first_name = guest.get('first_name', '')
-        last_name = guest.get('last_name', '')
-        username = guest.get('username', '')
-        username_text = f" (@{username})" if username else ""
-        guests_text += f"{i}. {first_name} {last_name}{username_text}\n"
-    
-    guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
-    
-    # Добавляем кнопку "Вернуться"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
 
-@dp.callback_query(F.data == "admin_reload")
-async def admin_reload(callback: CallbackQuery):
-    """Перезагрузка Mini App (информационное сообщение)"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
     ])
-    
+
     await callback.message.answer(
-        f"🔄 <b>Информация о Mini App</b>\n\n"
-        f"Mini App работает автоматически.\n"
-        f"Для обновления контента:\n"
-        f"1. Измените файлы в папке webapp/\n"
-        f"2. Перезапустите сервер командой /restart (если доступно)\n\n"
-        f"🌐 URL: {WEBAPP_URL}",
+        "📨 <b>Рассылка в личные сообщения</b>\n\n"
+        f"Получателей (по базе гостей): <b>{total}</b>\n\n"
+        "1️⃣ Отправьте текст сообщения, которое получат гости.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
-    await callback.answer("✅ Информация отправлена")
+    await state.set_state(BroadcastStates.waiting_text)
+
+
+@dp.message(BroadcastStates.waiting_text)
+async def broadcast_set_text(message: Message, state: FSMContext):
+    """Получаем текст рассылки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Текст пустой. Пожалуйста, отправьте текст сообщения.")
+        return
+
+    await state.update_data(broadcast_text=text)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➡️ Без картинки", callback_data="broadcast_no_photo")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await message.answer(
+        "🖼 <b>Шаг 2.</b> Теперь отправьте <b>фото</b> для рассылки "
+        "или нажмите «Без картинки».",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_photo)
+
+
+@dp.message(BroadcastStates.waiting_photo)
+async def broadcast_set_photo(message: Message, state: FSMContext):
+    """Получаем фото для рассылки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    if not message.photo:
+        await message.answer("❌ Это не фото. Пожалуйста, отправьте изображение или нажмите «Без картинки».")
+        return
+
+    photo = message.photo[-1]  # самое большое
+    await state.update_data(broadcast_photo_id=photo.file_id)
+
+    await ask_broadcast_button_choice(message, state)
+
+
+@dp.callback_query(F.data == "broadcast_no_photo")
+async def broadcast_no_photo(callback: CallbackQuery, state: FSMContext):
+    """Админ выбрал вариант без картинки"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    await callback.answer()
+    # Явно очищаем фото
+    data = await state.get_data()
+    data.pop("broadcast_photo_id", None)
+    await state.update_data(**data)
+
+    await ask_broadcast_button_choice(callback.message, state)
+
+
+async def ask_broadcast_button_choice(target_message: Message, state: FSMContext):
+    """Попросить выбрать кнопку для сообщения"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔘 Без кнопки", callback_data="broadcast_btn_none")],
+        [InlineKeyboardButton(text="💒 Открыть мини-эпп", callback_data="broadcast_btn_miniapp")],
+        [InlineKeyboardButton(text="💬 Открыть общий чат", callback_data="broadcast_btn_group")],
+        [InlineKeyboardButton(text="➕ Добавить свою кнопку", callback_data="broadcast_btn_custom")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await target_message.answer(
+        "🔗 <b>Шаг 3.</b> Добавить к сообщению кнопку?\n\n"
+        "• «Открыть мини-эпп» — кнопка запуска Mini App\n"
+        "• «Открыть общий чат» — кнопка с ссылкой на свадебный чат\n"
+        "• «Добавить свою кнопку» — задать любой текст и ссылку\n"
+        "• «Без кнопки» — отправить только текст (и фото, если выбрали)",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_button_choice)
+
+
+@dp.callback_query(F.data.in_(["broadcast_btn_none", "broadcast_btn_miniapp", "broadcast_btn_group", "broadcast_btn_custom"]))
+async def broadcast_button_choice(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора варианта кнопки"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    choice = callback.data
+    await callback.answer()
+
+    if choice == "broadcast_btn_none":
+        await state.update_data(button_type="none")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_miniapp":
+        await state.update_data(button_type="miniapp")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_group":
+        await state.update_data(button_type="group")
+        await show_broadcast_preview(callback.message, state)
+        return
+
+    if choice == "broadcast_btn_custom":
+        await state.update_data(button_type="custom")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "✏️ Введите <b>текст кнопки</b> (например: «Открыть сайт»):",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await state.set_state(BroadcastStates.waiting_custom_button_text)
+
+
+@dp.message(BroadcastStates.waiting_custom_button_text)
+async def broadcast_custom_button_text(message: Message, state: FSMContext):
+    """Получаем текст пользовательской кнопки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("❌ Текст кнопки пустой. Пожалуйста, отправьте текст.")
+        return
+
+    await state.update_data(custom_button_text=text)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+    await message.answer(
+        "🔗 Теперь отправьте <b>ссылку для кнопки</b> (начинается с http:// или https:// или tg://):",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_custom_button_url)
+
+
+@dp.message(BroadcastStates.waiting_custom_button_url)
+async def broadcast_custom_button_url(message: Message, state: FSMContext):
+    """Получаем URL для пользовательской кнопки"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой функции.")
+        await state.clear()
+        return
+
+    url = (message.text or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://") or url.startswith("tg://")):
+        await message.answer("❌ Неверный формат URL. Ссылка должна начинаться с http://, https:// или tg://")
+        return
+
+    await state.update_data(custom_button_url=url)
+    await show_broadcast_preview(message, state)
+
+
+async def build_broadcast_reply_markup(data: dict) -> InlineKeyboardMarkup | None:
+    """Построить InlineKeyboardMarkup для рассылки по данным state"""
+    button_type = data.get("button_type", "none")
+
+    if button_type == "miniapp":
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💒 Открыть приглашение",
+                web_app=WebAppInfo(url=WEBAPP_URL)
+            )]
+        ])
+
+    if button_type == "group" and GROUP_LINK:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💬 Открыть свадебный чат",
+                url=GROUP_LINK
+            )]
+        ])
+
+    if button_type == "custom":
+        text = data.get("custom_button_text")
+        url = data.get("custom_button_url")
+        if text and url:
+            return InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=text,
+                    url=url
+                )]
+            ])
+
+    return None
+
+
+async def show_broadcast_preview(target_message: Message, state: FSMContext):
+    """Показать админу превью рассылки и спросить подтверждение"""
+    data = await state.get_data()
+    text = data.get("broadcast_text", "")
+    photo_id = data.get("broadcast_photo_id")
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    markup = await build_broadcast_reply_markup(data)
+
+    # Превью сообщения
+    try:
+        if photo_id:
+            await target_message.answer_photo(
+                photo=photo_id,
+                caption=text,
+                reply_markup=markup
+            )
+        else:
+            await target_message.answer(
+                text,
+                reply_markup=markup
+            )
+    except Exception as e:
+        logger.error(f"Ошибка отправки превью рассылки админу: {e}")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Отправить всем гостям", callback_data="broadcast_send_confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
+    ])
+
+    await target_message.answer(
+        "📨 <b>Проверьте сообщение выше.</b>\n\n"
+        f"Оно будет отправлено в ЛС всем гостям из базы, у кого есть user_id.\n"
+        f"Планируется отправка: <b>{total}</b> получателям.\n\n"
+        "Если всё верно — нажмите «Отправить всем гостям».",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(BroadcastStates.waiting_confirm)
+
+
+@dp.callback_query(F.data == "broadcast_send_confirm")
+async def broadcast_send_confirm(callback: CallbackQuery, state: FSMContext):
+    """Фактическая отправка рассылки всем гостям"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    data = await state.get_data()
+    text = data.get("broadcast_text", "")
+    photo_id = data.get("broadcast_photo_id")
+    markup = await build_broadcast_reply_markup(data)
+
+    if not text:
+        await callback.answer("❌ Нет текста сообщения", show_alert=True)
+        await state.clear()
+        return
+
+    recipients = await get_broadcast_recipients()
+    total = len(recipients)
+
+    if total == 0:
+        await callback.message.answer(
+            "⚠️ В базе гостей пока нет ни одного user_id, рассылать некому.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    await callback.answer()
+    await callback.message.answer(
+        f"🚀 Начинаю рассылку для <b>{total}</b> получателей…",
+        parse_mode="HTML"
+    )
+
+    sent = 0
+    failed = 0
+
+    for uid in recipients:
+        try:
+            if photo_id:
+                await bot.send_photo(
+                    chat_id=uid,
+                    photo=photo_id,
+                    caption=text,
+                    reply_markup=markup
+                )
+            else:
+                await bot.send_message(
+                    chat_id=uid,
+                    text=text,
+                    reply_markup=markup
+                )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.error(f"Ошибка отправки рассылки пользователю {uid}: {e}")
+        # Небольшая пауза, чтобы не упереться в лимиты
+        await asyncio.sleep(0.05)
+
+    await state.clear()
+
+    await callback.message.answer(
+        "✅ <b>Рассылка завершена.</b>\n\n"
+        f"Успешно отправлено: <b>{sent}</b>\n"
+        f"С ошибкой: <b>{failed}</b>",
+        parse_mode="HTML"
+    )
+
+@dp.message(Command("bot_status"))
+async def cmd_bot_status(message: Message):
+    """Проверка статуса бота - проверяет, запущен ли только один экземпляр"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к этой команде.")
+        return
+    
+    import os
+    from datetime import datetime
+    
+    status_text = "🤖 <b>Статус бота</b>\n\n"
+    
+    try:
+        # 1. Проверяем через getMe API
+        try:
+            bot_info = await bot.get_me()
+            status_text += f"✅ <b>Бот активен</b>\n"
+            status_text += f"👤 Имя: {bot_info.first_name}\n"
+            status_text += f"🆔 ID: <code>{bot_info.id}</code>\n"
+            status_text += f"📝 Username: @{bot_info.username}\n\n"
+        except Exception as e:
+            status_text += f"❌ <b>Ошибка получения информации о боте:</b>\n"
+            status_text += f"<code>{str(e)}</code>\n\n"
+            if 'Conflict' in str(e) or 'TelegramConflictError' in str(e):
+                status_text += f"🚨 <b>ОБНАРУЖЕН КОНФЛИКТ!</b>\n"
+                status_text += f"Запущено несколько экземпляров бота!\n\n"
+        
+        # 2. Информация о процессе
+        status_text += f"📊 <b>Информация о процессе:</b>\n"
+        status_text += f"🆔 Process ID: <code>{os.getpid()}</code>\n"
+        try:
+            import psutil
+            process = psutil.Process(os.getpid())
+            status_text += f"⏰ Время запуска: {datetime.fromtimestamp(process.create_time()).strftime('%Y-%m-%d %H:%M:%S')}\n"
+            status_text += f"💾 Память: {process.memory_info().rss / 1024 / 1024:.2f} MB\n\n"
+        except ImportError:
+            status_text += f"⚠️ psutil не установлен, дополнительная информация недоступна\n\n"
+        except Exception as e:
+            status_text += f"⚠️ Ошибка получения информации: {str(e)}\n\n"
+        
+        # 3. Проверка на Render (если доступно)
+        render_service_id = os.getenv('RENDER_SERVICE_ID', '')
+        if render_service_id:
+            status_text += f"🌐 <b>Render Service ID:</b> <code>{render_service_id}</code>\n\n"
+        
+        # 4. Рекомендации
+        status_text += f"💡 <b>Как проверить дубликаты:</b>\n"
+        status_text += f"1. Проверьте логи на наличие 'TelegramConflictError'\n"
+        status_text += f"2. На Render проверьте, нет ли нескольких сервисов с одним токеном\n"
+        status_text += f"3. Убедитесь, что не используется webhook одновременно с polling\n"
+        status_text += f"4. Проверьте, что старый экземпляр полностью остановлен\n"
+        
+    except Exception as e:
+        logger.error(f"Ошибка проверки статуса бота: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        status_text += f"❌ <b>Ошибка проверки:</b>\n<code>{str(e)}</code>"
+    
+    await message.answer(status_text, parse_mode="HTML")
+
+@dp.callback_query(F.data == "admin_guests")
+async def admin_guests_list(callback: CallbackQuery):
+    """Список гостей для администратора из Google Sheets"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    try:
+        guests = await get_all_guests_from_sheets()
+        
+        if not guests:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+            ])
+            await callback.message.answer(
+                "📋 <b>Список гостей</b>\n\n"
+                "Пока никто не подтвердил присутствие.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            await callback.answer()
+            return
+        
+        guests_text = "📋 <b>Список всех гостей:</b>\n\n"
+        for i, guest in enumerate(guests, 1):
+            first_name = guest.get('first_name', '')
+            last_name = guest.get('last_name', '')
+            category = guest.get('category', '')
+            side = guest.get('side', '')
+            user_id = guest.get('user_id', '')
+            
+            # Формируем строку с информацией о госте
+            guest_line = f"{i}. <b>{first_name} {last_name}</b>"
+            
+            if category:
+                guest_line += f" ({category})"
+            if side:
+                guest_line += f" - {side}"
+            if user_id:
+                guest_line += f" [ID: {user_id}]"
+            
+            guests_text += guest_line + "\n"
+        
+        guests_text += f"\n<b>Всего: {len(guests)} гостей</b>"
+        
+        # Добавляем кнопку "Вернуться"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        
+        await callback.message.answer(guests_text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Ошибка получения списка гостей: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
+        ])
+        await callback.message.answer(
+            "❌ Ошибка при получении списка гостей. Попробуйте позже.",
+            reply_markup=keyboard
+        )
+        await callback.answer()
 
 # Команды name_mapping удалены - все данные теперь в Google Sheets
 
@@ -1117,185 +1516,6 @@ async def use_code_auth_callback(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
 
-@dp.callback_query(F.data == "admin_auth_telegram")
-async def admin_auth_telegram(callback: CallbackQuery, state: FSMContext):
-    """Авторизация Telegram Client через админское меню"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    await callback.answer()
-    
-    admin_user_id = callback.from_user.id
-    
-    # Получаем данные админа из Google Sheets
-    admins_list = await get_admins_list()
-    admin_data = None
-    
-    for admin in admins_list:
-        if admin.get('user_id') == admin_user_id:
-            admin_data = admin
-            break
-    
-    if not admin_data or not admin_data.get('api_id') or not admin_data.get('api_hash') or not admin_data.get('phone'):
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "⚠️ <b>Telegram Client API не настроен</b>\n\n"
-            "Добавьте в Google Sheets (вкладка 'Админ бота'):\n"
-            "• API_ID (столбец D)\n"
-            "• API_HASH (столбец E)\n"
-            "• PHONE (столбец F) - формат: 79001234567 (без +)\n\n"
-            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth\n\n"
-            "💡 <b>Альтернатива:</b> Используйте существующую сессию Telegram Desktop\n"
-            "Скопируйте файл сессии с компьютера на сервер (см. документацию)",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Проверяем, не авторизован ли уже клиент
-    from telegram_client import _clients
-    if admin_user_id in _clients:
-        client = _clients[admin_user_id]
-        try:
-            if client.is_connected() and await client.is_user_authorized():
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-                ])
-                await callback.message.answer(
-                    "✅ <b>Telegram Client уже авторизован!</b>\n\n"
-                    "Вы можете использовать поиск username по номеру телефона.",
-                    reply_markup=keyboard,
-                    parse_mode="HTML"
-                )
-                return
-        except:
-            pass
-    
-    # Пытаемся инициализировать клиент (пробуем QR-код, если не получится - код)
-    await callback.message.answer("📱 Инициализирую авторизацию...")
-    
-    client = await get_or_init_client(
-        admin_user_id,
-        admin_data['api_id'],
-        admin_data['api_hash'],
-        admin_data['phone']
-    )
-    
-    if client:
-        # Клиент уже авторизован
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "✅ <b>Telegram Client уже авторизован!</b>\n\n"
-            "Вы можете использовать поиск username по номеру телефона.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-    else:
-        # Проверяем, какой метод авторизации используется
-        from telegram_client import _pending_clients
-        auth_method = None
-        if admin_user_id in _pending_clients:
-            auth_method = _pending_clients[admin_user_id].get('auth_method', 'code')
-        
-        if auth_method == 'qr':
-            # QR-код авторизация
-            success, msg, qr_url = await get_qr_code(admin_user_id)
-            
-            if success and qr_url:
-                # Отправляем QR-код
-                try:
-                    import qrcode
-                    from io import BytesIO
-                    from aiogram.types import BufferedInputFile
-                    
-                    # Генерируем QR-код
-                    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-                    qr.add_data(qr_url)
-                    qr.make(fit=True)
-                    
-                    img = qr.make_image(fill_color="black", back_color="white")
-                    buf = BytesIO()
-                    img.save(buf, format='PNG')
-                    buf.seek(0)
-                    
-                    # Отправляем QR-код как фото
-                    photo = BufferedInputFile(buf.read(), filename="qr_code.png")
-                    await callback.message.answer_photo(
-                        photo=photo,
-                        caption="📱 <b>Отсканируйте QR-код для авторизации</b>\n\n"
-                                "1. Откройте Telegram на телефоне\n"
-                                "2. Перейдите в Настройки → Устройства\n"
-                                "3. Нажмите 'Подключить устройство'\n"
-                                "4. Отсканируйте QR-код выше\n\n"
-                                "✅ После сканирования нажмите 'Проверить авторизацию'",
-                        parse_mode="HTML"
-                    )
-                    
-                    # Сохраняем состояние для проверки авторизации
-                    await state.set_state(TelegramClientAuthStates.waiting_code)
-                    await state.update_data(admin_user_id=admin_user_id, auth_method='qr')
-                    
-                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔄 Проверить авторизацию", callback_data="check_qr_auth")],
-                        [InlineKeyboardButton(text="📱 Использовать код подтверждения", callback_data="use_code_auth")],
-                        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-                    ])
-                    await callback.message.answer(
-                        "⏳ <b>Ожидание сканирования QR-кода...</b>\n\n"
-                        "После сканирования QR-кода нажмите 'Проверить авторизацию'.\n\n"
-                        "💡 Если QR-код не работает, можно использовать код подтверждения.",
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
-                except ImportError:
-                    # Если библиотека qrcode не установлена, отправляем ссылку
-                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔗 Открыть QR-код", url=qr_url)],
-                        [InlineKeyboardButton(text="📱 Использовать код подтверждения", callback_data="use_code_auth")],
-                        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-                    ])
-                    await callback.message.answer(
-                        f"📱 <b>QR-код авторизация</b>\n\n"
-                        f"Откройте ссылку ниже для авторизации:\n"
-                        f"<code>{qr_url}</code>\n\n"
-                        f"Или используйте код подтверждения.",
-                        reply_markup=keyboard,
-                        parse_mode="HTML"
-                    )
-            else:
-                # Если QR-код не получился, используем код подтверждения
-                await callback.message.answer("⚠️ QR-код недоступен, используем код подтверждения...")
-                auth_method = 'code'
-        
-        if auth_method == 'code':
-            # Код отправлен, переводим в состояние ожидания кода
-            await state.set_state(TelegramClientAuthStates.waiting_code)
-            await state.update_data(admin_user_id=admin_user_id, auth_method='code')
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Запросить новый код", callback_data="resend_auth_code")],
-                [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_back")]
-            ])
-            await callback.message.answer(
-                "📱 <b>Код подтверждения отправлен в ваш Telegram</b>\n\n"
-                "⚡ <b>ВАЖНО: Введите код как можно быстрее!</b>\n\n"
-                "Коды подтверждения действительны ограниченное время (обычно 1-2 минуты).\n\n"
-                "Введите код:\n"
-                "<code>/auth_code [код]</code>\n\n"
-                "Или просто отправьте код как обычное сообщение.\n\n"
-                "💡 <b>Совет:</b>\n"
-                "• Откройте Telegram заранее, чтобы быстро скопировать код\n"
-                "• Код приходит в ваш Telegram (не в бота)\n"
-                "• Если код не пришел или устарел, нажмите 'Запросить новый код'",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню админа"""
@@ -1316,478 +1536,6 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML"
     )
     await callback.answer()
-
-@dp.callback_query(F.data == "admin_names")
-async def admin_names(callback: CallbackQuery):
-    """Управление таблицей соответствия имен"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    text = (
-        "📋 <b>Управление именами</b>\n\n"
-        "Все данные теперь хранятся в Google Sheets.\n\n"
-        "Таблица соответствия имен больше не используется.\n"
-        "Имена гостей берутся из Google Sheets или из Telegram профиля."
-    )
-    
-    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
-
-@dp.callback_query(F.data == "admin_delete_guest")
-async def admin_delete_guest_start(callback: CallbackQuery, state: FSMContext):
-    """Начало процесса удаления гостя"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    await callback.answer()
-    
-    # Загружаем список гостей из Google Sheets
-    guests = await get_all_guests_from_sheets()
-    
-    if not guests:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "❌ <b>Список гостей пуст</b>\n\n"
-            "Нет зарегистрированных гостей для удаления.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Формируем список гостей с кнопками для выбора
-    guests_list = "🗑️ <b>Удаление гостя</b>\n\n"
-    guests_list += "Выберите гостя для удаления:\n\n"
-    
-    keyboard_buttons = []
-    for i, guest in enumerate(guests, 1):
-        first_name = guest.get('first_name', '')
-        last_name = guest.get('last_name', '')
-        user_id = guest.get('user_id', '')
-        username = guest.get('username', '')
-        username_text = f" (@{username})" if username else ""
-        
-        guests_list += f"{i}. {first_name} {last_name}{username_text}\n"
-        
-        # Создаем кнопку для каждого гостя
-        if user_id:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=f"🗑️ {first_name} {last_name}",
-                    callback_data=f"delete_guest_select_{user_id}"
-                )
-            ])
-    
-    keyboard_buttons.append([
-        InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_back")
-    ])
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
-    await callback.message.answer(guests_list, reply_markup=keyboard, parse_mode="HTML")
-    
-    # Сохраняем список гостей в состояние
-    await state.update_data(guests=guests)
-    await state.set_state(DeleteGuestStates.waiting_guest_selection)
-
-@dp.callback_query(F.data.startswith("delete_guest_select_"))
-async def process_delete_guest_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора гостя для удаления"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    # Извлекаем user_id из callback_data
-    user_id_str = callback.data.replace("delete_guest_select_", "")
-    try:
-        guest_user_id = int(user_id_str)
-    except ValueError:
-        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
-        return
-    
-    # Получаем данные гостя
-    guests = await get_all_guests_from_sheets()
-    guest_info = None
-    for guest in guests:
-        if guest.get('user_id') == str(guest_user_id):
-            guest_info = guest
-            break
-    
-    if not guest_info:
-        await callback.answer("❌ Гость не найден", show_alert=True)
-        return
-    
-    first_name = guest_info.get('first_name', '')
-    last_name = guest_info.get('last_name', '')
-    
-    # Сохраняем выбранного гостя в состояние
-    await state.update_data(selected_guest_user_id=guest_user_id)
-    
-    # Показываем подтверждение с вопросом об удалении из группы
-    keyboard = get_delete_guest_confirmation_keyboard(guest_user_id)
-    
-    await callback.message.answer(
-        f"🗑️ <b>Удаление гостя</b>\n\n"
-        f"👤 <b>Гость:</b> {first_name} {last_name}\n"
-        f"🆔 User ID: <code>{guest_user_id}</code>\n\n"
-        f"Гость будет удален из списка гостей в Google Sheets.\n\n"
-        f"<b>Удалить также из беседы?</b>",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
-    
-    await callback.answer()
-    await state.clear()
-
-@dp.callback_query(F.data.startswith("delete_guest_confirm_only_"))
-async def delete_guest_only_from_sheets(callback: CallbackQuery):
-    """Удаление гостя только из Google Sheets"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    # Извлекаем user_id из callback_data
-    user_id_str = callback.data.replace("delete_guest_confirm_only_", "")
-    try:
-        guest_user_id = int(user_id_str)
-    except ValueError:
-        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
-        return
-    
-    # Получаем данные гостя перед удалением
-    guests = await get_all_guests_from_sheets()
-    guest_info = None
-    for guest in guests:
-        if guest.get('user_id') == str(guest_user_id):
-            guest_info = guest
-            break
-    
-    if not guest_info:
-        await callback.answer("❌ Гость не найден", show_alert=True)
-        return
-    
-    first_name = guest_info.get('first_name', '')
-    last_name = guest_info.get('last_name', '')
-    
-    # Удаляем из Google Sheets
-    try:
-        result = await delete_guest_from_sheets(guest_user_id)
-        if result:
-            guests_count = await get_guests_count_from_sheets()
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-            ])
-            
-            await callback.message.answer(
-                f"✅ <b>Гость удален</b>\n\n"
-                f"👤 {first_name} {last_name}\n"
-                f"🗑️ Удален из списка гостей в Google Sheets\n\n"
-                f"📊 Всего гостей: {guests_count}",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-            
-            # Уведомление админам
-            notification_text = (
-                f"🗑️ <b>Гость удален</b>\n\n"
-                f"👤 {first_name} {last_name}\n"
-                f"🆔 User ID: <code>{guest_user_id}</code>\n"
-                f"📋 Удален из списка гостей\n\n"
-                f"📊 Всего гостей: {guests_count}"
-            )
-            await notify_admins(notification_text)
-            
-            logger.info(f"Админ {callback.from_user.id} удалил гостя {first_name} {last_name} (user_id: {guest_user_id}) из Google Sheets")
-        else:
-            await callback.answer("❌ Ошибка при удалении гостя", show_alert=True)
-    except Exception as e:
-        logger.error(f"Ошибка удаления гостя: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        await callback.answer("❌ Ошибка при удалении гостя", show_alert=True)
-    
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("delete_guest_confirm_group_"))
-async def delete_guest_from_sheets_and_group(callback: CallbackQuery):
-    """Удаление гостя из Google Sheets и из группы"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    # Извлекаем user_id из callback_data
-    user_id_str = callback.data.replace("delete_guest_confirm_group_", "")
-    try:
-        guest_user_id = int(user_id_str)
-    except ValueError:
-        await callback.answer("❌ Ошибка: неверный ID гостя", show_alert=True)
-        return
-    
-    # Получаем данные гостя перед удалением
-    guests = await get_all_guests_from_sheets()
-    guest_info = None
-    for guest in guests:
-        if guest.get('user_id') == str(guest_user_id):
-            guest_info = guest
-            break
-    
-    if not guest_info:
-        await callback.answer("❌ Гость не найден", show_alert=True)
-        return
-    
-    first_name = guest_info.get('first_name', '')
-    last_name = guest_info.get('last_name', '')
-    
-    # Удаляем из Google Sheets
-    sheets_result = False
-    group_result = False
-    
-    try:
-        sheets_result = await delete_guest_from_sheets(guest_user_id)
-    except Exception as e:
-        logger.error(f"Ошибка удаления из Google Sheets: {e}")
-    
-    # Удаляем из группы
-    if GROUP_ID:
-        try:
-            await bot.ban_chat_member(
-                chat_id=GROUP_ID,
-                user_id=guest_user_id
-            )
-            group_result = True
-            logger.info(f"Гость {first_name} {last_name} (user_id: {guest_user_id}) удален из группы {GROUP_ID}")
-        except Exception as e:
-            logger.error(f"Ошибка удаления из группы: {e}")
-            error_msg = str(e)
-            if "chat not found" in error_msg.lower():
-                logger.warning(f"Группа {GROUP_ID} не найдена или бот не является администратором")
-            elif "not enough rights" in error_msg.lower():
-                logger.warning(f"Недостаточно прав для удаления из группы")
-    else:
-        logger.warning("GROUP_ID не настроен, пропускаем удаление из группы")
-    
-    # Формируем ответ
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    if sheets_result:
-        guests_count = await get_guests_count_from_sheets()
-        
-        result_text = (
-            f"✅ <b>Гость удален</b>\n\n"
-            f"👤 {first_name} {last_name}\n"
-            f"🆔 User ID: <code>{guest_user_id}</code>\n\n"
-        )
-        
-        if group_result:
-            result_text += "✅ Удален из списка гостей\n✅ Удален из беседы\n\n"
-        elif GROUP_ID:
-            result_text += "✅ Удален из списка гостей\n⚠️ Не удалось удалить из беседы (проверьте права бота)\n\n"
-        else:
-            result_text += "✅ Удален из списка гостей\n⚠️ GROUP_ID не настроен\n\n"
-        
-        result_text += f"📊 Всего гостей: {guests_count}"
-        
-        await callback.message.answer(result_text, reply_markup=keyboard, parse_mode="HTML")
-        
-        # Уведомление админам
-        notification_text = (
-            f"🗑️ <b>Гость удален</b>\n\n"
-            f"👤 {first_name} {last_name}\n"
-            f"🆔 User ID: <code>{guest_user_id}</code>\n"
-        )
-        if group_result:
-            notification_text += "📋 Удален из списка гостей\n💬 Удален из беседы\n\n"
-        elif GROUP_ID:
-            notification_text += "📋 Удален из списка гостей\n⚠️ Не удалось удалить из беседы\n\n"
-        else:
-            notification_text += "📋 Удален из списка гостей\n\n"
-        
-        notification_text += f"📊 Всего гостей: {guests_count}"
-        await notify_admins(notification_text)
-        
-        logger.info(f"Админ {callback.from_user.id} удалил гостя {first_name} {last_name} (user_id: {guest_user_id})")
-    else:
-        await callback.message.answer(
-            f"❌ <b>Ошибка удаления</b>\n\n"
-            f"Не удалось удалить гостя из Google Sheets.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-    
-    await callback.answer()
-
-@dp.callback_query(F.data == "admin_update_phones")
-async def admin_update_phones(callback: CallbackQuery):
-    """Массовое обновление номеров телефонов на username"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-    
-    await callback.answer()
-    
-    # Загружаем список приглашений
-    invitations = await get_invitations_list()
-    
-    if not invitations:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "❌ <b>Список приглашений пуст</b>\n\n"
-            "Проверьте вкладку 'Пригласительные' в Google Sheets.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Ищем приглашения с номерами телефонов
-    phone_invitations = []
-    for inv in invitations:
-        telegram_id = inv.get('telegram_id', '')
-        if telegram_id and is_phone_number(telegram_id):
-            phone_invitations.append(inv)
-    
-    if not phone_invitations:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await callback.message.answer(
-            "✅ <b>Нет номеров телефонов для обновления</b>\n\n"
-            "Все приглашения уже содержат username или не имеют контактов.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Начинаем обновление
-    status_msg = await callback.message.answer(
-        f"🔄 <b>Начинаю обновление...</b>\n\n"
-        f"Найдено приглашений с номерами телефонов: <b>{len(phone_invitations)}</b>\n\n"
-        f"⏳ Обрабатываю...",
-        parse_mode="HTML"
-    )
-    
-    # Получаем данные Telegram Client для текущего админа
-    admin_user_id = callback.from_user.id
-    admins_list = await get_admins_list()
-    admin_data = None
-    
-    for admin in admins_list:
-        if admin.get('user_id') == admin_user_id:
-            admin_data = admin
-            break
-    
-    if not admin_data or not admin_data.get('api_id') or not admin_data.get('api_hash') or not admin_data.get('phone'):
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await status_msg.edit_text(
-            "⚠️ <b>Telegram Client API не настроен</b>\n\n"
-            "Для массового обновления нужно добавить в Google Sheets (вкладка 'Админ бота'):\n"
-            "• API_ID (столбец D)\n"
-            "• API_HASH (столбец E)\n"
-            "• PHONE (столбец F)\n\n"
-            "Получить API_ID и API_HASH можно на https://my.telegram.org/auth",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Получаем или инициализируем клиент для этого админа
-    client = await get_or_init_client(
-        admin_user_id,
-        admin_data['api_id'],
-        admin_data['api_hash'],
-        admin_data['phone']
-    )
-    
-    if not client:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-        ])
-        await status_msg.edit_text(
-            "⚠️ <b>Telegram Client не авторизован</b>\n\n"
-            "Для массового обновления нужно авторизовать ваш Telegram аккаунт.\n\n"
-            "При первом запуске потребуется код подтверждения.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    updated_count = 0
-    not_found_count = 0
-    error_count = 0
-    
-    # Обрабатываем каждое приглашение
-    for i, inv in enumerate(phone_invitations, 1):
-        guest_name = inv.get('name', '')
-        phone_number = inv.get('telegram_id', '')
-        
-        try:
-            # Ищем username по номеру телефона используя клиент текущего админа
-            username = await get_username_by_phone(phone_number, admin_user_id, client)
-            
-            if username:
-                # Обновляем таблицу
-                updated = await update_invitation_user_id(guest_name, None, username)
-                if updated:
-                    updated_count += 1
-                    logger.info(f"Обновлено: {guest_name} - {phone_number} → @{username}")
-                else:
-                    error_count += 1
-            else:
-                not_found_count += 1
-                logger.warning(f"Username не найден для {guest_name} ({phone_number})")
-            
-            # Обновляем статус каждые 5 приглашений
-            if i % 5 == 0 or i == len(phone_invitations):
-                await status_msg.edit_text(
-                    f"🔄 <b>Обновление номеров телефонов</b>\n\n"
-                    f"Обработано: <b>{i}/{len(phone_invitations)}</b>\n"
-                    f"✅ Обновлено: <b>{updated_count}</b>\n"
-                    f"❌ Не найдено: <b>{not_found_count}</b>\n"
-                    f"⚠️ Ошибки: <b>{error_count}</b>\n\n"
-                    f"⏳ Продолжаю...",
-                    parse_mode="HTML"
-                )
-            
-            # Небольшая задержка, чтобы не перегружать API
-            await asyncio.sleep(1)
-            
-        except Exception as e:
-            error_count += 1
-            logger.error(f"Ошибка обновления для {guest_name}: {e}")
-    
-    # Финальный результат
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Вернуться", callback_data="admin_back")]
-    ])
-    
-    result_text = (
-        f"✅ <b>Обновление завершено!</b>\n\n"
-        f"📊 <b>Результаты:</b>\n"
-        f"✅ Обновлено: <b>{updated_count}</b>\n"
-        f"❌ Не найдено: <b>{not_found_count}</b>\n"
-        f"⚠️ Ошибки: <b>{error_count}</b>\n"
-        f"📋 Всего обработано: <b>{len(phone_invitations)}</b>\n\n"
-    )
-    
-    if updated_count > 0:
-        result_text += "✅ Номера телефонов успешно заменены на username в таблице!"
-    elif not_found_count > 0:
-        result_text += "⚠️ Username не найдены для некоторых номеров. Возможно, эти пользователи не в ваших контактах."
-    
-    await status_msg.edit_text(result_text, reply_markup=keyboard, parse_mode="HTML")
 
 @dp.callback_query(F.data == "admin_send_invite")
 async def admin_send_invite(callback: CallbackQuery, state: FSMContext):

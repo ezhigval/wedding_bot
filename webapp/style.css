@@ -89,7 +89,8 @@ body {
     width: 100%;
     height: 100%;
     z-index: 10000;
-    background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+    /* Белый фон по всей площади экрана во время загрузки */
+    background: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -105,13 +106,15 @@ body {
 }
 
 .lottie-container {
-    width: 300px;
-    height: 300px;
-    max-width: 90vw;
-    max-height: 90vh;
+    /* Центрируем и растягиваем анимацию по ширине экрана с адекватным максимумом */
+    width: 100vw;
+    max-width: 420px;
+    aspect-ratio: 1 / 1;
+    height: auto;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 
 .lottie-container svg,
@@ -278,7 +281,7 @@ body {
     /* 1.2-1.8s (40-60%): Падает как тор (вращаясь в 3D) */
     60% {
         transform: translateX(0) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
-    }
+}
     /* 1.8-2.2s (60-73%): Лежит (небольшое покачивание) */
     66% {
         transform: translateX(-5px) translateY(200px) rotateX(360deg) rotateY(1080deg) rotateZ(180deg);
@@ -728,6 +731,13 @@ body {
     margin-bottom: 20px;
 }
 
+/* Текст под заголовком "ПРИСУТСТВИЕ" — делаем заметно меньше */
+.rsvp-text {
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--color-primary);
+}
+
 /* Countdown Clock */
 .countdown-clock {
     display: flex;
@@ -735,7 +745,7 @@ body {
     justify-content: center;
     align-items: center;
     gap: 15px;
-    margin: 40px 0 50px; /* чуть больше отступ сверху от заголовка, увеличен снизу */
+    margin: 40px 0 80px; /* увеличен нижний отступ, чтобы добавить ~30px пространства после таймера */
     padding-bottom: 20px; /* дополнительный отступ для предотвращения наложения */
 }
 
@@ -904,6 +914,11 @@ body {
     margin-top: 30px;
 }
 
+/* Кремовый фон для блока присутствия */
+.rsvp-section .section-card {
+    background: var(--color-cream);
+}
+
 .form-group {
     margin-bottom: 25px;
 }
@@ -926,6 +941,7 @@ body {
     font-size: 20px;
     font-family: inherit;
     transition: border-color 0.3s;
+    background: var(--color-cream);
 }
 
 .form-group input[type="text"]:focus,
@@ -2184,3 +2200,75 @@ body {
     }
 }
 
+
+/* Страница подтверждения личности */
+.confirmation-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.confirmation-text {
+    font-size: 1.2rem;
+    text-align: center;
+    margin: 2rem 0;
+    color: var(--color-text);
+}
+
+.confirmation-text span {
+    font-weight: 600;
+    color: var(--color-primary);
+}
+
+.confirmation-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.btn-secondary {
+    background: transparent;
+    border: 2px solid var(--color-primary);
+    color: var(--color-primary);
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: var(--color-primary);
+    color: white;
+}
+
+/* Страница ошибки */
+.error-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.error-text {
+    font-size: 1.1rem;
+    text-align: center;
+    margin: 2rem 0;
+    color: var(--color-text);
+}
+
+@media (max-width: 768px) {
+    .confirmation-page,
+    .error-page {
+        padding: 1rem;
+    }
+    
+    .confirmation-text,
+    .error-text {
+        font-size: 1rem;
+    }
+}

@@ -10,10 +10,27 @@ import aiofiles
 import os
 from pathlib import Path
 
+# Импортируем бот только один раз
+# ВАЖНО: bot.py не должен запускаться напрямую в продакшене
+# Используется только server.py
+
+# Флаги для отслеживания состояния (защита от дублирования)
+_polling_started = False
+_server_initialized = False
+_bot_instance = None
+
+logger_import = logging.getLogger(__name__)
+logger_import.info("=" * 60)
+logger_import.info("📦 ИМПОРТ МОДУЛЕЙ")
+logger_import.info(f"🆔 Process ID: {os.getpid()}")
+logger_import.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+logger_import.info("=" * 60)
+
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
-from llm_memory import init_memory_db
+
+logger_import.info("✅ Модули bot, api и config импортированы успешно")
 
 # Настройка логирования с выводом в stdout для Render
 logging.basicConfig(
@@ -51,7 +68,7 @@ async def serve_static(request):
                 logger.warning(f"Photo not found: {WEBAPP_PHOTO_PATH}")
                 return Response(text='Photo not found', status=404)
         
-        # Специальная обработка для Lottie файла из res/
+        # Специальная обработка для Lottie файла из res/ (старый формат .lottie)
         if path == 'ring_animation.lottie' or path == 'res/ring_animation.lottie' or path.endswith('/ring_animation.lottie'):
             lottie_path = Path('res/ring_animation.lottie')
             if lottie_path.exists():
@@ -59,13 +76,36 @@ async def serve_static(request):
             else:
                 logger.warning(f"Lottie file not found: {lottie_path}")
                 # Не возвращаем 404, продолжаем поиск в webapp/
+
+        # Специальная обработка для Lottie JSON rings.json из res/
+        if path == 'rings.json' or path == 'res/rings.json' or path.endswith('/rings.json'):
+            rings_json_path = Path('res') / 'rings.json'
+            if rings_json_path.exists():
+                file_path = rings_json_path
+            else:
+                logger.warning(f"Lottie JSON not found: {rings_json_path}")
+                return Response(text='Lottie JSON not found', status=404)
         
         # Если это директория или файл не существует, возвращаем index.html
-        if file_path.is_dir() or (not file_path.exists() and path != 'welcome_photo.jpeg' and path != 'ring_animation.lottie' and path != 'res/ring_animation.lottie'):
+        if file_path.is_dir() or (not file_path.exists()
+                                  and path != 'welcome_photo.jpeg'
+                                  and path != 'ring_animation.lottie'
+                                  and path != 'res/ring_animation.lottie'
+                                  and path != 'ring_animation.json'
+                                  and path != 'rings.json'
+                                  and path != 'res/rings.json'):
             file_path = Path(WEBAPP_PATH) / 'index.html'
         
+        # Если index.html не существует, это критическая ошибка
         if not file_path.exists():
             logger.error(f"File not found: {file_path}")
+            # Для index.html возвращаем базовую HTML страницу вместо 404
+            if path == '' or path == 'index.html' or file_path.name == 'index.html':
+                return Response(
+                    text='<html><body><h1>Application Error</h1><p>Main page not found. Please contact administrator.</p></body></html>',
+                    content_type='text/html',
+                    status=500
+                )
             return Response(text='File not found', status=404)
         
         # Определяем content-type
@@ -80,6 +120,10 @@ async def serve_static(request):
             content_type = 'image/png'
         elif path.endswith('.svg'):
             content_type = 'image/svg+xml'
+        elif path.endswith('.mp4'):
+            content_type = 'video/mp4'
+        elif path.endswith('.webm'):
+            content_type = 'video/webm'
         elif path.endswith('.lottie') or path.endswith('.json'):
             # Lottie файлы могут быть в формате .lottie (бинарный) или .json
             # Для .lottie используем application/octet-stream, для .json - application/json
@@ -137,30 +181,90 @@ async def start_web_server():
     
     logger.info(f"🌐 Веб-сервер запущен на порту {port}")
     logger.info(f"📱 Mini App доступен по адресу: http://localhost:{port}")
+    
+    # Возвращаем runner для корректного завершения
+    return runner
 
 async def main():
     """Главная функция"""
+    global _polling_started, _server_initialized, _bot_instance
+    
     try:
-        # Инициализация базы данных памяти для LLM
-        try:
-            await init_memory_db()
-            logger.info("✅ База данных памяти LLM инициализирована")
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка инициализации базы данных памяти: {e}")
-            # Продолжаем работу даже если память не инициализирована
-        
-        # Инициализация бота
-        bot = await init_bot()
-        if bot is None:
-            logger.error("❌ Не удалось инициализировать бота")
-            logger.error("Проверьте переменные окружения на Render")
+        # Проверка: main() не должен вызываться дважды
+        if _server_initialized:
+            logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: main() уже был вызван!")
+            logger.error(f"   Process ID: {os.getpid()}")
+            logger.error("   Это означает двойной запуск сервера")
             return
         
+        logger.info("=" * 60)
+        logger.info("🚀 НАЧАЛО ИНИЦИАЛИЗАЦИИ СЕРВЕРА")
+        logger.info(f"🆔 Process ID: {os.getpid()}")
+        logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+        logger.info(f"🌍 PORT: {os.getenv('PORT')}")
+        logger.info(f"🌍 RENDER: {os.getenv('RENDER')}")
+        logger.info(f"📦 Dispatcher ID: {id(dp)}")
+        logger.info("=" * 60)
+        
+        # Устанавливаем флаг инициализации
+        _server_initialized = True
+        
+        # Проверяем, не запущен ли уже polling (на всякий случай)
+        if _polling_started:
+            logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Polling уже был запущен!")
+            logger.error("   Это не должно происходить. Проверьте код.")
+            return
+        
+        # Проверяем состояние Dispatcher
+        logger.info("🔍 Проверка состояния Dispatcher...")
+        try:
+            # Проверяем различные атрибуты, которые могут указывать на активный polling
+            polling_active = False
+            if hasattr(dp, '_polling'):
+                polling_active = bool(dp._polling)
+                if polling_active:
+                    logger.warning(f"⚠️ dp._polling = {dp._polling}")
+            
+            # Проверяем другие возможные индикаторы
+            if hasattr(dp, '_running') and dp._running:
+                polling_active = True
+                logger.warning(f"⚠️ dp._running = {dp._running}")
+            
+            if polling_active:
+                logger.warning("⚠️ Обнаружен активный polling в Dispatcher!")
+                logger.warning("   Пытаемся остановить...")
+                try:
+                    await dp.stop_polling()
+                    await asyncio.sleep(1)
+                    logger.info("✅ Polling остановлен")
+                except Exception as stop_error:
+                    logger.warning(f"⚠️ Не удалось остановить polling: {stop_error}")
+                    logger.warning("   Возможно, polling не был запущен")
+        except Exception as check_error:
+            logger.debug(f"Проверка Dispatcher: {check_error}")
+        logger.info("✅ Dispatcher проверен")
+        
+        # Инициализация бота
+        logger.info("🤖 Инициализация бота...")
+        if _bot_instance is not None:
+            logger.warning("⚠️ Экземпляр бота уже существует! Используем его")
+            bot = _bot_instance
+        else:
+            bot = await init_bot()
+            if bot is None:
+                logger.error("❌ Не удалось инициализировать бота")
+                logger.error("Проверьте переменные окружения на Render")
+                return
+            _bot_instance = bot
+            logger.info(f"✅ Бот инициализирован (ID: {id(bot)})")
+        
         # Устанавливаем функцию уведомлений в API
+        logger.info("📡 Настройка API...")
         set_notify_function(notify_admins)
         
         # Запуск веб-сервера
-        await start_web_server()
+        logger.info("🌐 Запуск веб-сервера...")
+        runner = await start_web_server()
         
         # Запуск бота только если есть переменная PORT (значит на сервере)
         # Это предотвращает конфликт с локальным запуском
@@ -211,6 +315,7 @@ async def main():
                     logger.error(f"   1. На Render запущено несколько экземпляров сервиса")
                     logger.error(f"   2. Используется webhook вместо polling")
                     logger.error(f"   3. Старый экземпляр все еще работает")
+                    logger.error(f"   4. Бот запускается несколько раз в одном процессе")
                     logger.error(f"   Решение: Проверьте на Render, нет ли дублирующихся сервисов")
                 return True
             
@@ -222,9 +327,69 @@ async def main():
             conflict_filter = ConflictFilter()
             aiogram_logger.addFilter(conflict_filter)
             
-            logger.info("🤖 Запуск бота (polling)...")
+            # Проверяем глобальный флаг
+            if _polling_started:
+                logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Попытка запустить polling второй раз!")
+                logger.error("   Это не должно происходить. Проверьте код на наличие двойных вызовов.")
+                logger.error(f"   Process ID: {os.getpid()}")
+                logger.error(f"   Dispatcher ID: {id(dp)}")
+                logger.error(f"   Bot ID: {id(bot)}")
+                return
+            
+            # Финальная проверка состояния Dispatcher перед запуском
+            logger.info("🔍 Финальная проверка Dispatcher перед запуском polling...")
+            polling_detected = False
+            try:
+                # Проверяем все возможные индикаторы активного polling
+                if hasattr(dp, '_polling') and dp._polling:
+                    polling_detected = True
+                    logger.warning(f"⚠️ dp._polling = {dp._polling}")
+                
+                if hasattr(dp, '_running') and dp._running:
+                    polling_detected = True
+                    logger.warning(f"⚠️ dp._running = {dp._running}")
+                
+                if polling_detected:
+                    logger.warning("⚠️ Обнаружен возможный активный polling")
+                    logger.warning("   Пытаемся безопасно остановить...")
+                    try:
+                        # Пытаемся остановить только если действительно запущен
+                        await dp.stop_polling()
+                        await asyncio.sleep(2)
+                        logger.info("✅ Polling остановлен (если был запущен)")
+                    except Exception as stop_error:
+                        # Если ошибка "Polling is not started" - это нормально
+                        if "not started" in str(stop_error).lower():
+                            logger.info("ℹ️ Polling не был запущен (это нормально)")
+                        else:
+                            logger.warning(f"⚠️ Ошибка при остановке: {stop_error}")
+            except Exception as check_error:
+                logger.debug(f"Проверка Dispatcher: {check_error}")
+            
+            # Проверяем, что бот существует
+            if bot is None:
+                logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Бот не инициализирован!")
+                return
+            
+            # Добавляем задержку перед запуском, чтобы избежать конфликтов
+            logger.info("⏳ Задержка 1 секунда перед запуском polling...")
+            await asyncio.sleep(1)
+            
+            logger.info("=" * 60)
+            logger.info("🤖 ЗАПУСК БОТА (POLLING)")
+            logger.info(f"🆔 Process ID: {os.getpid()}")
+            logger.info(f"🕐 Время: {__import__('datetime').datetime.now().isoformat()}")
+            logger.info(f"📦 Dispatcher ID: {id(dp)}")
+            logger.info(f"🤖 Bot ID: {id(bot)}")
+            logger.info("=" * 60)
+            
+            # Устанавливаем флаг
+            _polling_started = True
+            logger.info("✅ Флаг _polling_started установлен")
             
             try:
+                # Запускаем polling (это блокирующая операция)
+                # Важно: start_polling должен быть вызван только один раз
                 await dp.start_polling(
                     bot, 
                     allowed_updates=["message", "callback_query"],
@@ -239,7 +404,6 @@ async def main():
             logger.warning("⚠️ PORT не установлен - бот не запущен (вероятно локальный запуск)")
             logger.info("🌐 Только веб-сервер запущен")
             # Держим сервер запущенным
-            import asyncio
             while True:
                 await asyncio.sleep(3600)  # Спим час за раз
     except Exception as e:
@@ -249,5 +413,14 @@ async def main():
         raise
 
 if __name__ == "__main__":
+    # Проверяем, не запущен ли уже event loop
+    try:
+        loop = asyncio.get_running_loop()
+        logger.error("🚨 КРИТИЧЕСКАЯ ОШИБКА: Event loop уже запущен!")
+        logger.error("   Это может означать, что server.py импортируется в другом контексте")
+        logger.error("   Process ID: %s", os.getpid())
+    except RuntimeError:
+        # Event loop не запущен - это нормально, запускаем
+        logger.info("✅ Event loop не запущен, запускаем main()...")
     asyncio.run(main())
 
