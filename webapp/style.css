@@ -120,6 +120,7 @@ body {
     position: relative;
     overflow-x: hidden;
     min-height: 100vh;
+    padding-bottom: 80px; /* Отступ для нижнего навбара */
 }
 
 /* Анимация загрузки с обручальным кольцом (Lottie) */
@@ -596,6 +597,88 @@ body {
     max-width: 100%;
     margin: 0 auto;
     background: transparent;
+    padding-bottom: 80px; /* Отступ для нижнего навбара */
+}
+
+/* Контейнер вкладок */
+.tabs-container {
+    width: 100%;
+    min-height: calc(100vh - 80px);
+}
+
+.tab-content {
+    display: block;
+    width: 100%;
+}
+
+.tab-content[style*="display: none"] {
+    display: none !important;
+}
+
+/* Нижний навбар */
+.bottom-navbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background: var(--color-bg-white);
+    border-top: 2px solid var(--color-overlay-green-border-medium);
+    box-shadow: 0 -4px 15px var(--color-shadow-green);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+    min-width: 0;
+}
+
+.nav-item:hover {
+    background: var(--color-overlay-cream);
+}
+
+.nav-item.active {
+    color: var(--color-primary);
+}
+
+.nav-item.active .nav-icon {
+    transform: scale(1.1);
+}
+
+.nav-icon {
+    font-size: 24px;
+    transition: transform 0.3s ease;
+    line-height: 1;
+}
+
+.nav-label {
+    font-family: var(--font-family-main);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-tight);
+    color: var(--color-text-main);
+    transition: color 0.3s ease;
+}
+
+.nav-item.active .nav-label {
+    color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+}
     position: relative;
     z-index: 1;
     opacity: 0;
@@ -2277,5 +2360,18 @@ body {
     .confirmation-text,
     .error-text {
         font-size: 1rem;
+    }
+    
+    /* Адаптивность навбара */
+    .bottom-navbar {
+        padding: var(--spacing-xs) 0;
+    }
+    
+    .nav-icon {
+        font-size: 20px;
+    }
+    
+    .nav-label {
+        font-size: 11px;
     }
 }

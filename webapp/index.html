@@ -21,8 +21,10 @@
     <!-- Фон с анимацией шелковой ткани -->
     <div class="silk-background"></div>
     <div class="app-container">
-        <!-- Основная страница (теперь всегда основная) -->
-        <div id="mainPage" style="display: block;">
+        <!-- Контейнер для вкладок -->
+        <div class="tabs-container">
+            <!-- Вкладка: Главная -->
+            <div class="tab-content" id="tab-home" data-tab="home">
             <!-- Заголовок -->
             <section class="hero-section">
                 <div class="photo-hero">
@@ -46,55 +48,6 @@
                 </div>
             </section>
 
-            <!-- Тайминг (План-сетка) -->
-            <section class="timeline-section">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">ПЛАН ДНЯ</h2>
-                    <div class="timeline-container" id="timelineContainer">
-                        <!-- Загружается динамически из API -->
-                    </div>
-                </div>
-            </section>
-
-            <!-- Дресс-код -->
-            <section class="dresscode-section">
-                <div class="dresscode-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">ДРЕСС-КОД</h2>
-                    <p class="dresscode-intro scroll-reveal-item">
-                        Мы очень старались сделать праздник красивым и будем рады, если вы поддержите цветовую палитру торжества.
-                    </p>
-                </div>
-            </section>
-
-            <!-- Дресс-код анимация -->
-            <section class="dresscode-animation-section">
-                <div class="section-card scroll-reveal">
-                    <div class="dresscode-animation-container scroll-reveal-item" id="dresscodeAnimationContainer">
-                        <img src="res/dresscode/dresscode_animation_final.png" alt="Дресс-код" id="dresscodeAnimationFinal" class="dresscode-animation-final">
-                    </div>
-                </div>
-            </section>
-
-            <!-- Пожелания -->
-            <section class="wishes-section">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">ПОЖЕЛАНИЯ</h2>
-                    <div class="wishes-content scroll-reveal-item">
-                        <div class="wish-item">
-                            <span class="wish-icon"></span>
-                            <p class="wishes-text">
-                                Просим не дарить нам цветы, прекрасной альтернативой станет бутылка хорошего вина для нашей семейной винотеки.
-                            </p>
-                        </div>
-                        <div class="wish-item">
-                            <span class="wish-icon"></span>
-                            <p class="wishes-text">
-                                Если хотите сделать нам ценный и нужный подарок, мы будем признательны за вклад в бюджет нашей молодой семьи.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
             <!-- Место проведения -->
             <section class="venue-section">
@@ -114,36 +67,52 @@
                 </div>
             </section>
 
-            <!-- Обратный отсчет до свадьбы -->
-            <section class="calendar-section">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">ДО СВАДЬБЫ ОСТАЛОСЬ</h2>
-                    <!-- Внешний таймер MegaTimer -->
-                    <div class="countdown-clock" id="mainCountdownClock">
-                        <script src="//megatimer.ru/get/7747e73dbcadf95d77ffb904c28a7d9b.js"></script>
-                    </div>
-                    <div class="calendar-preview">
-                        <div class="calendar-date-full" id="mainCalendarDateFull">Июнь 05 2026</div>
-                    </div>
-                </div>
-            </section>
+            </div>
 
-            <!-- Группа для гостей (видна только зарегистрированным гостям) -->
-            <section class="group-section" id="groupSection" style="display: none;">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">СВАДЕБНЫЙ ЧАТ</h2>
-                    <p class="group-description scroll-reveal-item">
-                        Присоединяйтесь к нашему чату, чтобы общаться с другими гостями и получать важные обновления!
-                    </p>
-                    <a href="https://t.me/+ow7ttcFCmoUzYzRi" target="_blank" class="btn-group-link scroll-reveal-item">
-                        <span class="btn-group-icon">💬</span>
-                        <span class="btn-group-text">Присоединиться к чату</span>
-                    </a>
-                </div>
-            </section>
-            
-            <!-- Форма подтверждения присутствия (перенесена со страницы регистрации) -->
-            <section class="rsvp-section" id="rsvpSection">
+            <!-- Вкладка: Дресс-Код -->
+            <div class="tab-content" id="tab-dresscode" data-tab="dresscode" style="display: none;">
+                <!-- Дресс-код -->
+                <section class="dresscode-section">
+                    <div class="dresscode-card scroll-reveal">
+                        <h2 class="section-title scroll-reveal-item">ДРЕСС-КОД</h2>
+                        <p class="dresscode-intro scroll-reveal-item">
+                            Мы очень старались сделать праздник красивым и будем рады, если вы поддержите цветовую палитру торжества.
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Дресс-код анимация -->
+                <section class="dresscode-animation-section">
+                    <div class="section-card scroll-reveal">
+                        <div class="dresscode-animation-container scroll-reveal-item" id="dresscodeAnimationContainer">
+                            <img src="res/dresscode/dresscode_animation_final.png" alt="Дресс-код" id="dresscodeAnimationFinal" class="dresscode-animation-final">
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Вкладка: План-сетка -->
+            <div class="tab-content" id="tab-timeline" data-tab="timeline" style="display: none;">
+                <!-- Тайминг (План-сетка) -->
+                <section class="timeline-section">
+                    <div class="section-card scroll-reveal">
+                        <h2 class="section-title scroll-reveal-item">ПЛАН ДНЯ</h2>
+                        <div class="timeline-container" id="timelineContainer">
+                            <!-- Загружается динамически из API -->
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Вкладка: Рассадка -->
+            <div class="tab-content" id="tab-seating" data-tab="seating" style="display: none;">
+                <!-- Пока пусто -->
+            </div>
+
+            <!-- Вкладка: Меню -->
+            <div class="tab-content" id="tab-menu" data-tab="menu" style="display: none;">
+                <!-- Форма подтверждения присутствия -->
+                <section class="rsvp-section" id="rsvpSection">
                 <div class="section-card scroll-reveal">
                     <!-- Сообщение об ошибке (если гость был удален) -->
                     <div id="errorMessage" class="error-message" style="display: none;">
@@ -201,26 +170,51 @@
                 </div>
             </section>
             
-            <!-- Футер -->
-            <section class="contact-section">
-                <div class="section-card scroll-reveal">
-                    <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
-                    <div class="contact-list">
-                        <a href="#" class="contact-item" id="mainGroomContact">
-                            <span class="contact-name">Валентин</span>
-                            <span class="contact-telegram" id="mainGroomTelegram">@ezhigval</span>
-                        </a>
-                        <a href="#" class="contact-item" id="mainBrideContact">
-                            <span class="contact-name">Мария</span>
-                            <span class="contact-telegram" id="mainBrideTelegram">@mrfilmpro</span>
-                        </a>
+                <!-- Связаться с нами -->
+                <section class="contact-section">
+                    <div class="section-card scroll-reveal">
+                        <h2 class="section-title scroll-reveal-item">СВЯЗАТЬСЯ С НАМИ</h2>
+                        <div class="contact-list">
+                            <a href="#" class="contact-item" id="mainGroomContact">
+                                <span class="contact-name">Валентин</span>
+                                <span class="contact-telegram" id="mainGroomTelegram">@ezhigval</span>
+                            </a>
+                            <a href="#" class="contact-item" id="mainBrideContact">
+                                <span class="contact-name">Мария</span>
+                                <span class="contact-telegram" id="mainBrideTelegram">@mrfilmpro</span>
+                            </a>
+                        </div>
+                        <div class="cancel-section">
+                            <button type="button" class="btn-cancel" id="mainCancelInvitationBtn">Отменить приглашение</button>
+                        </div>
                     </div>
-                    <div class="cancel-section">
-                        <button type="button" class="btn-cancel" id="mainCancelInvitationBtn">Отменить приглашение</button>
-                    </div>
-                </div>
-            </section>
+                </section>
+            </div>
         </div>
+
+        <!-- Нижний навбар -->
+        <nav class="bottom-navbar">
+            <button class="nav-item active" data-tab="home">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Главная</span>
+            </button>
+            <button class="nav-item" data-tab="dresscode">
+                <span class="nav-icon">👔</span>
+                <span class="nav-label">Дресс-Код</span>
+            </button>
+            <button class="nav-item" data-tab="timeline">
+                <span class="nav-icon">📅</span>
+                <span class="nav-label">План-сетка</span>
+            </button>
+            <button class="nav-item" data-tab="seating">
+                <span class="nav-icon">🪑</span>
+                <span class="nav-label">Рассадка</span>
+            </button>
+            <button class="nav-item" data-tab="menu">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">Меню</span>
+            </button>
+        </nav>
 
     </div>
 

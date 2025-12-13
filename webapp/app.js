@@ -703,7 +703,22 @@ function loadVenueImage() {
 // Инициализация Яндекс карты
 function initYandexMap() {
     const mapContainer = document.getElementById('venueMap');
-    if (!mapContainer) return;
+    if (!mapContainer) {
+        console.warn('venueMap container not found');
+        return;
+    }
+    
+    // Проверяем, что элемент видим (не скрыт через display: none)
+    const tabContent = mapContainer.closest('.tab-content');
+    if (tabContent && tabContent.style.display === 'none') {
+        console.warn('Map container is in hidden tab, will retry later');
+        return;
+    }
+    
+    // Если карта уже загружена, не перезагружаем
+    if (mapContainer.querySelector('iframe')) {
+        return;
+    }
     
     // Координаты места проведения: 60.136143, 30.525849
     const lat = 60.136143;
@@ -1281,3 +1296,143 @@ function initDresscodeAnimation() {
     finalElement.style.opacity = '0';
     observer.observe(container);
 }
+
+// Инициализация навигации между вкладками
+function initTabNavigation() {
+    const navItems = document.querySelectorAll('.nav-item');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    // Флаг для отслеживания загруженных данных
+    let homeDataLoaded = false;
+    let timelineDataLoaded = false;
+    
+    function switchTab(tabName) {
+        // Скрываем все вкладки
+        tabContents.forEach(tab => {
+            tab.style.display = 'none';
+        });
+        
+        // Показываем выбранную вкладку
+        const activeTab = document.getElementById(`tab-${tabName}`);
+        if (activeTab) {
+            activeTab.style.display = 'block';
+            // Прокручиваем наверх при переключении
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            // Загружаем данные для соответствующей вкладки
+            if (tabName === 'home') {
+                if (!homeDataLoaded) {
+                    // Загружаем данные для главной страницы
+                    loadHomeTabData();
+                    homeDataLoaded = true;
+                } else {
+                    // Если данные уже загружены, просто инициализируем карту заново
+                    setTimeout(() => {
+                        initYandexMap();
+                    }, 200);
+                }
+            }
+            
+            if (tabName === 'timeline') {
+                if (!timelineDataLoaded) {
+                    // Загружаем тайминг для вкладки план-сетка
+                    loadTimelineData();
+                    timelineDataLoaded = true;
+                } else {
+                    // Если данные уже загружены, просто обновляем scroll reveal
+                    setTimeout(() => {
+                        initScrollReveal();
+                    }, 100);
+                }
+            }
+            
+            // Инициализируем scroll reveal для новой вкладки
+            setTimeout(() => {
+                initScrollReveal();
+            }, 100);
+        }
+        
+        // Обновляем активное состояние кнопок
+        navItems.forEach(item => {
+            if (item.dataset.tab === tabName) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+        
+        // Вибрация при переключении
+        if (tg.HapticFeedback) {
+            tg.HapticFeedback.impactOccurred('light');
+        }
+    }
+    
+    // Функция загрузки данных для главной вкладки
+    async function loadHomeTabData() {
+        // Загружаем конфигурацию если еще не загружена
+        await loadConfig();
+        
+        // Обновляем данные на странице
+        updateMainPageUI();
+        
+        // Загружаем изображение места проведения
+        loadVenueImage();
+        
+        // Инициализируем карту (с небольшой задержкой, чтобы элемент был видим)
+        setTimeout(() => {
+            initYandexMap();
+        }, 200);
+        
+        // Обновляем контакты
+        updateMainContacts();
+    }
+    
+    // Функция загрузки данных для вкладки план-сетка
+    async function loadTimelineData() {
+        try {
+            console.log('Loading timeline from:', `${CONFIG.apiUrl}/timeline`);
+            const response = await fetch(`${CONFIG.apiUrl}/timeline`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Timeline data received:', data);
+                renderTimeline(data.timeline || []);
+            } else {
+                console.error('Failed to load timeline:', response.status, await response.text());
+                const container = document.getElementById('timelineContainer');
+                if (container) {
+                    container.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary);">Ошибка загрузки плана дня. Попробуйте позже.</p>';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading timeline:', error);
+            const container = document.getElementById('timelineContainer');
+            if (container) {
+                container.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary);">Ошибка загрузки плана дня. Попробуйте позже.</p>';
+            }
+        }
+    }
+    
+    // Обработчики кликов на кнопки навбара
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            const tabName = item.dataset.tab;
+            if (tabName) {
+                switchTab(tabName);
+            }
+        });
+    });
+    
+    // По умолчанию показываем главную вкладку и загружаем данные
+    switchTab('home');
+    
+    // Также загружаем данные при первой загрузке страницы (на случай, если пользователь уже на главной)
+    if (document.getElementById('tab-home') && document.getElementById('tab-home').style.display !== 'none') {
+        loadHomeTabData();
+        homeDataLoaded = true;
+    }
+}
+
+// Инициализация навигации после загрузки DOM
+document.addEventListener('DOMContentLoaded', () => {
+    initTabNavigation();
+});
