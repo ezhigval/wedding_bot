@@ -18,29 +18,54 @@ export default function HomeTab() {
       {/* Hero Section */}
       <section className="relative w-full">
         <div className="relative h-[60vh] min-h-[400px] overflow-hidden">
+          {/* Размытый фон */}
           <img
             src="/welcome_photo.jpeg"
             alt="Валентин и Мария"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover object-[center_top] blur-md scale-110"
             onError={(e) => {
               ;(e.target as HTMLImageElement).style.display = 'none'
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white px-4">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/60 to-black/80" />
+          
+          {/* Контент с фотографией в кружочке */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
+            {/* Фотография в кружочке */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
-              className="text-4xl md:text-5xl font-secondary font-bold mb-2 text-center leading-[1.2]"
+              className="relative mb-6"
             >
-              {config ? `${config.groomName} и ${config.brideName}` : 'Валентин и Мария'}
+              <div className="w-48 h-48 md:w-56 md:h-56 rounded-full overflow-hidden border-4 border-gray-300 shadow-2xl">
+                <img
+                  src="/welcome_photo.jpeg"
+                  alt="Валентин и Мария"
+                  className="w-full h-full object-cover object-[center_top]"
+                  onError={(e) => {
+                    ;(e.target as HTMLImageElement).style.display = 'none'
+                  }}
+                />
+              </div>
             </motion.div>
+
+            {/* Имена */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-xl md:text-2xl font-main leading-[1.2]"
+              className="text-4xl md:text-5xl font-secondary font-bold mb-2 text-center leading-[1.2] text-white"
+            >
+              {config ? `${config.groomName} и ${config.brideName}` : 'Валентин и Мария'}
+            </motion.div>
+            
+            {/* Дата */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="text-xl md:text-2xl font-main leading-[1.2] text-[#C8A067]"
             >
               {config?.weddingDate
                 ? new Date(config.weddingDate).toLocaleDateString('ru-RU', {

@@ -6,6 +6,7 @@ import DresscodeTab from './components/tabs/DresscodeTab'
 import TimelineTab from './components/tabs/TimelineTab'
 import SeatingTab from './components/tabs/SeatingTab'
 import MenuTab from './components/tabs/MenuTab'
+import WishesTab from './components/tabs/WishesTab'
 import LoadingScreen from './components/LoadingScreen'
 import type { TabName } from './types'
 
@@ -33,11 +34,12 @@ function App() {
             transition={{ duration: 0.3 }}
             className="min-h-full"
           >
-            {activeTab === 'home' && <HomeTab />}
-            {activeTab === 'dresscode' && <DresscodeTab />}
-            {activeTab === 'timeline' && <TimelineTab />}
-            {activeTab === 'seating' && <SeatingTab />}
-            {activeTab === 'menu' && <MenuTab />}
+          {activeTab === 'home' && <HomeTab />}
+          {activeTab === 'dresscode' && <DresscodeTab />}
+          {activeTab === 'timeline' && <TimelineTab />}
+          {activeTab === 'seating' && <SeatingTab />}
+          {activeTab === 'menu' && <MenuTab />}
+          {activeTab === 'wishes' && <WishesTab />}
           </motion.div>
         </AnimatePresence>
       </div>

@@ -43,7 +43,7 @@ export default function TimelineTab() {
                 transition={{ duration: 0.4, delay: index * 0.1 }}
                 className="flex flex-col md:flex-row gap-2 p-[3.2px] bg-cream/30 rounded-lg border-l-4 border-primary"
               >
-                <div className="font-semibold text-primary text-lg md:text-xl min-w-[120px] md:text-right leading-[1.2]">
+                <div className="font-semibold text-primary min-w-[120px] md:text-right leading-[1.2]" style={{ fontSize: '23.4px' }}>
                   {item.time}
                 </div>
                 <div className="flex-1 text-gray-700 text-[19.2px] md:text-[21.6px] leading-[1.2]">
