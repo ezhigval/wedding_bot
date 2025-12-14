@@ -186,6 +186,52 @@ export default function ChallengeTab() {
   const currentRank = stats?.rank || 'Незнакомец'
   const currentScore = stats?.total_score || 0
 
+  // Функция для определения прогресса до следующего звания
+  const getRankProgress = (score: number) => {
+    const rankThresholds = [
+      { rank: 'Незнакомец', min: 0, max: 50 },
+      { rank: 'Ты хто?', min: 50, max: 100 },
+      { rank: 'Люся', min: 100, max: 150 },
+      { rank: 'Бедный родственник', min: 150, max: 200 },
+      { rank: 'Братуха', min: 200, max: 300 },
+      { rank: 'Батя в здании', min: 300, max: 400 },
+      { rank: 'Монстр', min: 400, max: Infinity },
+    ]
+
+    const currentThreshold = rankThresholds.find(t => 
+      score >= t.min && (t.max === Infinity || score < t.max)
+    ) || rankThresholds[0]
+
+    const nextThreshold = rankThresholds[rankThresholds.indexOf(currentThreshold) + 1]
+
+    if (!nextThreshold) {
+      // Достигнуто максимальное звание
+      return {
+        current: currentThreshold.rank,
+        next: null,
+        progress: 100,
+        currentScore: score,
+        nextScore: null,
+        remaining: 0,
+      }
+    }
+
+    const progressInRange = score - currentThreshold.min
+    const rangeSize = currentThreshold.max - currentThreshold.min
+    const progress = (progressInRange / rangeSize) * 100
+
+    return {
+      current: currentThreshold.rank,
+      next: nextThreshold.rank,
+      progress: Math.min(100, Math.max(0, progress)),
+      currentScore: score,
+      nextScore: currentThreshold.max,
+      remaining: currentThreshold.max - score,
+    }
+  }
+
+  const rankProgress = getRankProgress(currentScore)
+
   // Если игра активна, показываем её
   if (activeGame === 'dragon') {
     return <DragonGame onScore={(score) => handleGameScore(score, 'dragon')} onClose={handleGameClose} />
@@ -244,28 +290,62 @@ export default function ChallengeTab() {
           {loadingStats ? (
             <div className="text-gray-500 text-sm text-center">Загрузка статистики...</div>
           ) : (
-            <div className="flex items-center justify-between gap-4">
-              {/* Левая часть - Звание с иконкой */}
-              <div className="flex items-center gap-3 flex-1">
-                <RankIcon 
-                  rank={currentRank as 'Незнакомец' | 'Ты хто?' | 'Люся' | 'Бедный родственник' | 'Братуха' | 'Батя в здании' | 'Монстр'} 
-                  className="flex-shrink-0"
-                />
-                <div>
-                  <div className="text-xs text-gray-600 mb-1">Ваше звание</div>
-                  <div className="text-2xl font-bold text-primary capitalize">
-                    {currentRank}
+            <div className="space-y-3">
+              {/* Верхняя часть - Звание и рейтинг */}
+              <div className="flex items-center justify-between gap-4">
+                {/* Левая часть - Звание с иконкой */}
+                <div className="flex items-center gap-3 flex-1">
+                  <RankIcon 
+                    rank={currentRank as 'Незнакомец' | 'Ты хто?' | 'Люся' | 'Бедный родственник' | 'Братуха' | 'Батя в здании' | 'Монстр'} 
+                    className="flex-shrink-0"
+                  />
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Ваше звание</div>
+                    <div className="text-2xl font-bold text-primary capitalize">
+                      {currentRank}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Правая часть - Рейтинг */}
+                <div className="flex-1 text-right">
+                  <div className="text-xs text-gray-600 mb-1">Ваш рейтинг</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {currentScore}
                   </div>
                 </div>
               </div>
-              
-              {/* Правая часть - Рейтинг */}
-              <div className="flex-1 text-right">
-                <div className="text-xs text-gray-600 mb-1">Ваш рейтинг</div>
-                <div className="text-2xl font-bold text-primary">
-                  {currentScore}
+
+              {/* Прогресс-бар до следующего звания */}
+              {rankProgress.next ? (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-600">
+                      До звания <span className="font-semibold text-primary">{rankProgress.next}</span>
+                    </span>
+                    <span className="text-gray-600 font-semibold">
+                      {rankProgress.remaining} очков
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${rankProgress.progress}%` }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                      className="h-full bg-gradient-to-r from-primary to-[#F5D98A] rounded-full shadow-sm"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 text-center">
+                    {currentScore} / {rankProgress.nextScore} очков
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-center py-2">
+                  <div className="text-sm font-semibold text-primary">
+                    🏆 Вы достигли максимального звания!
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </motion.div>
