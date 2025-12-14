@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import urllib.parse
 import asyncio
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 from config import (
     BOT_TOKEN,
@@ -58,6 +58,19 @@ from game_stats_cache import (
     sync_game_stats,
 )
 import seating_sync
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Попытка импортировать pymorphy2 для проверки слов
+try:
+    import pymorphy2
+    MORPH_AVAILABLE = True
+    morph = pymorphy2.MorphAnalyzer()
+except ImportError:
+    MORPH_AVAILABLE = False
+    morph = None
+    logger.warning("pymorphy2 не установлен, проверка слов будет упрощенной")
 import traceback
 import logging
 
@@ -157,6 +170,69 @@ async def _resolve_username_to_user_id(username: str) -> Optional[int]:
     except Exception as e:
         logger.warning(f"_resolve_username_to_user_id: parse error {e}")
         return None
+
+
+async def validate_word(word: str) -> tuple[bool, str]:
+    """
+    Проверяет, что слово является существительным в именительном падеже единственного числа.
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    if not word or len(word) < 2:
+        return False, 'Слово слишком короткое'
+    
+    word_lower = word.lower()
+    
+    # Если pymorphy2 доступен, используем его для точной проверки
+    if MORPH_AVAILABLE and morph:
+        try:
+            parsed = morph.parse(word_lower)[0]
+            
+            # Проверяем, что это существительное
+            if 'NOUN' not in parsed.tag:
+                return False, 'Это не существительное'
+            
+            # Проверяем, что это именительный падеж (nomn)
+            if 'nomn' not in parsed.tag:
+                return False, 'Слово должно быть в именительном падеже'
+            
+            # Проверяем, что это единственное число (sing)
+            if 'sing' not in parsed.tag:
+                return False, 'Слово должно быть в единственном числе'
+            
+            # Проверяем, что слово существует (не является неизвестным)
+            if parsed.score < 0.3:  # Низкий score может означать, что слово не найдено
+                return False, 'Слово не найдено в словаре'
+            
+            return True, ''
+        except Exception as e:
+            logger.warning(f"Ошибка при проверке слова '{word}': {e}")
+            # Продолжаем с упрощенной проверкой
+    
+    # Упрощенная проверка: проверяем окончания для существительных
+    # Это не идеально, но работает для большинства случаев
+    common_endings = ['а', 'я', 'о', 'е', 'ь', 'й', 'и', 'ы', 'у', 'ю']
+    
+    # Если слово заканчивается на типичное окончание существительного, считаем валидным
+    if any(word_lower.endswith(ending) for ending in common_endings) or len(word_lower) >= 3:
+        # Дополнительная проверка: не должно быть слишком много согласных подряд
+        consonants = 'бвгджзклмнпрстфхцчшщ'
+        max_consonants = 0
+        current_consonants = 0
+        for char in word_lower:
+            if char in consonants:
+                current_consonants += 1
+                max_consonants = max(max_consonants, current_consonants)
+            else:
+                current_consonants = 0
+        
+        if max_consonants > 4:
+            return False, 'Слово содержит слишком много согласных подряд'
+        
+        return True, ''
+    
+    return False, 'Слово не соответствует формату'
 
 
 async def scan_guests_for_duplicates_and_notify():
@@ -275,6 +351,71 @@ async def scan_guests_for_duplicates_and_notify():
         logger.error(f"Ошибка при проверке гостей на дубликаты: {e}")
         logger.error(traceback.format_exc())
 
+async def validate_word(word: str) -> tuple[bool, str]:
+    """
+    Проверяет, что слово является существительным в именительном падеже единственного числа.
+    
+    Args:
+        word: Слово в верхнем регистре
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    if not word or len(word) < 2:
+        return False, 'Слово слишком короткое'
+    
+    word_lower = word.lower()
+    
+    # Если pymorphy2 доступен, используем его для точной проверки
+    if MORPH_AVAILABLE and morph:
+        try:
+            parsed = morph.parse(word_lower)[0]
+            
+            # Проверяем, что это существительное
+            if 'NOUN' not in parsed.tag:
+                return False, 'Это не существительное'
+            
+            # Проверяем, что это именительный падеж (nomn)
+            if 'nomn' not in parsed.tag:
+                return False, 'Слово должно быть в именительном падеже'
+            
+            # Проверяем, что это единственное число (sing)
+            if 'sing' not in parsed.tag:
+                return False, 'Слово должно быть в единственном числе'
+            
+            # Проверяем, что слово существует (не является неизвестным)
+            if parsed.score < 0.3:  # Низкий score может означать, что слово не найдено
+                return False, 'Слово не найдено в словаре'
+            
+            return True, ''
+        except Exception as e:
+            logger.warning(f"Ошибка при проверке слова '{word}': {e}")
+            # Продолжаем с упрощенной проверкой
+    
+    # Упрощенная проверка: проверяем окончания для существительных
+    # Это не идеально, но работает для большинства случаев
+    common_endings = ['а', 'я', 'о', 'е', 'ь', 'й', 'и', 'ы', 'у', 'ю']
+    
+    # Если слово заканчивается на типичное окончание существительного, считаем валидным
+    if any(word_lower.endswith(ending) for ending in common_endings) or len(word_lower) >= 3:
+        # Дополнительная проверка: не должно быть слишком много согласных подряд
+        consonants = 'бвгджзклмнпрстфхцчшщ'
+        max_consonants = 0
+        current_consonants = 0
+        for char in word_lower:
+            if char in consonants:
+                current_consonants += 1
+                max_consonants = max(max_consonants, current_consonants)
+            else:
+                current_consonants = 0
+        
+        if max_consonants > 4:
+            return False, 'Слово содержит слишком много согласных подряд'
+        
+        return True, ''
+    
+    return False, 'Слово не соответствует формату'
+
 async def init_api():
     """Инициализация API"""
     api = web.Application()
@@ -372,6 +513,11 @@ async def init_api():
             
             if not word:
                 return web.json_response({'error': 'Слово не предоставлено'}, status=400)
+            
+            # Проверяем, что слово валидное (существительное в именительном падеже единственного числа)
+            word_valid, validation_error = await validate_word(word)
+            if not word_valid:
+                return web.json_response({'error': validation_error}, status=400)
             
             user_id = None
             
