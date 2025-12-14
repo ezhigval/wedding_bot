@@ -210,7 +210,16 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
 
       // Рисуем птичку (bird уже объявлена выше)
       if (birdFaceImageRef.current && faceImageLoaded && birdFaceImageRef.current.complete) {
-        // Рисуем тело птички (простой овал)
+        // Сначала рисуем крылья (задний план)
+        ctx.fillStyle = '#FFA500'
+        ctx.beginPath()
+        ctx.ellipse(bird.x - 5, bird.y + bird.height/2, 8, 15, -0.3, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(bird.x + bird.width + 5, bird.y + bird.height/2, 8, 15, 0.3, 0, 2 * Math.PI)
+        ctx.fill()
+
+        // Затем рисуем тело птички (простой овал)
         ctx.fillStyle = '#FFD700'
         ctx.beginPath()
         ctx.ellipse(bird.x + bird.width/2, bird.y + bird.height/2, bird.width/2, bird.height/2, 0, 0, 2 * Math.PI)
@@ -219,7 +228,7 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
         ctx.lineWidth = 2
         ctx.stroke()
 
-        // Рисуем лицо поверх
+        // И наконец рисуем лицо поверх всего (передний план)
         const faceSize = 80 // Увеличено в 2 раза
         const faceX = bird.x + bird.width/2 - faceSize/2
         const faceY = bird.y + bird.height/2 - faceSize/2
@@ -230,15 +239,6 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
         ctx.clip()
         ctx.drawImage(birdFaceImageRef.current, faceX, faceY, faceSize, faceSize)
         ctx.restore()
-
-        // Крылья
-        ctx.fillStyle = '#FFA500'
-        ctx.beginPath()
-        ctx.ellipse(bird.x - 5, bird.y + bird.height/2, 8, 15, -0.3, 0, 2 * Math.PI)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.ellipse(bird.x + bird.width + 5, bird.y + bird.height/2, 8, 15, 0.3, 0, 2 * Math.PI)
-        ctx.fill()
       } else {
         // Стандартная графика птички
         ctx.fillStyle = '#FFD700'

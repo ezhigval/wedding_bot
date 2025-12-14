@@ -235,7 +235,7 @@ export default function ChallengeTab() {
       </SectionCard>
 
       {/* Статистика игрока - внизу по центру */}
-      <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 pb-2 w-full max-w-md">
+      <div className="fixed bottom-28 left-1/2 transform -translate-x-1/2 px-4 pb-2 w-full max-w-md">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

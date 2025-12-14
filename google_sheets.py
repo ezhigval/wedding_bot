@@ -2130,6 +2130,7 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
       F: flappy_score (счет в ФлэппиБёрд)
       G: crossword_score (счет в Кроссводе)
       H: rank (звание)
+      I: last_updated (дата последнего обновления в формате ISO)
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -2148,9 +2149,9 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
             sheet = spreadsheet.worksheet("Игры")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=8)
+            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=9)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"])
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"])
             return None
         
         # Ищем строку с user_id
@@ -2166,6 +2167,7 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
                     'flappy_score': int(row[5]) if len(row) > 5 and row[5] else 0,
                     'crossword_score': int(row[6]) if len(row) > 6 and row[6] else 0,
                     'rank': row[7] if len(row) > 7 and row[7] else 'новичок',
+                    'last_updated': row[8] if len(row) > 8 and row[8] else None,
                 }
         
         return None
@@ -2219,9 +2221,9 @@ def _update_game_score_sync(
             sheet = spreadsheet.worksheet("Игры")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=8)
+            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=9)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"])
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"])
         
         # Определяем индекс столбца для конкретной игры (0-based для списков, 1-based для gspread)
         # Теперь индексы сдвинуты из-за добавления first_name и last_name
@@ -2285,6 +2287,10 @@ def _update_game_score_sync(
                     rank = 'профи'
                 
                 sheet.update_cell(user_row_gspread, 8, rank)  # H - rank (столбец 8 в gspread)
+                
+                # Обновляем дату последнего изменения
+                last_updated = datetime.now().isoformat()
+                sheet.update_cell(user_row_gspread, 9, last_updated)  # I - last_updated (столбец 9 в gspread)
         else:
             # Создаем новую строку
             total_score = score
@@ -2306,6 +2312,7 @@ def _update_game_score_sync(
             else:
                 rank = 'профи'
             
+            last_updated = datetime.now().isoformat()
             row = [
                 str(user_id),
                 first_name,
@@ -2315,6 +2322,7 @@ def _update_game_score_sync(
                 flappy_score,
                 crossword_score,
                 rank,
+                last_updated,
             ]
             sheet.append_row(row)
         
@@ -2387,7 +2395,7 @@ def _ensure_required_sheets_sync():
                 "default_data": []
             },
             "Игры": {
-                "headers": ["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"],
+                "headers": ["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"],
                 "default_data": []
             },
             "Фото": {

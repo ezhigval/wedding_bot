@@ -48,6 +48,12 @@ from google_sheets import (
     save_crossword_progress,
     ensure_required_sheets,
 )
+from game_stats_cache import (
+    init_game_stats_cache,
+    get_cached_stats,
+    save_cached_stats,
+    sync_game_stats,
+)
 import seating_sync
 import traceback
 import logging
@@ -1264,7 +1270,7 @@ async def upload_photo(request):
         return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
 
 async def get_game_stats_endpoint(request):
-    """Получить статистику игрока"""
+    """Получить статистику игрока с синхронизацией между кэшем и Google Sheets"""
     try:
         # Получаем user_id из запроса
         user_id_str = request.query.get('userId')
@@ -1272,9 +1278,31 @@ async def get_game_stats_endpoint(request):
             return web.json_response({'error': 'userId required'}, status=400)
         
         user_id = int(user_id_str)
-        stats = await get_game_stats(user_id)
         
-        if stats is None:
+        # Получаем статистику из обоих источников
+        sheets_stats = None
+        try:
+            sheets_stats = await get_game_stats(user_id)
+        except Exception as e:
+            logger.warning(f"Не удалось получить статистику из Google Sheets для user_id={user_id}: {e}")
+        
+        cached_stats = await get_cached_stats(user_id)
+        
+        # Синхронизируем данные
+        stats = await sync_game_stats(user_id, sheets_stats, cached_stats)
+        
+        # Если кэш новее, пытаемся обновить Google Sheets (в фоне, не блокируем ответ)
+        if cached_stats and sheets_stats:
+            cached_dt = parse_datetime(cached_stats.get('last_updated'))
+            sheets_dt = parse_datetime(sheets_stats.get('last_updated'))
+            if cached_dt and sheets_dt and cached_dt > sheets_dt:
+                # Кэш новее - обновляем Sheets в фоне
+                asyncio.create_task(_update_sheets_from_cache(user_id, cached_stats))
+        
+        # Убираем last_updated из ответа (не нужно на фронтенде)
+        stats.pop('last_updated', None)
+        
+        if not stats or stats.get('total_score', 0) == 0:
             # Если статистики нет, возвращаем дефолтные значения
             return web.json_response({
                 'user_id': user_id,
@@ -1293,8 +1321,39 @@ async def get_game_stats_endpoint(request):
         logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
+async def _update_sheets_from_cache(user_id: int, cached_stats: Dict):
+    """Обновить Google Sheets из кэша (выполняется в фоне)"""
+    try:
+        # Получаем текущую статистику из Sheets
+        sheets_stats = await get_game_stats(user_id)
+        
+        # Обновляем каждый счет отдельно, если он больше текущего в Sheets
+        if cached_stats.get('dragon_score', 0) > (sheets_stats.get('dragon_score', 0) if sheets_stats else 0):
+            await update_game_score(user_id, 'dragon', cached_stats['dragon_score'])
+        if cached_stats.get('flappy_score', 0) > (sheets_stats.get('flappy_score', 0) if sheets_stats else 0):
+            await update_game_score(user_id, 'flappy', cached_stats['flappy_score'])
+        if cached_stats.get('crossword_score', 0) > (sheets_stats.get('crossword_score', 0) if sheets_stats else 0):
+            await update_game_score(user_id, 'crossword', cached_stats['crossword_score'])
+    except Exception as e:
+        logger.error(f"Ошибка обновления Sheets из кэша для user_id={user_id}: {e}")
+
+def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    """Парсит строку даты в datetime объект"""
+    if not dt_str:
+        return None
+    try:
+        for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
+            try:
+                return datetime.strptime(dt_str, fmt)
+            except ValueError:
+                continue
+        return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+    except Exception as e:
+        logger.error(f"Ошибка парсинга даты '{dt_str}': {e}")
+        return None
+
 async def update_game_score_endpoint(request):
-    """Обновить счет игрока"""
+    """Обновить счет игрока с синхронизацией"""
     try:
         # Проверяем и создаем необходимые вкладки
         await ensure_required_sheets()
@@ -1303,6 +1362,8 @@ async def update_game_score_endpoint(request):
         user_id_str = data.get('userId')
         game_type = data.get('gameType')  # 'dragon', 'flappy', 'crossword'
         score = data.get('score')
+        firstName = data.get('firstName', '')
+        lastName = data.get('lastName', '')
         
         if not user_id_str or not game_type or score is None:
             return web.json_response({'error': 'Недостаточно данных'}, status=400)
@@ -1313,29 +1374,79 @@ async def update_game_score_endpoint(request):
         if game_type not in ['dragon', 'flappy', 'crossword']:
             return web.json_response({'error': 'Неизвестный тип игры'}, status=400)
         
-        success = await update_game_score(user_id, game_type, score)
-        
-        if success:
-            # Возвращаем обновленную статистику
-            stats = await get_game_stats(user_id)
-            if stats is None:
-                stats = {
+        # Получаем текущую статистику для обновления
+        current_stats = await get_cached_stats(user_id)
+        if not current_stats:
+            # Пытаемся получить из Sheets
+            current_stats = await get_game_stats(user_id)
+            if not current_stats:
+                current_stats = {
                     'user_id': user_id,
-                    'first_name': '',
-                    'last_name': '',
-                    'total_score': score,
-                    'dragon_score': score if game_type == 'dragon' else 0,
-                    'flappy_score': score if game_type == 'flappy' else 0,
-                    'crossword_score': score if game_type == 'crossword' else 0,
-                    'rank': 'новичок' if score < 100 else ('любитель' if score < 500 else 'профи'),
+                    'first_name': firstName,
+                    'last_name': lastName,
+                    'total_score': 0,
+                    'dragon_score': 0,
+                    'flappy_score': 0,
+                    'crossword_score': 0,
+                    'rank': 'новичок',
                 }
-            return web.json_response({
-                'success': True,
-                'stats': stats
-            })
+        
+        # Обновляем счет для конкретной игры (только если новый больше)
+        if game_type == 'dragon':
+            if score > current_stats.get('dragon_score', 0):
+                current_stats['dragon_score'] = score
+        elif game_type == 'flappy':
+            if score > current_stats.get('flappy_score', 0):
+                current_stats['flappy_score'] = score
+        elif game_type == 'crossword':
+            if score > current_stats.get('crossword_score', 0):
+                current_stats['crossword_score'] = score
+        
+        # Пересчитываем общий счет
+        current_stats['total_score'] = (
+            current_stats.get('dragon_score', 0) +
+            current_stats.get('flappy_score', 0) +
+            current_stats.get('crossword_score', 0)
+        )
+        
+        # Определяем звание
+        total = current_stats['total_score']
+        if total < 100:
+            current_stats['rank'] = 'новичок'
+        elif total < 500:
+            current_stats['rank'] = 'любитель'
         else:
-            return web.json_response({'error': 'Не удалось обновить счет'}, status=500)
-            
+            current_stats['rank'] = 'профи'
+        
+        # Обновляем имя если передано
+        if firstName:
+            current_stats['first_name'] = firstName
+        if lastName:
+            current_stats['last_name'] = lastName
+        
+        # Обновляем дату
+        current_stats['last_updated'] = datetime.now().isoformat()
+        
+        # Сохраняем в кэш
+        await save_cached_stats(current_stats)
+        
+        # Пытаемся обновить Google Sheets
+        success = False
+        try:
+            success = await update_game_score(user_id, game_type, score)
+        except Exception as e:
+            logger.warning(f"Не удалось обновить Google Sheets для user_id={user_id}: {e}")
+            # Продолжаем работу даже если Sheets недоступен
+        
+        # Возвращаем обновленную статистику (без last_updated)
+        response_stats = current_stats.copy()
+        response_stats.pop('last_updated', None)
+        
+        return web.json_response({
+            'success': True,
+            'stats': response_stats,
+            'sheets_synced': success
+        })
     except Exception as e:
         logger.error(f"Ошибка обновления счета: {e}")
         logger.error(traceback.format_exc())

@@ -29,6 +29,7 @@ logger_import.info("=" * 60)
 from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
+from game_stats_cache import init_game_stats_cache
 
 logger_import.info("✅ Модули bot, api и config импортированы успешно")
 
@@ -166,6 +167,14 @@ async def root_handler(request):
 async def init_app():
     """Инициализация приложения"""
     app = web.Application()
+    
+    # Инициализация кэша игровой статистики
+    try:
+        await init_game_stats_cache()
+        logger.info("✅ Кэш игровой статистики инициализирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось инициализировать кэш статистики: {e}")
+        # Продолжаем работу даже если кэш недоступен
     
     # API routes (должны быть первыми)
     try:

@@ -25,7 +25,7 @@ const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = 
 
 const ITEMS_PER_ROW = 4 // Количество кнопок в одном ряду
 const ROW_HEIGHT = 80 // Высота одного ряда в пикселях
-const DRAG_INDICATOR_HEIGHT = 40 // Высота индикатора для вытягивания (увеличена)
+const DRAG_INDICATOR_HEIGHT = 30 // Высота индикатора для вытягивания (уменьшена)
 const DRAG_THRESHOLD = 20 // Порог для открытия/закрытия при перетаскивании (уменьшен для более отзывчивости)
 const CLICK_THRESHOLD = 5 // Порог для различения клика и драга
 
@@ -100,16 +100,22 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
       const handleGlobalPointerUp = () => {
         const deltaY = startY.current - currentY.current
 
-        if (deltaY > DRAG_THRESHOLD) {
-          // Вытягиваем навбар
-          setIsExpanded(true)
-          hapticFeedback('medium')
-        } else if (deltaY < -DRAG_THRESHOLD && isExpanded) {
-          // Сворачиваем навбар
-          setIsExpanded(false)
-          hapticFeedback('medium')
+        if (Math.abs(deltaY) > DRAG_THRESHOLD) {
+          // Если было перетаскивание - обрабатываем как драг
+          if (deltaY > DRAG_THRESHOLD) {
+            // Вытягиваем навбар
+            setIsExpanded(true)
+            hapticFeedback('medium')
+          } else if (deltaY < -DRAG_THRESHOLD && isExpanded) {
+            // Сворачиваем навбар
+            setIsExpanded(false)
+            hapticFeedback('medium')
+          }
+        } else {
+          // Если движения не было или было минимальное - это клик, переключаем состояние
+          setIsExpanded(!isExpanded)
+          hapticFeedback('light')
         }
-        // Если движение недостаточное, состояние остается прежним
         
         setIsDragging(false)
         
@@ -234,7 +240,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
       onPointerDown={handlePointerDown}
     >
       {/* Индикатор для вытягивания - увеличенный и более заметный */}
-      <div className="w-full flex justify-center py-2 cursor-grab active:cursor-grabbing touch-none select-none drag-handle flex-shrink-0">
+      <div className="w-full flex justify-center py-1 cursor-grab active:cursor-grabbing touch-none select-none drag-handle flex-shrink-0">
         <motion.div
           className="relative"
           animate={{
