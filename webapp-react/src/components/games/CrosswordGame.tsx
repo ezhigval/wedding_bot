@@ -29,6 +29,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -77,16 +78,16 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
         setUserId(currentUserId)
 
-        // Загружаем данные кроссвода
+        // Загружаем данные кроссворда
         const data = await getCrosswordData(currentUserId)
         
         if (data.words.length === 0) {
-          console.warn('Нет слов для кроссвода')
+          console.warn('Нет слов для кроссворда')
           setLoading(false)
           return
         }
 
-        // Генерируем кроссвод
+        // Генерируем кроссворд
         const generated = generateCrossword(data.words)
         const guessedSet = new Set(data.guessed_words.map((w: string) => w.toUpperCase()))
         setCrossword(generated)
@@ -104,27 +105,44 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           })))
 
         // Заполняем сетку и номера слов
+        // Сначала помечаем все клетки как заполненные и добавляем номера
         generated.words.forEach(word => {
-          const isGuessed = guessedSet.has(word.word.toUpperCase())
-          
           for (let i = 0; i < word.word.length; i++) {
             const row = word.direction === 'down' ? word.row + i : word.row
             const col = word.direction === 'across' ? word.col + i : word.col
 
-            if (newCells[row][col].letter === '') {
-              newCells[row][col].letter = word.word[i]
-              newCells[row][col].isFilled = true
-              newCells[row][col].isCorrect = isGuessed
-            }
-
+            newCells[row][col].isFilled = true
+            
             if (i === 0) {
               newCells[row][col].wordNumber = word.number
             }
           }
         })
 
+        // Затем заполняем буквы ТОЛЬКО для отгаданных слов
+        generated.words.forEach(word => {
+          const isGuessed = guessedSet.has(word.word.toUpperCase())
+          
+          if (isGuessed) {
+            // Показываем буквы только для отгаданных слов
+            for (let i = 0; i < word.word.length; i++) {
+              const row = word.direction === 'down' ? word.row + i : word.row
+              const col = word.direction === 'across' ? word.col + i : word.col
+              
+              newCells[row][col].letter = word.word[i]
+              newCells[row][col].isCorrect = true
+            }
+          }
+        })
+
         setCells(newCells)
         setScore(data.guessed_words.length)
+        
+        // Проверяем, нужно ли показать онбординг
+        const hasSeenOnboarding = localStorage.getItem('crossword_onboarding_seen')
+        if (!hasSeenOnboarding) {
+          setShowOnboarding(true)
+        }
       } catch (error) {
         console.error('Error loading crossword:', error)
       } finally {
@@ -184,22 +202,29 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
     const value = e.target.value.toUpperCase().replace(/[^А-ЯЁ]/g, '').slice(0, selectedWord.word.length)
     
-    // Обновляем клетки
+    // Обновляем клетки - вводим буквы только в неотгаданные клетки
     const newCells = [...cells]
     for (let i = 0; i < selectedWord.word.length; i++) {
       const row = selectedWord.direction === 'down' ? selectedWord.row + i : selectedWord.row
       const col = selectedWord.direction === 'across' ? selectedWord.col + i : selectedWord.col
       
+      // Если клетка уже отгадана, оставляем букву как есть
+      if (newCells[row][col].isCorrect) {
+        continue
+      }
+      
       if (i < value.length) {
+        // Вводим букву
         newCells[row][col] = {
           ...newCells[row][col],
           letter: value[i],
           isFilled: true
         }
       } else {
+        // Очищаем при удалении
         newCells[row][col] = {
           ...newCells[row][col],
-          letter: newCells[row][col].isCorrect ? newCells[row][col].letter : '',
+          letter: '',
           isFilled: true
         }
       }
@@ -265,7 +290,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-[#F8F8F8] flex items-center justify-center" style={{ bottom: '80px' }}>
-        <div className="text-center text-gray-500">Загрузка кроссвода...</div>
+        <div className="text-center text-gray-500">Загрузка кроссворда...</div>
       </div>
     )
   }
@@ -274,7 +299,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     return (
       <div className="fixed inset-0 z-50 bg-[#F8F8F8] flex items-center justify-center" style={{ bottom: '80px' }}>
         <div className="text-center p-4">
-          <p className="text-gray-600 mb-4">Кроссвод пока не готов</p>
+          <p className="text-gray-600 mb-4">Кроссворд пока не готов</p>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-primary text-white rounded-lg font-semibold"
@@ -290,6 +315,60 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-[#F8F8F8] flex flex-col" style={{ bottom: '80px' }}>
+      {/* Онбординг */}
+      {showOnboarding && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute inset-0 bg-black/60 flex items-center justify-center z-30"
+          onClick={() => {
+            setShowOnboarding(false)
+            localStorage.setItem('crossword_onboarding_seen', 'true')
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl"
+          >
+            <h2 className="text-2xl font-bold text-primary mb-4">Как играть в кроссворд?</h2>
+            <div className="space-y-3 text-gray-700 mb-6">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">1️⃣</span>
+                <div>
+                  <p className="font-semibold">Выберите вопрос</p>
+                  <p className="text-sm text-gray-600">Нажмите на вопрос в списке или на клетку с номером в сетке</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">2️⃣</span>
+                <div>
+                  <p className="font-semibold">Введите ответ</p>
+                  <p className="text-sm text-gray-600">Начните печатать слово на клавиатуре</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">3️⃣</span>
+                <div>
+                  <p className="font-semibold">Проверка</p>
+                  <p className="text-sm text-gray-600">Слово автоматически проверяется при вводе. Правильные слова подсвечиваются зеленым</p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowOnboarding(false)
+                localStorage.setItem('crossword_onboarding_seen', 'true')
+              }}
+              className="w-full px-4 py-2 bg-primary text-white rounded-lg font-semibold"
+            >
+              Понятно, начать!
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+
       {/* Кнопка назад */}
       <div className="absolute top-4 left-4 z-10">
         <motion.button
@@ -311,7 +390,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
       <div className="flex-1 overflow-y-auto p-4 pt-20">
         <div className="max-w-4xl mx-auto">
-          {/* Сетка кроссвода */}
+          {/* Сетка кроссворда */}
           <div className="mb-6">
             <div
               className="inline-grid gap-0.5 bg-gray-800 p-1 rounded"
@@ -355,7 +434,15 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
           {/* Список вопросов */}
           <div className="bg-white rounded-lg p-4 shadow-lg">
-            <h3 className="text-lg font-bold text-primary mb-4">Вопросы:</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-primary">Вопросы:</h3>
+              <button
+                onClick={() => setShowOnboarding(true)}
+                className="text-sm text-gray-500 hover:text-primary"
+              >
+                ❓ Как играть?
+              </button>
+            </div>
             <div className="space-y-3">
               {crossword.words.map((word) => (
                 <div
@@ -371,7 +458,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                       ? 'bg-green-50 border-green-300'
                       : selectedWord?.word === word.word && selectedWord?.direction === word.direction
                       ? 'bg-blue-50 border-blue-300'
-                      : 'bg-gray-50 border-gray-200'
+                      : 'bg-gray-50 border-gray-200 hover:border-primary/50'
                     }
                   `}
                 >
@@ -383,6 +470,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                       {word.description}
                     </span>
                   </div>
+                  {!guessedWords.has(word.word.toUpperCase()) && selectedWord?.word === word.word && selectedWord?.direction === word.direction && (
+                    <div className="mt-2 text-xs text-blue-600">
+                      💡 Начните вводить ответ на клавиатуре
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

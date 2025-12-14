@@ -229,7 +229,7 @@ export default function ChallengeTab() {
             whileTap={{ scale: 0.95 }}
             className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
           >
-            📝 Кроссвод про молодожен
+            📝 Кроссворд
           </motion.button>
         </div>
       </SectionCard>

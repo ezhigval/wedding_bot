@@ -14,7 +14,7 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
   const gameLoopRef = useRef<number>()
   const dinoRef = useRef({ x: 50, y: 0, width: 50, height: 50, velocityY: 0, jumping: false })
   const obstaclesRef = useRef<Array<{ x: number; y: number; width: number; height: number }>>([])
-  const gameSpeedRef = useRef(5)
+  const gameSpeedRef = useRef(3) // Уменьшена начальная скорость
   const scoreRef = useRef(0)
   const dinoFaceImageRef = useRef<HTMLImageElement | null>(null)
   const [faceImageLoaded, setFaceImageLoaded] = useState(false)
@@ -42,11 +42,25 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Настройка canvas - адаптивный размер, увеличенная высота
-    const maxWidth = Math.min(800, window.innerWidth - 32)
-    const aspectRatio = 2.5 // 800/320 (было 4, теперь больше высоты)
-    canvas.width = maxWidth
-    canvas.height = maxWidth / aspectRatio
+    // Функция обновления размера canvas
+    const updateCanvasSize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight - 80 // Вычитаем высоту навбара
+      // Обновляем позицию динозавра при ресайзе
+      const groundY = canvas.height / 2 - dinoRef.current.height
+      if (dinoRef.current.y > 0) {
+        dinoRef.current.y = groundY
+      }
+    }
+
+    // Настройка canvas - 100% ширины и высоты экрана
+    updateCanvasSize()
+
+    // Обработчик ресайза
+    const handleResize = () => {
+      updateCanvasSize()
+    }
+    window.addEventListener('resize', handleResize)
 
     // Обработка прыжка
     const handleJump = () => {
@@ -63,13 +77,18 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
       }
     }
 
-    const handleTouch = () => {
+    const handleTouch = (e: TouchEvent | MouseEvent) => {
+      e.preventDefault()
       handleJump()
     }
 
+    // Обработчики на весь экран для удобства тапов
+    const container = canvas.parentElement
     window.addEventListener('keydown', handleKeyPress)
-    canvas.addEventListener('touchstart', handleTouch)
-    canvas.addEventListener('click', handleJump)
+    if (container) {
+      container.addEventListener('touchstart', handleTouch, { passive: false })
+      container.addEventListener('click', handleTouch)
+    }
 
     // Игровой цикл
     const gameLoop = () => {
@@ -77,13 +96,22 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
 
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      // Рисуем землю
-      ctx.fillStyle = '#535353'
-      ctx.fillRect(0, canvas.height - 20, canvas.width, 20)
+      // Рисуем небо (верхняя половина)
+      ctx.fillStyle = '#87CEEB'
+      ctx.fillRect(0, 0, canvas.width, canvas.height / 2)
+
+      // Рисуем землю (нижняя половина)
+      ctx.fillStyle = '#8B4513'
+      const groundHeight = canvas.height / 2
+      ctx.fillRect(0, canvas.height / 2, canvas.width, groundHeight)
+      
+      // Трава на границе
+      ctx.fillStyle = '#228B22'
+      ctx.fillRect(0, canvas.height / 2, canvas.width, 5)
 
       // Обновляем динозавра
       const dino = dinoRef.current
-      const groundY = canvas.height - 20 - dino.height
+      const groundY = canvas.height / 2 - dino.height // Динозавр на границе земли
       
       // Инициализация позиции при первом запуске
       if (dino.y === 0) {
@@ -213,17 +241,32 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
         x: obstacle.x - gameSpeedRef.current
       })).filter(obstacle => obstacle.x > -obstacle.width)
 
-      // Добавляем новые препятствия (реже, чтобы было играбельно)
-      if (Math.random() < 0.005 && obstaclesRef.current.length === 0) {
-        obstaclesRef.current.push({
-          x: canvas.width,
-          y: canvas.height - 20 - 35,
-          width: 20,
-          height: 35
-        })
+      // Добавляем новые препятствия - более предсказуемая логика
+      // Минимальное расстояние между кактусами
+      const minDistance = 300
+      const lastObstacle = obstaclesRef.current[obstaclesRef.current.length - 1]
+      const distanceFromLast = lastObstacle 
+        ? canvas.width - lastObstacle.x 
+        : Infinity
+      
+      // Если нет препятствий или последнее достаточно далеко, добавляем новое
+      if (obstaclesRef.current.length === 0 || distanceFromLast > minDistance) {
+        // Вероятность увеличивается со временем и уменьшается при наличии препятствий
+        const baseProbability = obstaclesRef.current.length === 0 ? 0.02 : 0.01
+        const speedFactor = Math.min(gameSpeedRef.current / 3, 2) // Увеличиваем вероятность с ростом скорости
+        const probability = baseProbability * speedFactor
+        
+        if (Math.random() < probability) {
+          obstaclesRef.current.push({
+            x: canvas.width,
+            y: canvas.height / 2 - 35, // Препятствия на границе земли
+            width: 20,
+            height: 35
+          })
+        }
       }
 
-      // Рисуем препятствия (кактусы) - детализированная графика
+      // Рисуем препятствия (кактусы) на границе земли
       obstaclesRef.current.forEach(obstacle => {
         ctx.fillStyle = '#535353'
         ctx.strokeStyle = '#3a3a3a'
@@ -288,9 +331,10 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
       scoreRef.current += 1
       setScore(scoreRef.current)
 
-      // Увеличиваем скорость
-      if (scoreRef.current % 100 === 0) {
-        gameSpeedRef.current += 0.5
+      // Увеличиваем скорость медленнее и реже
+      // Каждые 200 очков увеличиваем на 0.3 (вместо каждые 100 на 0.5)
+      if (scoreRef.current > 0 && scoreRef.current % 200 === 0) {
+        gameSpeedRef.current = Math.min(gameSpeedRef.current + 0.3, 8) // Максимальная скорость 8
       }
 
       gameLoopRef.current = requestAnimationFrame(gameLoop)
@@ -300,8 +344,12 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
 
     return () => {
       window.removeEventListener('keydown', handleKeyPress)
-      canvas.removeEventListener('touchstart', handleTouch)
-      canvas.removeEventListener('click', handleJump)
+      window.removeEventListener('resize', handleResize)
+      const container = canvas.parentElement
+      if (container) {
+        container.removeEventListener('touchstart', handleTouch)
+        container.removeEventListener('click', handleTouch)
+      }
       if (gameLoopRef.current) {
         cancelAnimationFrame(gameLoopRef.current)
       }
@@ -335,15 +383,13 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
         </div>
       </div>
 
-      {/* Игровое поле */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-        <div className="bg-white rounded-lg shadow-xl p-2 max-w-full">
-          <canvas
-            ref={canvasRef}
-            className="border-2 border-primary rounded block"
-            style={{ maxWidth: '100%', height: 'auto', display: 'block' }}
-          />
-        </div>
+      {/* Игровое поле - на весь экран */}
+      <div className="flex-1 overflow-hidden" style={{ width: '100%', height: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="block"
+          style={{ width: '100%', height: '100%', display: 'block' }}
+        />
       </div>
 
       {/* Экран окончания игры */}
@@ -372,10 +418,10 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
                     setGameOver(false)
                     setScore(0)
                     scoreRef.current = 0
-                    gameSpeedRef.current = 5
+                    gameSpeedRef.current = 3 // Сбрасываем на начальную скорость
                     const canvas = canvasRef.current
                     if (canvas) {
-                      const groundY = canvas.height - 20 - 50
+                      const groundY = canvas.height / 2 - 50
                       dinoRef.current = { x: 50, y: groundY, width: 50, height: 50, velocityY: 0, jumping: false }
                     } else {
                       dinoRef.current = { x: 50, y: 0, width: 50, height: 50, velocityY: 0, jumping: false }

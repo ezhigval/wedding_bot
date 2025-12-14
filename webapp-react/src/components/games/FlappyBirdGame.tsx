@@ -45,16 +45,31 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Настройка canvas
-    const maxWidth = Math.min(800, window.innerWidth - 32)
-    const aspectRatio = 1.5 // Высота больше ширины для вертикальной игры
-    canvas.width = maxWidth
-    canvas.height = maxWidth * aspectRatio
+    // Функция обновления размера canvas
+    const updateCanvasSize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight - 80 // Вычитаем высоту навбара
+      // Обновляем позицию птички при ресайзе
+      if (birdRef.current.y > 0) {
+        birdRef.current.y = canvas.height / 2
+      }
+    }
+
+    // Настройка canvas - 100% ширины и высоты экрана
+    updateCanvasSize()
+
+    // Обработчик ресайза
+    const handleResize = () => {
+      updateCanvasSize()
+    }
+    window.addEventListener('resize', handleResize)
 
     // Обработка прыжка
     const handleJump = () => {
       if (!gameStarted && !gameOver) {
         setGameStarted(true)
+        // Первый прыжок при старте
+        birdRef.current.velocityY = -8
       }
       if (gameStarted && !gameOver) {
         birdRef.current.velocityY = -8
@@ -68,13 +83,18 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
       }
     }
 
-    const handleTouch = () => {
+    const handleTouch = (e: TouchEvent | MouseEvent) => {
+      e.preventDefault()
       handleJump()
     }
 
+    // Обработчики на весь экран для удобства тапов
+    const container = canvas.parentElement
     window.addEventListener('keydown', handleKeyPress)
-    canvas.addEventListener('touchstart', handleTouch)
-    canvas.addEventListener('click', handleJump)
+    if (container) {
+      container.addEventListener('touchstart', handleTouch, { passive: false })
+      container.addEventListener('click', handleTouch)
+    }
 
     // Игровой цикл
     const gameLoop = () => {
@@ -93,9 +113,11 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
       ctx.fillStyle = '#228B22'
       ctx.fillRect(0, canvas.height - 40, canvas.width, 5)
 
+      // Получаем ссылку на птичку (объявляем один раз для всего цикла)
+      const bird = birdRef.current
+
+      // Обновляем птичку только если игра началась
       if (gameStarted) {
-        // Обновляем птичку
-        const bird = birdRef.current
         bird.velocityY += 0.5 // Гравитация
         bird.y += bird.velocityY
 
@@ -116,9 +138,15 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
           x: pipe.x - gameSpeedRef.current
         })).filter(pipe => pipe.x > -60)
 
-        // Добавляем новые трубы
-        if (pipesRef.current.length === 0 || pipesRef.current[pipesRef.current.length - 1].x < canvas.width - 200) {
-          const gap = 150
+        // Добавляем новые трубы - увеличиваем расстояние между столбами и высоту пролета
+        const minDistance = 350 // Увеличено расстояние между столбами (было 200)
+        const gap = 220 // Увеличена высота пролета (было 150)
+        const lastPipe = pipesRef.current[pipesRef.current.length - 1]
+        const distanceFromLast = lastPipe 
+          ? canvas.width - lastPipe.x 
+          : Infinity
+        
+        if (pipesRef.current.length === 0 || distanceFromLast > minDistance) {
           const topHeight = Math.random() * (canvas.height - gap - 100) + 50
           pipesRef.current.push({
             x: canvas.width,
@@ -161,6 +189,9 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
         if (scoreRef.current % 10 === 0 && scoreRef.current > 0) {
           gameSpeedRef.current = 3 + Math.floor(scoreRef.current / 10) * 0.5
         }
+      } else {
+        // До первого тапа птичка не падает - гравитация не применяется
+        bird.velocityY = 0
       }
 
       // Рисуем трубы
@@ -177,8 +208,7 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
         ctx.strokeRect(pipe.x, pipe.topHeight + pipe.gap, 60, canvas.height - (pipe.topHeight + pipe.gap))
       })
 
-      // Рисуем птичку
-      const bird = birdRef.current
+      // Рисуем птичку (bird уже объявлена выше)
       if (birdFaceImageRef.current && faceImageLoaded && birdFaceImageRef.current.complete) {
         // Рисуем тело птички (простой овал)
         ctx.fillStyle = '#FFD700'
@@ -256,8 +286,12 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
 
     return () => {
       window.removeEventListener('keydown', handleKeyPress)
-      canvas.removeEventListener('touchstart', handleTouch)
-      canvas.removeEventListener('click', handleJump)
+      window.removeEventListener('resize', handleResize)
+      const container = canvas.parentElement
+      if (container) {
+        container.removeEventListener('touchstart', handleTouch)
+        container.removeEventListener('click', handleTouch)
+      }
       if (gameLoopRef.current) {
         cancelAnimationFrame(gameLoopRef.current)
       }
@@ -283,43 +317,14 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
         </motion.button>
       </div>
 
-      {/* Игровое поле */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-        <div className="bg-white rounded-lg shadow-xl p-2 max-w-full">
-          <canvas
-            ref={canvasRef}
-            className="border-2 border-primary rounded block"
-            style={{ maxWidth: '100%', height: 'auto', display: 'block' }}
-          />
-        </div>
+      {/* Игровое поле - на весь экран */}
+      <div className="flex-1 overflow-hidden" style={{ width: '100%', height: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="block"
+          style={{ width: '100%', height: '100%', display: 'block' }}
+        />
       </div>
-
-      {/* Экран начала игры */}
-      <AnimatePresence>
-        {!gameStarted && !gameOver && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/30 flex items-center justify-center z-20"
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-lg p-6 text-center max-w-sm mx-4"
-            >
-              <h2 className="text-2xl font-bold text-primary mb-4">Flappy Bird</h2>
-              <p className="text-gray-600 mb-4">Нажмите пробел или коснитесь экрана, чтобы начать игру</p>
-              <button
-                onClick={() => setGameStarted(true)}
-                className="px-6 py-2 bg-primary text-white rounded-lg font-semibold"
-              >
-                Начать игру
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Экран окончания игры */}
       <AnimatePresence>
@@ -355,6 +360,8 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
                     } else {
                       birdRef.current = { x: 100, y: 200, width: 40, height: 30, velocityY: 0 }
                     }
+                    // Сбрасываем скорость
+                    gameSpeedRef.current = 3
                     pipesRef.current = []
                   }}
                   className="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-semibold"
