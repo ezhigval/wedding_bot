@@ -2128,7 +2128,7 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
       D: total_score (общий счет)
       E: dragon_score (счет в Дракончике)
       F: flappy_score (счет в ФлэппиБёрд)
-      G: crossword_score (счет в Кроссворде)
+      G: crossword_score (счет в Кроссводе)
       H: rank (звание)
     """
     if not GSPREAD_AVAILABLE:
@@ -2141,6 +2141,9 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
             return None
         
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        # Проверяем и создаем необходимые вкладки
+        _ensure_required_sheets_sync()
+        
         try:
             sheet = spreadsheet.worksheet("Игры")
         except Exception:
@@ -2190,7 +2193,7 @@ def _update_game_score_sync(
       D: total_score (общий счет)
       E: dragon_score (счет в Дракончике)
       F: flappy_score (счет в ФлэппиБёрд)
-      G: crossword_score (счет в Кроссворде)
+      G: crossword_score (счет в Кроссводе)
       H: rank (звание)
     """
     if not GSPREAD_AVAILABLE:
@@ -2208,6 +2211,10 @@ def _update_game_score_sync(
             logger.warning(f"Не удалось найти имя для user_id={user_id}, используем пустые значения")
         
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Проверяем и создаем необходимые вкладки
+        _ensure_required_sheets_sync()
+        
         try:
             sheet = spreadsheet.worksheet("Игры")
         except Exception:
@@ -2343,6 +2350,277 @@ async def update_game_score(
     """Асинхронная обёртка для обновления счета"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _update_game_score_sync, user_id, game_type, score)
+
+# ========== КРОССВОД ==========
+
+def _ensure_required_sheets_sync():
+    """
+    Проверяет и создает все необходимые вкладки в Google Sheets, если их нет.
+    """
+    if not GSPREAD_AVAILABLE:
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        existing_sheets = [ws.title for ws in spreadsheet.worksheets()]
+        
+        required_sheets = {
+            "Кроссвод": {
+                "headers": ["слово", "описание"],
+                "default_data": [
+                    ["СВАДЬБА", "Главное событие дня"],
+                    ["ТАМАДА", "Ведущий праздника"],
+                    ["ФАТА", "Головной убор невесты"],
+                    ["БУКЕТ", "Цветы в руках невесты"],
+                    ["КОЛЬЦО", "Символ брака"],
+                    ["ТОРТ", "Сладкое угощение"],
+                    ["ТОСТ", "Поздравление гостей"],
+                    ["ТАНЕЦ", "Развлечение на празднике"],
+                ]
+            },
+            "Кроссвод_Прогресс": {
+                "headers": ["user_id", "отгаданные_слова"],
+                "default_data": []
+            },
+            "Игры": {
+                "headers": ["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank"],
+                "default_data": []
+            },
+            "Фото": {
+                "headers": ["timestamp", "user_id", "username", "full_name", "photo_data"],
+                "default_data": []
+            },
+        }
+        
+        for sheet_name, sheet_config in required_sheets.items():
+            if sheet_name not in existing_sheets:
+                try:
+                    headers = sheet_config["headers"]
+                    default_data = sheet_config.get("default_data", [])
+                    sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=len(headers))
+                    sheet.append_row(headers)
+                    
+                    # Добавляем дефолтные данные, если они есть
+                    if default_data:
+                        for row in default_data:
+                            sheet.append_row(row)
+                        logger.info(f"Создана вкладка '{sheet_name}' с заголовками и {len(default_data)} дефолтными строками")
+                    else:
+                        logger.info(f"Создана вкладка '{sheet_name}' с заголовками: {headers}")
+                except Exception as e:
+                    logger.error(f"Ошибка создания вкладки '{sheet_name}': {e}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка проверки/создания вкладок: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+def _get_crossword_words_sync() -> List[Dict[str, str]]:
+    """
+    Получить слова для кроссвода из листа 'Кроссвод'.
+    
+    Формат строки:
+      A: слово
+      B: описание/вопрос
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Проверяем и создаем необходимые вкладки
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Кроссвод")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Кроссвод", rows=100, cols=2)
+            # Добавляем заголовки
+            sheet.append_row(["слово", "описание"])
+            return []
+        
+        all_values = sheet.get_all_values()
+        words = []
+        
+        # Пропускаем заголовок
+        for row in all_values[1:]:
+            if len(row) >= 2 and row[0] and row[1]:
+                word = row[0].strip().upper()
+                description = row[1].strip()
+                if word and description:
+                    words.append({
+                        'word': word,
+                        'description': description
+                    })
+        
+        # Если слов нет, добавляем дефолтные
+        if not words:
+            default_words = [
+                ["СВАДЬБА", "Главное событие дня"],
+                ["ТАМАДА", "Ведущий праздника"],
+                ["ФАТА", "Головной убор невесты"],
+                ["БУКЕТ", "Цветы в руках невесты"],
+                ["КОЛЬЦО", "Символ брака"],
+                ["ТОРТ", "Сладкое угощение"],
+                ["ТОСТ", "Поздравление гостей"],
+                ["ТАНЕЦ", "Развлечение на празднике"],
+            ]
+            try:
+                for row in default_words:
+                    sheet.append_row(row)
+                logger.info(f"Добавлены дефолтные слова в кроссвод: {len(default_words)} слов")
+                # Возвращаем дефолтные слова
+                words = [
+                    {'word': row[0], 'description': row[1]}
+                    for row in default_words
+                ]
+            except Exception as e:
+                logger.error(f"Ошибка добавления дефолтных слов в кроссвод: {e}")
+        
+        return words
+    except Exception as e:
+        logger.error(f"Ошибка получения слов кроссворда: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+def _get_crossword_progress_sync(user_id: int) -> List[str]:
+    """
+    Получить прогресс пользователя в кроссводе (список отгаданных слов).
+    
+    Формат строки в листе 'Кроссвод_Прогресс':
+      A: user_id
+      B: отгаданные_слова (через запятую)
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return []
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Проверяем и создаем необходимые вкладки
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=2)
+            # Добавляем заголовки
+            sheet.append_row(["user_id", "отгаданные_слова"])
+            return []
+        
+        all_values = sheet.get_all_values()
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if len(row) > 0 and str(row[0]) == str(user_id):
+                if len(row) > 1 and row[1]:
+                    # Разбиваем строку с отгаданными словами
+                    guessed_words = [w.strip().upper() for w in row[1].split(',') if w.strip()]
+                    return guessed_words
+        
+        return []
+    except Exception as e:
+        logger.error(f"Ошибка получения прогресса кроссворда для {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
+
+
+def _save_crossword_progress_sync(user_id: int, guessed_words: List[str]) -> bool:
+    """
+    Сохранить прогресс пользователя в кроссводе.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        
+        # Проверяем и создаем необходимые вкладки
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=2)
+            # Добавляем заголовки
+            sheet.append_row(["user_id", "отгаданные_слова"])
+        
+        all_values = sheet.get_all_values()
+        user_row_gspread = None
+        
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]) == str(user_id):
+                user_row_gspread = i
+                break
+        
+        # Сохраняем слова через запятую
+        words_str = ','.join([w.upper() for w in guessed_words])
+        
+        if user_row_gspread:
+            # Обновляем существующую строку
+            sheet.update_cell(user_row_gspread, 2, words_str)
+        else:
+            # Создаем новую строку
+            sheet.append_row([str(user_id), words_str])
+        
+        logger.info(f"Сохранен прогресс кроссвода для user_id={user_id}: {len(guessed_words)} слов")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения прогресса кроссвода для {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def ensure_required_sheets():
+    """Асинхронная обёртка для проверки и создания необходимых вкладок"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _ensure_required_sheets_sync)
+
+
+async def get_crossword_words() -> List[Dict[str, str]]:
+    """Асинхронная обёртка для получения слов кроссвода"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_crossword_words_sync)
+
+
+async def get_crossword_progress(user_id: int) -> List[str]:
+    """Асинхронная обёртка для получения прогресса кроссвода"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_crossword_progress_sync, user_id)
+
+
+async def save_crossword_progress(user_id: int, guessed_words: List[str]) -> bool:
+    """Асинхронная обёртка для сохранения прогресса кроссвода"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words)
 
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""

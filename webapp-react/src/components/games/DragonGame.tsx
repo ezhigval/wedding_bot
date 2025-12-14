@@ -313,7 +313,13 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
       {/* Кнопка назад */}
       <div className="absolute top-4 left-4 z-10">
         <motion.button
-          onClick={onClose}
+          onClick={() => {
+            // Обновляем счет перед выходом
+            if (scoreRef.current > 0) {
+              onScore(scoreRef.current)
+            }
+            onClose()
+          }}
           whileTap={{ scale: 0.95 }}
           className="px-4 py-2 bg-primary text-white rounded-lg font-semibold shadow-lg"
         >
@@ -359,6 +365,10 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => {
+                    // Обновляем счет перед перезапуском
+                    if (scoreRef.current > 0) {
+                      onScore(scoreRef.current)
+                    }
                     setGameOver(false)
                     setScore(0)
                     scoreRef.current = 0
@@ -377,7 +387,13 @@ export default function DragonGame({ onScore, onClose }: DragonGameProps) {
                   Играть снова
                 </button>
                 <button
-                  onClick={onClose}
+                  onClick={() => {
+                    // Обновляем счет перед выходом
+                    if (scoreRef.current > 0) {
+                      onScore(scoreRef.current)
+                    }
+                    onClose()
+                  }}
                   className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold"
                 >
                   Выйти

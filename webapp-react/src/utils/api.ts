@@ -313,3 +313,57 @@ export async function updateGameScore(
   }
 }
 
+export interface CrosswordWord {
+  word: string
+  description: string
+}
+
+export interface CrosswordData {
+  words: CrosswordWord[]
+  guessed_words: string[]
+}
+
+export async function getCrosswordData(userId: number): Promise<CrosswordData> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/crossword-data?userId=${userId}`)
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    }
+  } catch (error) {
+    console.error('Error loading crossword data:', error)
+  }
+  return { words: [], guessed_words: [] }
+}
+
+export async function saveCrosswordProgress(
+  userId: number,
+  guessedWords: string[]
+): Promise<{ success: boolean; error?: string }> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/crossword-progress`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        guessedWords,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return { success: data.success || false }
+    } else {
+      const data = await response.json()
+      return { success: false, error: data.error || 'Ошибка сохранения прогресса' }
+    }
+  } catch (error) {
+    console.error('Error saving crossword progress:', error)
+    return { success: false, error: 'Ошибка сети' }
+  }
+}
+

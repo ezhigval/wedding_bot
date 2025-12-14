@@ -6,6 +6,7 @@ import RegistrationRequired from '../common/RegistrationRequired'
 import RankIcon from '../common/RankIcon'
 import DragonGame from '../games/DragonGame'
 import FlappyBirdGame from '../games/FlappyBirdGame'
+import CrosswordGame from '../games/CrosswordGame'
 import { useRegistration } from '../../contexts/RegistrationContext'
 import { loadConfig, getGameStats, updateGameScore, type GameStats } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -90,8 +91,8 @@ export default function ChallengeTab() {
       setActiveGame('dragon')
     } else if (gameType === 'flappy') {
       setActiveGame('flappy')
-    } else {
-      alert(`Игра "${gameType}" будет доступна в ближайшее время!`)
+    } else if (gameType === 'crossword') {
+      setActiveGame('crossword')
     }
   }
 
@@ -136,7 +137,7 @@ export default function ChallengeTab() {
     //   Пример: 200 очков в игре = 1 очко в статистике, 1000 очков = 5 очков
     // - ФлэппиБёрд (средняя): 2 очка в игре = 1 очко в рейтинге
     //   Пример: 2 очка в игре = 1 очко в статистике, 100 очков = 50 очков
-    // - Кроссворд (сложная): счет / 5
+    // - Кроссвод (сложная): счет / 5
     //   Пример: 100 очков в игре = 20 очков в статистике
     
     let gamePoints = 0
@@ -153,6 +154,8 @@ export default function ChallengeTab() {
       if (result.success && result.stats) {
         setStats(result.stats)
         hapticFeedback('heavy')
+        // Перезагружаем статистику из сервера для актуальности
+        await loadStats()
       }
     } catch (error) {
       console.error('Error updating game score:', error)
@@ -191,6 +194,10 @@ export default function ChallengeTab() {
   if (activeGame === 'flappy') {
     return <FlappyBirdGame onScore={(score) => handleGameScore(score, 'flappy')} onClose={handleGameClose} />
   }
+  
+  if (activeGame === 'crossword') {
+    return <CrosswordGame onClose={handleGameClose} />
+  }
 
   return (
     <div className="min-h-screen px-4 py-4 pb-24">
@@ -220,10 +227,9 @@ export default function ChallengeTab() {
           <motion.button
             onClick={() => handleGameClick('crossword')}
             whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all opacity-60"
-            disabled
+            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
           >
-            📝 Кроссворд про молодожен
+            📝 Кроссвод про молодожен
           </motion.button>
         </div>
       </SectionCard>

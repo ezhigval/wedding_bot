@@ -43,6 +43,10 @@ from google_sheets import (
     save_photo_from_webapp,
     get_game_stats,
     update_game_score,
+    get_crossword_words,
+    get_crossword_progress,
+    save_crossword_progress,
+    ensure_required_sheets,
 )
 import seating_sync
 import traceback
@@ -304,6 +308,8 @@ async def init_api():
     api.router.add_post('/upload-photo', upload_photo)
     api.router.add_get('/game-stats', get_game_stats_endpoint)
     api.router.add_post('/game-score', update_game_score_endpoint)
+    api.router.add_get('/crossword-data', get_crossword_data_endpoint)
+    api.router.add_post('/crossword-progress', save_crossword_progress_endpoint)
 
     # Seating sync endpoints (для вызова из Google Apps Script)
     api.router.add_post('/seating/sync-from-guests', seating_sync_from_guests)
@@ -1290,6 +1296,9 @@ async def get_game_stats_endpoint(request):
 async def update_game_score_endpoint(request):
     """Обновить счет игрока"""
     try:
+        # Проверяем и создаем необходимые вкладки
+        await ensure_required_sheets()
+        
         data = await request.json()
         user_id_str = data.get('userId')
         game_type = data.get('gameType')  # 'dragon', 'flappy', 'crossword'
@@ -1329,6 +1338,61 @@ async def update_game_score_endpoint(request):
             
     except Exception as e:
         logger.error(f"Ошибка обновления счета: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': str(e)}, status=500)
+
+async def get_crossword_data_endpoint(request):
+    """Получить слова кроссвода и прогресс пользователя"""
+    try:
+        # Проверяем и создаем необходимые вкладки
+        await ensure_required_sheets()
+        
+        user_id_str = request.query.get('userId')
+        if not user_id_str:
+            return web.json_response({'error': 'userId required'}, status=400)
+        
+        user_id = int(user_id_str)
+        
+        # Получаем слова и прогресс параллельно
+        words = await get_crossword_words()
+        progress = await get_crossword_progress(user_id)
+        
+        return web.json_response({
+            'words': words,
+            'guessed_words': progress
+        })
+    except Exception as e:
+        logger.error(f"Ошибка получения данных кроссвода: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': str(e)}, status=500)
+
+async def save_crossword_progress_endpoint(request):
+    """Сохранить прогресс кроссвода"""
+    try:
+        # Проверяем и создаем необходимые вкладки
+        await ensure_required_sheets()
+        
+        data = await request.json()
+        user_id_str = data.get('userId')
+        guessed_words = data.get('guessedWords', [])
+        
+        if not user_id_str:
+            return web.json_response({'error': 'userId required'}, status=400)
+        
+        user_id = int(user_id_str)
+        
+        if not isinstance(guessed_words, list):
+            return web.json_response({'error': 'guessedWords must be a list'}, status=400)
+        
+        success = await save_crossword_progress(user_id, guessed_words)
+        
+        if success:
+            return web.json_response({'success': True})
+        else:
+            return web.json_response({'error': 'Не удалось сохранить прогресс'}, status=500)
+            
+    except Exception as e:
+        logger.error(f"Ошибка сохранения прогресса кроссвода: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 
