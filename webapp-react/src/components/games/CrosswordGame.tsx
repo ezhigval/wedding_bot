@@ -30,7 +30,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [currentInput, setCurrentInput] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Русский алфавит для виртуальной клавиатуры
+  const russianLetters = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('')
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -192,8 +196,8 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       )
       setCells(newCells)
 
-      // Фокусируемся на вводе
-      setTimeout(() => inputRef.current?.focus(), 100)
+      // Сбрасываем текущий ввод при выборе нового слова
+      setCurrentInput('')
     }
   }
 
@@ -201,7 +205,39 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     if (!selectedWord || !selectedCell) return
 
     const value = e.target.value.toUpperCase().replace(/[^А-ЯЁ]/g, '').slice(0, selectedWord.word.length)
-    
+    setCurrentInput(value)
+    updateCellsWithValue(value)
+
+    // Автопроверка
+    if (value.length === selectedWord.word.length) {
+      checkWord(selectedWord, value)
+    }
+  }
+
+  const handleKeyPress = (letter: string) => {
+    if (!selectedWord || !selectedCell) return
+
+    const newValue = (currentInput + letter).toUpperCase().slice(0, selectedWord.word.length)
+    setCurrentInput(newValue)
+    updateCellsWithValue(newValue)
+
+    // Автопроверка
+    if (newValue.length === selectedWord.word.length) {
+      checkWord(selectedWord, newValue)
+    }
+  }
+
+  const handleBackspace = () => {
+    if (!selectedWord || !selectedCell) return
+
+    const newValue = currentInput.slice(0, -1)
+    setCurrentInput(newValue)
+    updateCellsWithValue(newValue)
+  }
+
+  const updateCellsWithValue = (value: string) => {
+    if (!selectedWord) return
+
     // Обновляем клетки - вводим буквы только в неотгаданные клетки
     const newCells = [...cells]
     for (let i = 0; i < selectedWord.word.length; i++) {
@@ -229,12 +265,21 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         }
       }
     }
-    setCells(newCells)
 
-    // Автопроверка
-    if (value.length === selectedWord.word.length) {
-      checkWord(selectedWord, value)
+    // Очищаем оставшиеся клетки слова, если ввод стал короче
+    for (let i = value.length; i < selectedWord.word.length; i++) {
+      const row = selectedWord.direction === 'down' ? selectedWord.row + i : selectedWord.row
+      const col = selectedWord.direction === 'across' ? selectedWord.col + i : selectedWord.col
+
+      if (row < newCells.length && col < newCells[row].length && !newCells[row][col].isCorrect) {
+        newCells[row][col] = {
+          ...newCells[row][col],
+          letter: ''
+        }
+      }
     }
+
+    setCells(newCells)
   }
 
   const checkWord = async (word: CrosswordWord, userInput: string) => {
@@ -260,6 +305,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         }
       }
       setCells(newCells)
+      setCurrentInput('') // Очищаем ввод после правильного ответа
 
       // Сохраняем прогресс
       await saveCrosswordProgress(userId, Array.from(newGuessedWords))
@@ -472,7 +518,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                   </div>
                   {!guessedWords.has(word.word.toUpperCase()) && selectedWord?.word === word.word && selectedWord?.direction === word.direction && (
                     <div className="mt-2 text-xs text-blue-600">
-                      💡 Начните вводить ответ на клавиатуре
+                      💡 Используйте виртуальную клавиатуру внизу
                     </div>
                   )}
                 </div>
@@ -482,14 +528,82 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         </div>
       </div>
 
-      {/* Скрытое поле ввода для букв */}
+      {/* Виртуальная клавиатура */}
+      {selectedWord && !guessedWords.has(selectedWord.word.toUpperCase()) && (
+        <div className="fixed bottom-20 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2">
+          <div className="max-w-4xl mx-auto">
+            {/* Текущий ввод */}
+            <div className="text-center mb-2">
+              <div className="text-xs text-gray-600 mb-1">Ввод:</div>
+              <div className="text-lg font-bold text-primary">
+                {currentInput || '_'.repeat(selectedWord.word.length)}
+              </div>
+            </div>
+
+            {/* Клавиатура */}
+            <div className="grid grid-cols-8 gap-1 mb-2 max-h-32 overflow-y-auto">
+              {russianLetters.map((letter) => (
+                <motion.button
+                  key={letter}
+                  onClick={() => {
+                    hapticFeedback('light')
+                    handleKeyPress(letter)
+                  }}
+                  whileTap={{ scale: 0.9 }}
+                  className="px-1 py-1.5 bg-primary text-white rounded-lg font-bold text-xs sm:text-sm hover:bg-primary/80 active:bg-primary/60 transition-colors min-h-[36px] flex items-center justify-center"
+                >
+                  {letter}
+                </motion.button>
+              ))}
+            </div>
+
+            {/* Кнопки управления */}
+            <div className="flex gap-2">
+              <motion.button
+                onClick={() => {
+                  hapticFeedback('light')
+                  handleBackspace()
+                }}
+                whileTap={{ scale: 0.9 }}
+                disabled={currentInput.length === 0}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  currentInput.length > 0
+                    ? 'bg-gray-500 text-white hover:bg-gray-600'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                ⌫ Удалить
+              </motion.button>
+              <motion.button
+                onClick={() => {
+                  if (currentInput.length === selectedWord.word.length) {
+                    hapticFeedback('medium')
+                    checkWord(selectedWord, currentInput)
+                  }
+                }}
+                whileTap={{ scale: 0.9 }}
+                disabled={currentInput.length !== selectedWord.word.length}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  currentInput.length === selectedWord.word.length
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                ✓ Проверить
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Скрытое поле ввода для букв (резерв для десктопа) */}
       <input
         ref={inputRef}
         type="text"
         value=""
         onChange={handleInput}
         className="absolute opacity-0 pointer-events-none"
-        autoFocus
+        autoFocus={false}
       />
     </div>
   )

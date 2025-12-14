@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RegistrationProvider } from './contexts/RegistrationContext'
 import BottomNavbar from './components/BottomNavbar'
@@ -16,10 +16,18 @@ import type { TabName } from './types'
 function App() {
   const [activeTab, setActiveTab] = useState<TabName>('home')
   const [isLoading, setIsLoading] = useState(true)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const handleLoadingComplete = () => {
     setIsLoading(false)
   }
+
+  // Сбрасываем скролл наверх при смене таба
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [activeTab])
 
   if (isLoading) {
     return <LoadingScreen onComplete={handleLoadingComplete} />
@@ -28,7 +36,11 @@ function App() {
   return (
     <RegistrationProvider>
       <div className="h-screen bg-[#F8F8F8] flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto pb-20" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+        <div 
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto pb-20" 
+          style={{ maxHeight: 'calc(100vh - 80px)' }}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

@@ -50,11 +50,11 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   const handleTabClick = (tab: TabName) => {
     hapticFeedback('light')
     onTabChange(tab)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
     // Закрываем навбар после выбора вкладки
     if (isExpanded) {
       setIsExpanded(false)
     }
+    // Скролл будет сброшен в App.tsx через useEffect при изменении activeTab
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
