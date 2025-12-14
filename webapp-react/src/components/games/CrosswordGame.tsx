@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-mo
 import { generateCrossword, type CrosswordGrid, type CrosswordWord } from '../../utils/crosswordGenerator'
 import { getCrosswordData, saveCrosswordProgress, updateGameScore, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
+import Confetti from '../common/Confetti'
 import type { Config } from '../../types'
 
 interface CrosswordGameProps {
@@ -29,6 +30,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
+  const [showConfetti, setShowConfetti] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [currentInput, setCurrentInput] = useState('')
   const [showKeyboard, setShowKeyboard] = useState(false)
@@ -375,6 +377,10 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       setGuessedWords(newGuessedWords)
       setScore(newGuessedWords.size)
       
+      // Запускаем салют
+      setShowConfetti(true)
+      setTimeout(() => setShowConfetti(false), 2000)
+      
       // Обновляем клетки как правильные
       const newCells = [...cells]
       for (let i = 0; i < word.word.length; i++) {
@@ -444,6 +450,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-[#F8F8F8] flex flex-col" style={{ bottom: '80px' }}>
+      <Confetti trigger={showConfetti} duration={2000} />
       {/* Онбординг */}
       {showOnboarding && (
         <motion.div

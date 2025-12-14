@@ -337,6 +337,70 @@ export async function getCrosswordData(userId: number): Promise<CrosswordData> {
   return { words: [], guessed_words: [] }
 }
 
+export async function getWordleWord(): Promise<string | null> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/wordle/word`)
+    if (response.ok) {
+      const data = await response.json()
+      return data.word || null
+    }
+  } catch (error) {
+    console.error('Error loading Wordle word:', error)
+  }
+  return null
+}
+
+export async function getWordleProgress(): Promise<string[]> {
+  const config = await loadConfig()
+  try {
+    const tg = window.Telegram?.WebApp
+    const initData = (tg as any)?.initData || ''
+    
+    if (!initData) {
+      return []
+    }
+    
+    const response = await fetch(`${config.apiUrl}/wordle/progress?initData=${encodeURIComponent(initData)}`)
+    if (response.ok) {
+      const data = await response.json()
+      return data.guessed_words || []
+    }
+  } catch (error) {
+    console.error('Error loading Wordle progress:', error)
+  }
+  return []
+}
+
+export async function submitWordleGuess(word: string): Promise<{ success: boolean; message?: string; points?: number; already_guessed?: boolean }> {
+  const config = await loadConfig()
+  try {
+    const tg = window.Telegram?.WebApp
+    const initData = (tg as any)?.initData || ''
+    
+    if (!initData) {
+      return { success: false, message: 'Не удалось получить данные пользователя' }
+    }
+    
+    const response = await fetch(`${config.apiUrl}/wordle/guess`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word, initData }),
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    } else {
+      const error = await response.json()
+      return { success: false, message: error.error || 'Ошибка' }
+    }
+  } catch (error) {
+    console.error('Error submitting Wordle guess:', error)
+    return { success: false, message: 'Ошибка сети' }
+  }
+}
+
 export async function saveCrosswordProgress(
   userId: number,
   guessedWords: string[]

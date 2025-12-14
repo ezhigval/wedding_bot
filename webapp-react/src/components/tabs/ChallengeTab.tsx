@@ -7,6 +7,7 @@ import RankIcon from '../common/RankIcon'
 import DragonGame from '../games/DragonGame'
 import FlappyBirdGame from '../games/FlappyBirdGame'
 import CrosswordGame from '../games/CrosswordGame'
+import WordleGame from '../games/WordleGame'
 import { useRegistration } from '../../contexts/RegistrationContext'
 import { loadConfig, getGameStats, updateGameScore, type GameStats } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -17,7 +18,7 @@ export default function ChallengeTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const [stats, setStats] = useState<GameStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
-  const [activeGame, setActiveGame] = useState<'dragon' | 'flappy' | 'crossword' | null>(null)
+  const [activeGame, setActiveGame] = useState<'dragon' | 'flappy' | 'crossword' | 'wordle' | null>(null)
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -85,7 +86,7 @@ export default function ChallengeTab() {
     }
   }
 
-  const handleGameClick = (gameType: 'dragon' | 'flappy' | 'crossword') => {
+  const handleGameClick = (gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
     hapticFeedback('light')
     if (gameType === 'dragon') {
       setActiveGame('dragon')
@@ -93,10 +94,12 @@ export default function ChallengeTab() {
       setActiveGame('flappy')
     } else if (gameType === 'crossword') {
       setActiveGame('crossword')
+    } else if (gameType === 'wordle') {
+      setActiveGame('wordle')
     }
   }
 
-  const handleGameScore = async (score: number, gameType: 'dragon' | 'flappy' | 'crossword') => {
+  const handleGameScore = async (score: number, gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
     if (!config) return
 
     // Получаем userId
@@ -146,6 +149,10 @@ export default function ChallengeTab() {
     } else if (gameType === 'flappy') {
       gamePoints = Math.floor(score / 2)
     } else if (gameType === 'crossword') {
+      gamePoints = score * 25
+    } else if (gameType === 'wordle') {
+      // Wordle: 1 игровое очко = 1 рейтинговое очко (можно изменить)
+      gamePoints = score
       gamePoints = Math.floor(score / 5)
     }
 
@@ -244,6 +251,10 @@ export default function ChallengeTab() {
   if (activeGame === 'crossword') {
     return <CrosswordGame onClose={handleGameClose} />
   }
+  
+  if (activeGame === 'wordle') {
+    return <WordleGame onScore={(score) => handleGameScore(score, 'wordle')} onClose={handleGameClose} />
+  }
 
   return (
     <div className="min-h-screen px-4 py-4 pb-24">
@@ -276,6 +287,14 @@ export default function ChallengeTab() {
             className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
           >
             📝 Кроссворд
+          </motion.button>
+
+          <motion.button
+            onClick={() => handleGameClick('wordle')}
+            whileTap={{ scale: 0.95 }}
+            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
+          >
+            🔤 ВОРДЛИ
           </motion.button>
         </div>
       </SectionCard>

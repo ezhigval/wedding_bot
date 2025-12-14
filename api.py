@@ -28,6 +28,9 @@ from config import (
 from google_sheets import (
     add_guest_to_sheets,
     cancel_invitation,
+    get_wordle_word,
+    get_wordle_guessed_words,
+    save_wordle_progress,
     get_timeline,
     check_guest_registration,
     get_all_guests_from_sheets,
@@ -1312,6 +1315,7 @@ async def get_game_stats_endpoint(request):
                 'dragon_score': 0,
                 'flappy_score': 0,
                 'crossword_score': 0,
+                'wordle_score': 0,
                 'rank': 'Незнакомец',
             })
         
@@ -1328,12 +1332,8 @@ async def _update_sheets_from_cache(user_id: int, cached_stats: Dict):
         sheets_stats = await get_game_stats(user_id)
         
         # Обновляем каждый счет отдельно, если он больше текущего в Sheets
-        if cached_stats.get('dragon_score', 0) > (sheets_stats.get('dragon_score', 0) if sheets_stats else 0):
-            await update_game_score(user_id, 'dragon', cached_stats['dragon_score'])
-        if cached_stats.get('flappy_score', 0) > (sheets_stats.get('flappy_score', 0) if sheets_stats else 0):
-            await update_game_score(user_id, 'flappy', cached_stats['flappy_score'])
-        if cached_stats.get('crossword_score', 0) > (sheets_stats.get('crossword_score', 0) if sheets_stats else 0):
-            await update_game_score(user_id, 'crossword', cached_stats['crossword_score'])
+        # Синхронизация теперь не нужна, так как счет накопительный
+        # Оставляем пустым, так как логика изменилась на накопительную
     except Exception as e:
         logger.error(f"Ошибка обновления Sheets из кэша для user_id={user_id}: {e}")
 
@@ -1371,7 +1371,7 @@ async def update_game_score_endpoint(request):
         user_id = int(user_id_str)
         score = int(score)
         
-        if game_type not in ['dragon', 'flappy', 'crossword']:
+        if game_type not in ['dragon', 'flappy', 'crossword', 'wordle']:
             return web.json_response({'error': 'Неизвестный тип игры'}, status=400)
         
         # Получаем текущую статистику для обновления
@@ -1391,22 +1391,36 @@ async def update_game_score_endpoint(request):
                     'rank': 'Незнакомец',
                 }
         
-        # Обновляем счет для конкретной игры (только если новый больше)
+        # Прибавляем очки к счету игры (накопительно)
+        # Конвертируем игровые очки в рейтинговые по формулам:
+        # Dragon: 200 игровых очков = 1 рейтинговое очко
+        # Flappy: 2 игровых очка = 1 рейтинговое очко
+        # Crossword: 1 игровое очко = 25 рейтинговых очков
+        
         if game_type == 'dragon':
-            if score > current_stats.get('dragon_score', 0):
-                current_stats['dragon_score'] = score
+            # Конвертируем игровые очки в рейтинговые
+            rating_points = score // 200
+            current_stats['dragon_score'] = current_stats.get('dragon_score', 0) + rating_points
         elif game_type == 'flappy':
-            if score > current_stats.get('flappy_score', 0):
-                current_stats['flappy_score'] = score
+            # Конвертируем игровые очки в рейтинговые
+            rating_points = score // 2
+            current_stats['flappy_score'] = current_stats.get('flappy_score', 0) + rating_points
         elif game_type == 'crossword':
-            if score > current_stats.get('crossword_score', 0):
-                current_stats['crossword_score'] = score
+            # Конвертируем игровые очки в рейтинговые: 1 игровое очко = 25 рейтинговых очков
+            rating_points = score * 25
+            current_stats['crossword_score'] = current_stats.get('crossword_score', 0) + rating_points
+        elif game_type == 'wordle':
+            # Wordle: каждое отгаданное слово = 5 рейтинговых очков
+            # score здесь - количество отгаданных слов
+            rating_points = score * 5
+            current_stats['wordle_score'] = current_stats.get('wordle_score', 0) + rating_points
         
         # Пересчитываем общий счет
         current_stats['total_score'] = (
             current_stats.get('dragon_score', 0) +
             current_stats.get('flappy_score', 0) +
-            current_stats.get('crossword_score', 0)
+            current_stats.get('crossword_score', 0) +
+            current_stats.get('wordle_score', 0)
         )
         
         # Определяем звание
@@ -1512,6 +1526,97 @@ async def save_crossword_progress_endpoint(request):
             
     except Exception as e:
         logger.error(f"Ошибка сохранения прогресса кроссвода: {e}")
+        logger.error(traceback.format_exc())
+        return web.json_response({'error': str(e)}, status=500)
+
+
+@routes.get('/api/wordle/word')
+async def get_wordle_word_endpoint(request):
+    """Получить актуальное слово для Wordle (последнее в таблице)"""
+    try:
+        word = await get_wordle_word()
+        if word:
+            return web.json_response({'word': word})
+        else:
+            return web.json_response({'error': 'Слово не найдено'}, status=404)
+    except Exception as e:
+        logger.error(f"Ошибка получения слова Wordle: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+@routes.get('/api/wordle/progress')
+async def get_wordle_progress_endpoint(request):
+    """Получить прогресс пользователя в Wordle (отгаданные слова)"""
+    try:
+        # Получаем user_id из initData
+        init_data = request.query.get('initData', '')
+        if not init_data:
+            return web.json_response({'error': 'initData не предоставлен'}, status=400)
+        
+        user_id = await parse_user_id_from_init_data(init_data)
+        if not user_id:
+            return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
+        
+        guessed_words = await get_wordle_guessed_words(user_id)
+        return web.json_response({'guessed_words': guessed_words})
+    except Exception as e:
+        logger.error(f"Ошибка получения прогресса Wordle: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+@routes.post('/api/wordle/guess')
+async def wordle_guess_endpoint(request):
+    """Обработать отгаданное слово в Wordle"""
+    try:
+        data = await request.json()
+        word = data.get('word', '').strip().upper()
+        init_data = data.get('initData', '')
+        
+        if not word:
+            return web.json_response({'error': 'Слово не предоставлено'}, status=400)
+        
+        if not init_data:
+            return web.json_response({'error': 'initData не предоставлен'}, status=400)
+        
+        user_id = await parse_user_id_from_init_data(init_data)
+        if not user_id:
+            return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
+        
+        # Получаем текущее актуальное слово
+        current_word = await get_wordle_word()
+        if not current_word:
+            return web.json_response({'error': 'Актуальное слово не найдено'}, status=404)
+        
+        # Проверяем, что слово совпадает с актуальным
+        if word != current_word:
+            return web.json_response({'error': 'Неверное слово'}, status=400)
+        
+        # Получаем уже отгаданные слова пользователя
+        guessed_words = await get_wordle_guessed_words(user_id)
+        
+        # Проверяем, не отгадано ли уже это слово
+        if word in guessed_words:
+            return web.json_response({
+                'success': False,
+                'message': 'Это слово уже было отгадано',
+                'already_guessed': True
+            })
+        
+        # Добавляем слово в список отгаданных
+        guessed_words.append(word)
+        await save_wordle_progress(user_id, guessed_words)
+        
+        # Начисляем очки: 1 отгаданное слово = 5 очков
+        await update_game_score(user_id, 'wordle', 1)  # Передаем 1 слово, система умножит на 5
+        
+        return web.json_response({
+            'success': True,
+            'message': 'Слово отгадано! +5 очков',
+            'points': 5
+        })
+    except Exception as e:
+        logger.error(f"Ошибка обработки отгаданного слова Wordle: {e}")
+        import traceback
         logger.error(traceback.format_exc())
         return web.json_response({'error': str(e)}, status=500)
 

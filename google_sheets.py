@@ -2179,7 +2179,7 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
             # Создаем лист если его нет
             sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=9)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"])
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "wordle_score", "rank", "last_updated"])
             return None
         
         # Ищем строку с user_id
@@ -2194,8 +2194,10 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
                     'dragon_score': int(row[4]) if len(row) > 4 and row[4] else 0,
                     'flappy_score': int(row[5]) if len(row) > 5 and row[5] else 0,
                     'crossword_score': int(row[6]) if len(row) > 6 and row[6] else 0,
-                    'rank': row[7] if len(row) > 7 and row[7] else 'Незнакомец',
-                    'last_updated': row[8] if len(row) > 8 and row[8] else None,
+                    'wordle_score': int(row[7]) if len(row) > 7 and row[7] else 0,
+                    'wordle_score': int(row[7]) if len(row) > 7 and row[7] else 0,
+                    'rank': row[8] if len(row) > 8 and row[8] else 'Незнакомец',
+                    'last_updated': row[9] if len(row) > 9 and row[9] else None,
                 }
         
         return None
@@ -2251,7 +2253,7 @@ def _update_game_score_sync(
             # Создаем лист если его нет
             sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=9)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"])
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "wordle_score", "rank", "last_updated"])
         
         # Определяем индекс столбца для конкретной игры (0-based для списков, 1-based для gspread)
         # Теперь индексы сдвинуты из-за добавления first_name и last_name
@@ -2259,6 +2261,7 @@ def _update_game_score_sync(
             'dragon': 4,    # E (индекс 4 в списке, столбец 5 в gspread)
             'flappy': 5,    # F (индекс 5 в списке, столбец 6 в gspread)
             'crossword': 6, # G (индекс 6 в списке, столбец 7 в gspread)
+            'wordle': 7,    # H (индекс 7 в списке, столбец 8 в gspread)
         }
         
         if game_type not in game_col_index:
@@ -2282,44 +2285,98 @@ def _update_game_score_sync(
             row_data = all_values[user_row_gspread - 1]  # -1 потому что all_values 0-based
             current_score = int(row_data[game_col_list]) if len(row_data) > game_col_list and row_data[game_col_list] else 0
             
-            # Обновляем только если новый счет больше
-            if score > current_score:
-                sheet.update_cell(user_row_gspread, game_col_gspread, score)
-                
-                # Обновляем имя и фамилию (на случай если они изменились)
-                sheet.update_cell(user_row_gspread, 2, first_name)  # B - first_name
-                sheet.update_cell(user_row_gspread, 3, last_name)   # C - last_name
-                
-                # Пересчитываем общий счет из текущих значений
-                dragon_score = int(row_data[4]) if len(row_data) > 4 and row_data[4] else 0
-                flappy_score = int(row_data[5]) if len(row_data) > 5 and row_data[5] else 0
-                crossword_score = int(row_data[6]) if len(row_data) > 6 and row_data[6] else 0
-                
-                # Обновляем счет для текущей игры
-                if game_type == 'dragon':
-                    dragon_score = score
-                elif game_type == 'flappy':
-                    flappy_score = score
-                elif game_type == 'crossword':
-                    crossword_score = score
-                
-                total_score = dragon_score + flappy_score + crossword_score
-                sheet.update_cell(user_row_gspread, 4, total_score)  # D - total_score (столбец 4 в gspread)
-                
-                # Определяем звание
-                rank = _get_rank_by_score(total_score)
-                
-                sheet.update_cell(user_row_gspread, 8, rank)  # H - rank (столбец 8 в gspread)
-                
-                # Обновляем дату последнего изменения
-                last_updated = datetime.now().isoformat()
-                sheet.update_cell(user_row_gspread, 9, last_updated)  # I - last_updated (столбец 9 в gspread)
+            # Получаем текущие счета всех игр
+            dragon_score = int(row_data[4]) if len(row_data) > 4 and row_data[4] else 0
+            flappy_score = int(row_data[5]) if len(row_data) > 5 and row_data[5] else 0
+            crossword_score = int(row_data[6]) if len(row_data) > 6 and row_data[6] else 0
+            
+            # Прибавляем очки к счету игры (накопительно)
+            # Конвертируем игровые очки в рейтинговые по формулам:
+            # Dragon: 200 игровых очков = 1 рейтинговое очко
+            # Flappy: 2 игровых очка = 1 рейтинговое очко
+            # Crossword: 1 игровое очко = 25 рейтинговых очков
+            
+            if game_type == 'dragon':
+                rating_points = score // 200
+                dragon_score += rating_points
+            elif game_type == 'flappy':
+                rating_points = score // 2
+                flappy_score += rating_points
+            elif game_type == 'crossword':
+                # Конвертируем игровые очки в рейтинговые: 1 игровое очко = 25 рейтинговых очков
+                rating_points = score * 25
+                crossword_score += rating_points
+            elif game_type == 'wordle':
+                # Wordle: каждое отгаданное слово = 5 рейтинговых очков
+                # score здесь - количество отгаданных слов
+                rating_points = score * 5
+                wordle_score += rating_points
+            
+            # Обновляем счет игры
+            if game_type == 'dragon':
+                sheet.update_cell(user_row_gspread, game_col_gspread, dragon_score)
+            elif game_type == 'flappy':
+                sheet.update_cell(user_row_gspread, game_col_gspread, flappy_score)
+            elif game_type == 'crossword':
+                sheet.update_cell(user_row_gspread, game_col_gspread, crossword_score)
+            elif game_type == 'wordle':
+                sheet.update_cell(user_row_gspread, game_col_gspread, wordle_score)
+            
+            # Обновляем имя и фамилию (на случай если они изменились)
+            sheet.update_cell(user_row_gspread, 2, first_name)  # B - first_name
+            sheet.update_cell(user_row_gspread, 3, last_name)   # C - last_name
+            
+            # Пересчитываем общий счет
+            total_score = dragon_score + flappy_score + crossword_score + wordle_score
+            sheet.update_cell(user_row_gspread, 4, total_score)  # D - total_score (столбец 4 в gspread)
+            
+            # Обновляем все счета игр (на случай если нужно обновить другие столбцы)
+            if game_type != 'dragon':
+                sheet.update_cell(user_row_gspread, 5, dragon_score)  # E - dragon_score
+            if game_type != 'flappy':
+                sheet.update_cell(user_row_gspread, 6, flappy_score)  # F - flappy_score
+            if game_type != 'crossword':
+                sheet.update_cell(user_row_gspread, 7, crossword_score)  # G - crossword_score
+            if game_type != 'wordle':
+                sheet.update_cell(user_row_gspread, 8, wordle_score)  # H - wordle_score
+            
+            # Определяем звание
+            rank = _get_rank_by_score(total_score)
+            
+            sheet.update_cell(user_row_gspread, 9, rank)  # I - rank (столбец 9 в gspread)
+            
+            # Обновляем дату последнего изменения
+            last_updated = datetime.now().isoformat()
+            sheet.update_cell(user_row_gspread, 10, last_updated)  # J - last_updated (столбец 10 в gspread)
         else:
             # Создаем новую строку
-            total_score = score
-            dragon_score = score if game_type == 'dragon' else 0
-            flappy_score = score if game_type == 'flappy' else 0
-            crossword_score = score if game_type == 'crossword' else 0
+            # Конвертируем игровые очки в рейтинговые
+            if game_type == 'dragon':
+                rating_points = score // 200
+                dragon_score = rating_points
+            else:
+                dragon_score = 0
+            
+            if game_type == 'flappy':
+                rating_points = score // 2
+                flappy_score = rating_points
+            else:
+                flappy_score = 0
+            
+            if game_type == 'crossword':
+                # Конвертируем игровые очки в рейтинговые: 1 игровое очко = 25 рейтинговых очков
+                crossword_score = score * 25
+            else:
+                crossword_score = 0
+            
+            if game_type == 'wordle':
+                # Wordle: каждое отгаданное слово = 5 рейтинговых очков
+                # score здесь - количество отгаданных слов
+                wordle_score = score * 5
+            else:
+                wordle_score = 0
+            
+            total_score = dragon_score + flappy_score + crossword_score + wordle_score
             
             rank = _get_rank_by_score(total_score)
             
@@ -2332,6 +2389,7 @@ def _update_game_score_sync(
                 dragon_score,
                 flappy_score,
                 crossword_score,
+                wordle_score,
                 rank,
                 last_updated,
             ]
@@ -2364,6 +2422,161 @@ async def update_game_score(
     """Асинхронная обёртка для обновления счета"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _update_game_score_sync, user_id, game_type, score)
+
+# ========== WORDLE ==========
+
+def _get_wordle_word_sync() -> Optional[str]:
+    """
+    Получает последнее (актуальное) слово из вкладки "Wordle".
+    Последнее слово в таблице = актуальное слово для отгадывания.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return None
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle")
+        except Exception:
+            logger.error("Вкладка 'Wordle' не найдена")
+            return None
+        
+        # Получаем все значения из первого столбца (слова)
+        all_values = sheet.get_all_values()
+        
+        if not all_values:
+            return None
+        
+        # Пропускаем заголовок (первую строку)
+        words = []
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and row[0].strip():
+                words.append(row[0].strip().upper())
+        
+        # Возвращаем последнее слово (актуальное)
+        if words:
+            return words[-1]
+        
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка получения слова Wordle: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+def _get_wordle_guessed_words_sync(user_id: int) -> List[str]:
+    """
+    Получает список отгаданных слов пользователя из вкладки "Wordle_Прогресс".
+    """
+    if not GSPREAD_AVAILABLE:
+        return []
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return []
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle_Прогресс")
+        except Exception:
+            return []
+        
+        all_values = sheet.get_all_values()
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
+                # Нашли пользователя, возвращаем отгаданные слова
+                if len(row) > 1 and row[1]:
+                    # Слова разделены запятыми
+                    words_str = row[1].strip()
+                    if words_str:
+                        return [w.strip().upper() for w in words_str.split(',') if w.strip()]
+                return []
+        
+        return []
+    except Exception as e:
+        logger.error(f"Ошибка получения прогресса Wordle для user_id={user_id}: {e}")
+        return []
+
+
+def _save_wordle_progress_sync(user_id: int, guessed_words: List[str]) -> bool:
+    """
+    Сохраняет прогресс пользователя в Wordle (отгаданные слова).
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle_Прогресс")
+        except Exception:
+            logger.error("Вкладка 'Wordle_Прогресс' не найдена")
+            return False
+        
+        all_values = sheet.get_all_values()
+        user_row = None
+        user_row_index = None
+        
+        # Ищем строку пользователя
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок, начинаем с 2
+            if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
+                user_row = row
+                user_row_index = i
+                break
+        
+        # Сохраняем слова через запятую
+        words_str = ','.join(guessed_words)
+        
+        if user_row_index:
+            # Обновляем существующую строку
+            sheet.update_cell(user_row_index, 2, words_str)  # Столбец B
+        else:
+            # Создаем новую строку
+            sheet.append_row([str(user_id), words_str])
+        
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения прогресса Wordle для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+async def get_wordle_word() -> Optional[str]:
+    """Асинхронная обёртка для получения актуального слова Wordle"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_wordle_word_sync)
+
+
+async def get_wordle_guessed_words(user_id: int) -> List[str]:
+    """Асинхронная обёртка для получения отгаданных слов пользователя"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_wordle_guessed_words_sync, user_id)
+
+
+async def save_wordle_progress(user_id: int, guessed_words: List[str]) -> bool:
+    """Асинхронная обёртка для сохранения прогресса Wordle"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _save_wordle_progress_sync, user_id, guessed_words)
+
 
 # ========== КРОССВОД ==========
 
@@ -2400,8 +2613,20 @@ def _ensure_required_sheets_sync():
                 "headers": ["user_id", "отгаданные_слова"],
                 "default_data": []
             },
+            "Wordle": {
+                "headers": ["слово"],
+                "default_data": [
+                    ["ГОСТИ"],
+                    ["ТАНЕЦ"],
+                    ["БУКЕТ"],
+                ]
+            },
+            "Wordle_Прогресс": {
+                "headers": ["user_id", "отгаданные_слова"],
+                "default_data": []
+            },
             "Игры": {
-                "headers": ["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "rank", "last_updated"],
+                "headers": ["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "wordle_score", "rank", "last_updated"],
                 "default_data": []
             },
             "Фото": {

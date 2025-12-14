@@ -27,6 +27,7 @@ async def init_game_stats_cache():
                 dragon_score INTEGER DEFAULT 0,
                 flappy_score INTEGER DEFAULT 0,
                 crossword_score INTEGER DEFAULT 0,
+                wordle_score INTEGER DEFAULT 0,
                 rank TEXT DEFAULT 'Незнакомец',
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -56,6 +57,7 @@ async def get_cached_stats(user_id: int) -> Optional[Dict]:
                         'dragon_score': row['dragon_score'],
                         'flappy_score': row['flappy_score'],
                         'crossword_score': row['crossword_score'],
+                        'wordle_score': row.get('wordle_score', 0) or 0,
                         'rank': row['rank'] or 'Незнакомец',
                         'last_updated': row['last_updated'],
                     }
@@ -71,8 +73,8 @@ async def save_cached_stats(stats: Dict) -> bool:
             await db.execute("""
                 INSERT OR REPLACE INTO game_stats_cache 
                 (user_id, first_name, last_name, total_score, dragon_score, 
-                 flappy_score, crossword_score, rank, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 flappy_score, crossword_score, wordle_score, rank, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 stats['user_id'],
                 stats.get('first_name', ''),
@@ -81,6 +83,7 @@ async def save_cached_stats(stats: Dict) -> bool:
                 stats.get('dragon_score', 0),
                 stats.get('flappy_score', 0),
                 stats.get('crossword_score', 0),
+                stats.get('wordle_score', 0),
                 stats.get('rank', 'Незнакомец'),
                 stats.get('last_updated', datetime.now().isoformat()),
             ))
@@ -130,6 +133,7 @@ async def sync_game_stats(user_id: int, sheets_stats: Optional[Dict], cached_sta
             'dragon_score': 0,
             'flappy_score': 0,
             'crossword_score': 0,
+            'wordle_score': 0,
             'rank': 'Незнакомец',
             'last_updated': datetime.now().isoformat(),
         }
