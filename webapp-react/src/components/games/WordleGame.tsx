@@ -313,7 +313,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
         )}
 
         {/* Игровое поле */}
-        <div className="space-y-2 mb-6">
+        <div className="space-y-1.5 mb-4">
           {guesses.map((row, rowIndex) => {
             const isCurrentRow = rowIndex === guesses.findIndex(r => r[0].state === 'empty')
             const displayWord = isCurrentRow ? currentGuess : ''
@@ -333,7 +333,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
                         rotate: letter && state !== 'empty' ? [0, 5, -5, 0] : 0,
                       }}
                       transition={{ duration: 0.3 }}
-                      className={`w-12 h-12 flex items-center justify-center rounded-lg font-bold text-lg ${getCellColor(state)}`}
+                      className={`w-10 h-10 flex items-center justify-center rounded-md font-bold text-base ${getCellColor(state)}`}
                     >
                       {letter}
                     </motion.div>
@@ -365,14 +365,14 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
         />
 
         {/* Виртуальная клавиатура */}
-        <div className="space-y-2 mb-6">
+        <div className="space-y-1 mb-4">
           {keyboardRows.map((row, rowIndex) => (
-            <div key={rowIndex} className="flex gap-1 justify-center flex-wrap">
+            <div key={rowIndex} className="flex gap-0.5 justify-center flex-wrap">
               {row.map((letter) => (
                 <button
                   key={letter}
                   onClick={() => handleKeyPress(letter)}
-                  className={`px-3 py-2 rounded-lg font-semibold text-sm min-w-[36px] ${getKeyColor(letter)} transition-colors`}
+                  className={`px-2 py-1.5 rounded-md font-semibold text-xs min-w-[28px] ${getKeyColor(letter)} transition-colors`}
                 >
                   {letter}
                 </button>
@@ -381,16 +381,16 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           ))}
           
           {/* Кнопки управления */}
-          <div className="flex gap-2 justify-center mt-2">
+          <div className="flex gap-1.5 justify-center mt-1">
             <button
               onClick={() => handleKeyPress('BACKSPACE')}
-              className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg font-semibold hover:bg-gray-400 transition-colors"
+              className="px-3 py-1.5 bg-gray-300 text-gray-800 rounded-md font-semibold text-xs hover:bg-gray-400 transition-colors"
             >
               ⌫
             </button>
             <button
               onClick={() => handleKeyPress('ENTER')}
-              className="px-6 py-2 bg-[#5A7C52] text-white rounded-lg font-semibold hover:bg-[#4A6B42] transition-colors"
+              className="px-4 py-1.5 bg-[#5A7C52] text-white rounded-md font-semibold text-xs hover:bg-[#4A6B42] transition-colors"
             >
               ВВОД
             </button>
