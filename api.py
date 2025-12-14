@@ -64,14 +64,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Попытка импортировать pymorphy2 для проверки слов
-try:
-    import pymorphy2
-    MORPH_AVAILABLE = True
-    morph = pymorphy2.MorphAnalyzer()
-except ImportError:
-    MORPH_AVAILABLE = False
-    morph = None
-    logger.warning("pymorphy2 не установлен, проверка слов будет упрощенной")
+# Используем ленивую инициализацию, чтобы избежать ошибок при импорте
+MORPH_AVAILABLE = False
+_morph_analyzer = None
+
+def _get_morph_analyzer():
+    """Ленивая инициализация MorphAnalyzer"""
+    global MORPH_AVAILABLE, _morph_analyzer
+    if _morph_analyzer is not None:
+        return _morph_analyzer
+    
+    try:
+        import pymorphy2
+        _morph_analyzer = pymorphy2.MorphAnalyzer()
+        MORPH_AVAILABLE = True
+        return _morph_analyzer
+    except (ImportError, AttributeError, Exception) as e:
+        MORPH_AVAILABLE = False
+        _morph_analyzer = None
+        logger.warning(f"pymorphy2 недоступен, проверка слов будет упрощенной: {e}")
+        return None
 
 # Импортируем функцию уведомлений (будет доступна после инициализации бота)
 _notify_admins_func = None
