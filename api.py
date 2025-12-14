@@ -193,10 +193,11 @@ async def validate_word(word: str) -> tuple[bool, str]:
     
     word_lower = word.lower()
     
-    # Если pymorphy2 доступен, используем его для точной проверки
-    if MORPH_AVAILABLE and morph:
+    # Если pymorphy3 доступен, используем его для точной проверки
+    morph_analyzer = _get_morph_analyzer()
+    if MORPH_AVAILABLE and morph_analyzer:
         try:
-            parsed = morph.parse(word_lower)[0]
+            parsed = morph_analyzer.parse(word_lower)[0]
             
             # Проверяем, что это существительное
             if 'NOUN' not in parsed.tag:
