@@ -25,8 +25,9 @@ const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = 
 
 const ITEMS_PER_ROW = 4 // Количество кнопок в одном ряду
 const ROW_HEIGHT = 80 // Высота одного ряда в пикселях
-const DRAG_INDICATOR_HEIGHT = 24 // Высота индикатора для вытягивания
-const DRAG_THRESHOLD = 30 // Порог для открытия/закрытия при перетаскивании
+const DRAG_INDICATOR_HEIGHT = 40 // Высота индикатора для вытягивания (увеличена)
+const DRAG_THRESHOLD = 20 // Порог для открытия/закрытия при перетаскивании (уменьшен для более отзывчивости)
+const CLICK_THRESHOLD = 5 // Порог для различения клика и драга
 
 // Вычисляем количество рядов
 const totalRows = Math.ceil(allNavItems.length / ITEMS_PER_ROW)
@@ -39,6 +40,8 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   const navRef = useRef<HTMLDivElement>(null)
   const startY = useRef(0)
   const currentY = useRef(0)
+  const startTime = useRef(0)
+  const hasMoved = useRef(false)
 
   const dragY = useMotionValue(0)
   const y = useTransform(dragY, (value) => {
@@ -47,7 +50,13 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     return Math.max(-maxDelta, Math.min(0, value))
   })
 
-  const handleTabClick = (tab: TabName) => {
+  const handleTabClick = (tab: TabName, e?: React.MouseEvent) => {
+    // Проверяем, что это был клик, а не драг
+    if (hasMoved.current || isDragging) {
+      e?.preventDefault()
+      e?.stopPropagation()
+      return
+    }
     hapticFeedback('light')
     onTabChange(tab)
     // Закрываем навбар после выбора вкладки
@@ -58,10 +67,19 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    // Игнорируем клики по кнопкам - они обрабатываются отдельно
+    const target = e.target as HTMLElement
+    if (target.closest('button')) {
+      return
+    }
+
     startY.current = e.clientY
     currentY.current = startY.current
+    startTime.current = Date.now()
+    hasMoved.current = false
     setIsDragging(true)
     e.preventDefault()
+    e.stopPropagation()
     // Для тач-устройств блокируем скролл
     if (e.pointerType === 'touch') {
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -83,24 +101,29 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
       const handleGlobalPointerMove = (e: PointerEvent) => {
         currentY.current = e.clientY
         const deltaY = startY.current - currentY.current
+        
+        // Отмечаем, что произошло движение
+        if (Math.abs(deltaY) > CLICK_THRESHOLD) {
+          hasMoved.current = true
+        }
+        
         // Устанавливаем значение dragY (отрицательное при движении вверх)
         dragY.set(-deltaY)
       }
 
       const handleGlobalPointerUp = () => {
-        setIsDragging(false)
         const deltaY = startY.current - currentY.current
 
         if (deltaY > DRAG_THRESHOLD) {
           // Вытягиваем навбар
           setIsExpanded(true)
           dragY.set(-ROW_HEIGHT * hiddenRows)
-          hapticFeedback('light')
+          hapticFeedback('medium')
         } else if (deltaY < -DRAG_THRESHOLD && isExpanded) {
           // Сворачиваем навбар
           setIsExpanded(false)
           dragY.set(0)
-          hapticFeedback('light')
+          hapticFeedback('medium')
         } else {
           // Возвращаем в исходное положение
           if (isExpanded) {
@@ -109,6 +132,13 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
             dragY.set(0)
           }
         }
+        
+        setIsDragging(false)
+        
+        // Сбрасываем флаг движения после небольшой задержки
+        setTimeout(() => {
+          hasMoved.current = false
+        }, 150)
       }
 
       window.addEventListener('pointermove', handleGlobalPointerMove)
@@ -130,7 +160,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
       return (
         <motion.button
           key={item.id}
-          onClick={() => handleTabClick(item.id)}
+          onClick={(e) => handleTabClick(item.id, e)}
           className="flex flex-col items-center justify-center gap-0.5 h-20 min-w-0 transition-all"
           whileTap={{ scale: 0.95 }}
         >
@@ -180,7 +210,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     return (
       <motion.button
         key={item.id}
-        onClick={() => handleTabClick(item.id)}
+        onClick={(e) => handleTabClick(item.id, e)}
         className="flex flex-col items-center justify-center gap-0.5 px-1 py-2 h-20 min-w-0 transition-colors"
         whileTap={{ scale: 0.95 }}
       >
@@ -224,19 +254,52 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
           : DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows,
       }}
       initial={{ y: 0, height: DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows }}
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-primary/30 shadow-lg backdrop-blur-sm overflow-hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-primary/30 shadow-lg backdrop-blur-sm overflow-hidden flex flex-col justify-end"
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      onPointerDown={handlePointerDown}
     >
-      {/* Индикатор для вытягивания */}
-      <div
-        className="w-full flex justify-center py-1 cursor-grab active:cursor-grabbing touch-none select-none"
-        onPointerDown={handlePointerDown}
-      >
-        <div className="w-12 h-1 bg-gray-300 rounded-full" />
+      {/* Индикатор для вытягивания - увеличенный и более заметный */}
+      <div className="w-full flex justify-center py-2 cursor-grab active:cursor-grabbing touch-none select-none drag-handle flex-shrink-0">
+        <motion.div
+          className="relative"
+          animate={{
+            scale: isDragging ? 1.1 : 1,
+          }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="w-20 h-1.5 bg-gradient-to-r from-gray-400 via-gray-500 to-gray-400 rounded-full shadow-md"
+            animate={{
+              width: isDragging ? '6rem' : '5rem',
+              opacity: isDragging ? 1 : 0.7,
+              boxShadow: isDragging 
+                ? '0 4px 12px rgba(0, 0, 0, 0.2)' 
+                : '0 2px 6px rgba(0, 0, 0, 0.1)',
+            }}
+            transition={{ duration: 0.2 }}
+          />
+          {/* Анимированная подсказка */}
+          {!isExpanded && (
+            <motion.div
+              className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap"
+              animate={{
+                opacity: [0.5, 0.8, 0.5],
+                y: [0, -2, 0],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+            >
+              Потяните вверх
+            </motion.div>
+          )}
+        </motion.div>
       </div>
 
       {/* Сетка кнопок 4xN */}
-      <div className="grid grid-cols-4 gap-0">
+      <div className="grid grid-cols-4 gap-0 flex-shrink-0" style={{ gridTemplateRows: `repeat(${isExpanded ? totalRows : visibleRows}, ${ROW_HEIGHT}px)` }}>
         {/* Видимые кнопки (первый ряд) */}
         {visibleItems.map(renderNavButton)}
         

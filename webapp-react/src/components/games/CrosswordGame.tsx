@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { generateCrossword, type CrosswordGrid, type CrosswordWord } from '../../utils/crosswordGenerator'
 import { getCrosswordData, saveCrosswordProgress, updateGameScore, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -31,10 +31,19 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [config, setConfig] = useState<Config | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [currentInput, setCurrentInput] = useState('')
+  const [showKeyboard, setShowKeyboard] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const lastTapRef = useRef<number>(0)
 
-  // Русский алфавит для виртуальной клавиатуры
-  const russianLetters = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('')
+  // Русская раскладка ЙЦУКЕН для виртуальной клавиатуры
+  // Первый ряд: Й Ц У К Е Н Г Ш Щ З Х Ъ
+  // Второй ряд: Ф Ы В А П Р О Л Д Ж Э
+  // Третий ряд: Я Ч С М И Т Ь Б Ю Ё
+  const russianLetters = [
+    'Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х', 'Ъ',
+    'Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э',
+    'Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю', 'Ё'
+  ]
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -198,7 +207,20 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
       // Сбрасываем текущий ввод при выборе нового слова
       setCurrentInput('')
+      // Автоматически показываем клавиатуру при выборе слова
+      setShowKeyboard(true)
     }
+  }
+
+  const handleDoubleTap = () => {
+    const now = Date.now()
+    const timeSinceLastTap = now - lastTapRef.current
+    if (timeSinceLastTap < 300) {
+      // Двойной тап - показываем/скрываем клавиатуру
+      setShowKeyboard(!showKeyboard)
+      hapticFeedback('light')
+    }
+    lastTapRef.current = now
   }
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -306,6 +328,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       }
       setCells(newCells)
       setCurrentInput('') // Очищаем ввод после правильного ответа
+      setShowKeyboard(false) // Скрываем клавиатуру после правильного ответа
 
       // Сохраняем прогресс
       await saveCrosswordProgress(userId, Array.from(newGuessedWords))
@@ -498,6 +521,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                     const col = word.col
                     handleCellClick(row, col)
                   }}
+                  onDoubleClick={handleDoubleTap}
                   className={`
                     p-3 rounded-lg border-2 cursor-pointer transition-all
                     ${guessedWords.has(word.word.toUpperCase())
@@ -517,8 +541,20 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                     </span>
                   </div>
                   {!guessedWords.has(word.word.toUpperCase()) && selectedWord?.word === word.word && selectedWord?.direction === word.direction && (
-                    <div className="mt-2 text-xs text-blue-600">
-                      💡 Используйте виртуальную клавиатуру внизу
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-xs text-blue-600">
+                        💡 Нажмите "Ввести ответ" для клавиатуры
+                      </div>
+                      <motion.button
+                        onClick={() => {
+                          hapticFeedback('light')
+                          setShowKeyboard(!showKeyboard)
+                        }}
+                        whileTap={{ scale: 0.95 }}
+                        className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/80 transition-colors"
+                      >
+                        {showKeyboard ? '✕ Скрыть' : '⌨️ Ввести ответ'}
+                      </motion.button>
                     </div>
                   )}
                 </div>
@@ -529,11 +565,18 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       </div>
 
       {/* Виртуальная клавиатура */}
-      {selectedWord && !guessedWords.has(selectedWord.word.toUpperCase()) && (
-        <div className="fixed bottom-20 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2">
+      <AnimatePresence>
+        {selectedWord && !guessedWords.has(selectedWord.word.toUpperCase()) && showKeyboard && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed bottom-20 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2 max-h-[60vh] overflow-y-auto"
+          >
           <div className="max-w-4xl mx-auto">
             {/* Текущий ввод */}
-            <div className="text-center mb-2">
+            <div className="text-center mb-2 sticky top-0 bg-white pb-2 border-b border-gray-200">
               <div className="text-xs text-gray-600 mb-1">Ввод:</div>
               <div className="text-lg font-bold text-primary">
                 {currentInput || '_'.repeat(selectedWord.word.length)}
@@ -541,20 +584,55 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
             </div>
 
             {/* Клавиатура */}
-            <div className="grid grid-cols-8 gap-1 mb-2 max-h-32 overflow-y-auto">
-              {russianLetters.map((letter) => (
-                <motion.button
-                  key={letter}
-                  onClick={() => {
-                    hapticFeedback('light')
-                    handleKeyPress(letter)
-                  }}
-                  whileTap={{ scale: 0.9 }}
-                  className="px-1 py-1.5 bg-primary text-white rounded-lg font-bold text-xs sm:text-sm hover:bg-primary/80 active:bg-primary/60 transition-colors min-h-[36px] flex items-center justify-center"
-                >
-                  {letter}
-                </motion.button>
-              ))}
+            <div className="mb-2">
+              {/* Первый ряд */}
+              <div className="grid grid-cols-12 gap-1 mb-1">
+                {russianLetters.slice(0, 12).map((letter) => (
+                  <motion.button
+                    key={letter}
+                    onClick={() => {
+                      hapticFeedback('light')
+                      handleKeyPress(letter)
+                    }}
+                    whileTap={{ scale: 0.9 }}
+                    className="px-1 py-2 bg-primary text-white rounded-lg font-bold text-xs hover:bg-primary/80 active:bg-primary/60 transition-colors min-h-[40px] flex items-center justify-center"
+                  >
+                    {letter}
+                  </motion.button>
+                ))}
+              </div>
+              {/* Второй ряд (с небольшим смещением влево, как на реальной клавиатуре) */}
+              <div className="grid grid-cols-11 gap-1 mb-1 ml-[4.17%]">
+                {russianLetters.slice(12, 23).map((letter) => (
+                  <motion.button
+                    key={letter}
+                    onClick={() => {
+                      hapticFeedback('light')
+                      handleKeyPress(letter)
+                    }}
+                    whileTap={{ scale: 0.9 }}
+                    className="px-1 py-2 bg-primary text-white rounded-lg font-bold text-xs hover:bg-primary/80 active:bg-primary/60 transition-colors min-h-[40px] flex items-center justify-center"
+                  >
+                    {letter}
+                  </motion.button>
+                ))}
+              </div>
+              {/* Третий ряд (с большим смещением влево) */}
+              <div className="grid grid-cols-10 gap-1 mb-1 ml-[8.33%]">
+                {russianLetters.slice(23).map((letter) => (
+                  <motion.button
+                    key={letter}
+                    onClick={() => {
+                      hapticFeedback('light')
+                      handleKeyPress(letter)
+                    }}
+                    whileTap={{ scale: 0.9 }}
+                    className="px-1 py-2 bg-primary text-white rounded-lg font-bold text-xs hover:bg-primary/80 active:bg-primary/60 transition-colors min-h-[40px] flex items-center justify-center"
+                  >
+                    {letter}
+                  </motion.button>
+                ))}
+              </div>
             </div>
 
             {/* Кнопки управления */}
@@ -593,8 +671,9 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
               </motion.button>
             </div>
           </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Скрытое поле ввода для букв (резерв для десктопа) */}
       <input
