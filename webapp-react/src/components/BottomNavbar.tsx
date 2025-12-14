@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { motion, useMotionValue, useTransform } from 'framer-motion'
+import { motion } from 'framer-motion'
 import type { TabName } from '../types'
 import { hapticFeedback } from '../utils/telegram'
 import NavIcon from './NavIcon'
@@ -32,7 +32,6 @@ const CLICK_THRESHOLD = 5 // Порог для различения клика �
 // Вычисляем количество рядов
 const totalRows = Math.ceil(allNavItems.length / ITEMS_PER_ROW)
 const visibleRows = 1 // Первый ряд (4 кнопки)
-const hiddenRows = totalRows - visibleRows // Скрытые ряды
 
 export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarProps) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -43,12 +42,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   const startTime = useRef(0)
   const hasMoved = useRef(false)
 
-  const dragY = useMotionValue(0)
-  const y = useTransform(dragY, (value) => {
-    // Ограничиваем движение только вверх (отрицательные значения)
-    const maxDelta = ROW_HEIGHT * hiddenRows
-    return Math.max(-maxDelta, Math.min(0, value))
-  })
+  // Убрали трансформацию y - теперь управляем только высотой
 
   const handleTabClick = (tab: TabName, e?: React.MouseEvent) => {
     // Проверяем, что это был клик, а не драг
@@ -86,14 +80,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     }
   }
 
-  // Синхронизируем состояние с анимацией
-  useEffect(() => {
-    if (isExpanded) {
-      dragY.set(-ROW_HEIGHT * hiddenRows)
-    } else {
-      dragY.set(0)
-    }
-  }, [isExpanded, dragY])
+  // Убрали синхронизацию с dragY - теперь управляем только через isExpanded
 
   // Обработка глобальных событий pointer
   useEffect(() => {
@@ -107,8 +94,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
           hasMoved.current = true
         }
         
-        // Устанавливаем значение dragY (отрицательное при движении вверх)
-        dragY.set(-deltaY)
+        // Не используем dragY для трансформации, только для отслеживания движения
       }
 
       const handleGlobalPointerUp = () => {
@@ -117,21 +103,13 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
         if (deltaY > DRAG_THRESHOLD) {
           // Вытягиваем навбар
           setIsExpanded(true)
-          dragY.set(-ROW_HEIGHT * hiddenRows)
           hapticFeedback('medium')
         } else if (deltaY < -DRAG_THRESHOLD && isExpanded) {
           // Сворачиваем навбар
           setIsExpanded(false)
-          dragY.set(0)
           hapticFeedback('medium')
-        } else {
-          // Возвращаем в исходное положение
-          if (isExpanded) {
-            dragY.set(-ROW_HEIGHT * hiddenRows)
-          } else {
-            dragY.set(0)
-          }
         }
+        // Если движение недостаточное, состояние остается прежним
         
         setIsDragging(false)
         
@@ -149,7 +127,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
         window.removeEventListener('pointerup', handleGlobalPointerUp)
       }
     }
-  }, [isDragging, isExpanded, dragY])
+  }, [isDragging, isExpanded])
 
   const renderNavButton = (item: { id: TabName; label: string; isSpecial?: boolean }) => {
     const isSpecial = item.isSpecial || false
@@ -245,15 +223,12 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   return (
     <motion.nav
       ref={navRef}
-      style={{
-        y,
-      }}
       animate={{
         height: isExpanded 
           ? DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * totalRows 
           : DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows,
       }}
-      initial={{ y: 0, height: DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows }}
+      initial={{ height: DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows }}
       className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-primary/30 shadow-lg backdrop-blur-sm overflow-hidden flex flex-col justify-end"
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
       onPointerDown={handlePointerDown}

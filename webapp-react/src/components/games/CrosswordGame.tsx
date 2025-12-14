@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
 import { generateCrossword, type CrosswordGrid, type CrosswordWord } from '../../utils/crosswordGenerator'
 import { getCrosswordData, saveCrosswordProgress, updateGameScore, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -32,8 +32,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [currentInput, setCurrentInput] = useState('')
   const [showKeyboard, setShowKeyboard] = useState(false)
+  const [isDraggingKeyboard, setIsDraggingKeyboard] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const lastTapRef = useRef<number>(0)
+  const keyboardStartY = useRef(0)
+  const keyboardCurrentY = useRef(0)
 
   // Русская раскладка ЙЦУКЕН для виртуальной клавиатуры
   // Первый ряд: Й Ц У К Е Н Г Ш Щ З Х Ъ
@@ -222,6 +225,63 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
     lastTapRef.current = now
   }
+
+  const keyboardDragY = useMotionValue(0)
+  const keyboardY = useTransform(keyboardDragY, (value) => {
+    // Ограничиваем движение только вниз (положительные значения)
+    return Math.max(0, Math.min(200, value))
+  })
+
+  const handleKeyboardPointerDown = (e: React.PointerEvent) => {
+    keyboardStartY.current = e.clientY
+    keyboardCurrentY.current = keyboardStartY.current
+    setIsDraggingKeyboard(true)
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.pointerType === 'touch') {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+  }
+
+  useEffect(() => {
+    if (isDraggingKeyboard) {
+      const handleGlobalPointerMove = (e: PointerEvent) => {
+        keyboardCurrentY.current = e.clientY
+        const deltaY = keyboardCurrentY.current - keyboardStartY.current
+        keyboardDragY.set(deltaY)
+      }
+
+      const handleGlobalPointerUp = () => {
+        setIsDraggingKeyboard(false)
+        const deltaY = keyboardCurrentY.current - keyboardStartY.current
+
+        if (deltaY > 30) {
+          // Скрываем клавиатуру при перетаскивании вниз
+          setShowKeyboard(false)
+          hapticFeedback('medium')
+          keyboardDragY.set(0)
+        } else {
+          // Возвращаем в исходное положение
+          keyboardDragY.set(0)
+        }
+      }
+
+      window.addEventListener('pointermove', handleGlobalPointerMove)
+      window.addEventListener('pointerup', handleGlobalPointerUp)
+
+      return () => {
+        window.removeEventListener('pointermove', handleGlobalPointerMove)
+        window.removeEventListener('pointerup', handleGlobalPointerUp)
+      }
+    }
+  }, [isDraggingKeyboard, keyboardDragY])
+
+  // Сбрасываем позицию при показе/скрытии клавиатуры
+  useEffect(() => {
+    if (!showKeyboard) {
+      keyboardDragY.set(0)
+    }
+  }, [showKeyboard, keyboardDragY])
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedWord || !selectedCell) return
@@ -569,17 +629,48 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         {selectedWord && !guessedWords.has(selectedWord.word.toUpperCase()) && showKeyboard && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+            animate={{ 
+              y: isDraggingKeyboard ? undefined : 0, 
+              opacity: 1 
+            }}
             exit={{ y: 100, opacity: 0 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: isDraggingKeyboard ? 0 : 0.3 }}
+            style={{ y: isDraggingKeyboard ? keyboardY : undefined }}
             className="fixed bottom-24 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2 max-h-[55vh] overflow-y-auto"
           >
           <div className="max-w-4xl mx-auto">
-            {/* Текущий ввод */}
-            <div className="text-center mb-2 sticky top-0 bg-white pb-2 border-b border-gray-200">
-              <div className="text-xs text-gray-600 mb-1">Ввод:</div>
-              <div className="text-lg font-bold text-primary">
-                {currentInput || '_'.repeat(selectedWord.word.length)}
+            {/* Полоска для скрытия и текущий ввод */}
+            <div className="sticky top-0 bg-white pb-2 border-b border-gray-200">
+              {/* Полоска для скрытия клавиатуры */}
+              <div 
+                className="w-full flex justify-center py-2 cursor-grab active:cursor-grabbing touch-none select-none"
+                onPointerDown={handleKeyboardPointerDown}
+              >
+                <motion.div
+                  className="relative"
+                  animate={{
+                    scale: isDraggingKeyboard ? 1.1 : 1,
+                  }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <motion.div
+                    className="w-20 h-1.5 bg-gradient-to-r from-gray-400 via-gray-500 to-gray-400 rounded-full shadow-md"
+                    animate={{
+                      width: isDraggingKeyboard ? '6rem' : '5rem',
+                      opacity: isDraggingKeyboard ? 1 : 0.7,
+                      boxShadow: isDraggingKeyboard 
+                        ? '0 4px 12px rgba(0, 0, 0, 0.2)' 
+                        : '0 2px 6px rgba(0, 0, 0, 0.1)',
+                    }}
+                    transition={{ duration: 0.2 }}
+                  />
+                </motion.div>
+              </div>
+              {/* Текущий ввод */}
+              <div className="text-center">
+                <div className="text-lg font-bold text-primary">
+                  {currentInput || '_'.repeat(selectedWord.word.length)}
+                </div>
               </div>
             </div>
 
