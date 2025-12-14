@@ -109,7 +109,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     
     // Проверяем, не отгадано ли уже это слово
     if (alreadyGuessed || guessedWords.includes(currentGuess)) {
-      hapticFeedback('error')
+      hapticFeedback('heavy')
       alert('Это слово уже было отгадано!')
       return
     }
@@ -180,7 +180,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           setAlreadyGuessed(true)
           setGuessedWords(prev => [...prev, currentGuess])
           setShowConfetti(true) // Запускаем салют
-          hapticFeedback('success')
+          hapticFeedback('heavy')
           if (onScore) {
             onScore(5) // Передаем 5 очков
           }
@@ -188,44 +188,70 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           setTimeout(() => setShowConfetti(false), 2000)
         } else if (result.already_guessed) {
           setAlreadyGuessed(true)
-          hapticFeedback('error')
+          hapticFeedback('heavy')
           alert(result.message || 'Это слово уже было отгадано!')
         } else {
-          hapticFeedback('error')
+          hapticFeedback('heavy')
           alert(result.message || 'Ошибка при проверке слова')
         }
       }).catch(error => {
         console.error('Error submitting word:', error)
-        hapticFeedback('error')
+        hapticFeedback('heavy')
         alert('Ошибка при отправке слова')
       })
     } else if (currentAttempt === MAX_ATTEMPTS - 1) {
       setGameOver('lose')
-      hapticFeedback('error')
+      hapticFeedback('heavy')
     } else {
       setCurrentGuess('')
     }
   }
 
-  const handleRestart = () => {
-    const validWords = WORDS.filter(w => w.length === 5)
-    if (validWords.length === 0) {
-      console.error('Нет 5-буквенных слов в словаре!')
-      return
-    }
-    const randomWord = validWords[Math.floor(Math.random() * validWords.length)].toUpperCase()
-    setTargetWord(randomWord)
-    setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
-      Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
-    ))
-    setCurrentGuess('')
-    setGameOver(null)
-    setScore(0)
-    setUsedLetters(new Map())
-    if (inputRef.current) {
-      inputRef.current.focus()
+  const handleRestart = async () => {
+    setLoading(true)
+    try {
+      const word = await getWordleWord()
+      const progress = await getWordleProgress()
+      
+      if (word) {
+        setTargetWord(word.toUpperCase())
+        setGuessedWords(progress.map(w => w.toUpperCase()))
+        if (progress.map(w => w.toUpperCase()).includes(word.toUpperCase())) {
+          setAlreadyGuessed(true)
+        } else {
+          setAlreadyGuessed(false)
+        }
+      } else {
+        const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
+        setTargetWord(randomWord)
+        setAlreadyGuessed(false)
+      }
+      
+      setCurrentGuess('')
+      setGameOver(null)
+      setScore(0)
+      setUsedLetters(new Map())
+      setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
+        Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
+      ))
+    } catch (error) {
+      console.error('Error reloading word:', error)
+      const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
+      setTargetWord(randomWord)
+      setCurrentGuess('')
+      setGameOver(null)
+      setScore(0)
+      setUsedLetters(new Map())
+      setGuessedWords([])
+      setAlreadyGuessed(false)
+    } finally {
+      setLoading(false)
+      if (inputRef.current) {
+        inputRef.current.focus()
+      }
     }
   }
+
 
   const getCellColor = (state: LetterState) => {
     switch (state) {

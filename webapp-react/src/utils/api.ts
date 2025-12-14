@@ -283,7 +283,7 @@ export async function getGameStats(userId: number): Promise<GameStats> {
 
 export async function updateGameScore(
   userId: number,
-  gameType: 'dragon' | 'flappy' | 'crossword',
+  gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle',
   score: number
 ): Promise<{ success: boolean; stats?: GameStats; error?: string }> {
   const config = await loadConfig()
