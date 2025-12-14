@@ -58,6 +58,7 @@ from game_stats_cache import (
     sync_game_stats,
 )
 import seating_sync
+import traceback
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,10 +72,6 @@ except ImportError:
     MORPH_AVAILABLE = False
     morph = None
     logger.warning("pymorphy2 не установлен, проверка слов будет упрощенной")
-import traceback
-import logging
-
-logger = logging.getLogger(__name__)
 
 # Импортируем функцию уведомлений (будет доступна после инициализации бота)
 _notify_admins_func = None
