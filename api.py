@@ -336,12 +336,23 @@ async def init_api():
     async def get_wordle_progress_endpoint(request):
         """Получить прогресс пользователя в Wordle (отгаданные слова)"""
         try:
-            # Получаем user_id из initData
+            # Получаем user_id из initData или userId (для локального тестирования)
             init_data = request.query.get('initData', '')
-            if not init_data:
-                return web.json_response({'error': 'initData не предоставлен'}, status=400)
+            user_id_from_query = request.query.get('userId')
             
-            user_id = await parse_user_id_from_init_data(init_data)
+            user_id = None
+            
+            # Сначала пытаемся получить user_id из initData
+            if init_data:
+                user_id = await parse_user_id_from_init_data(init_data)
+            
+            # Если не получилось, используем userId из query (для локального тестирования)
+            if not user_id and user_id_from_query:
+                try:
+                    user_id = int(user_id_from_query)
+                except (ValueError, TypeError):
+                    pass
+            
             if not user_id:
                 return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
             
@@ -357,14 +368,24 @@ async def init_api():
             data = await request.json()
             word = data.get('word', '').strip().upper()
             init_data = data.get('initData', '')
+            user_id_from_request = data.get('userId')  # Для локального тестирования
             
             if not word:
                 return web.json_response({'error': 'Слово не предоставлено'}, status=400)
             
-            if not init_data:
-                return web.json_response({'error': 'initData не предоставлен'}, status=400)
+            user_id = None
             
-            user_id = await parse_user_id_from_init_data(init_data)
+            # Сначала пытаемся получить user_id из initData
+            if init_data:
+                user_id = await parse_user_id_from_init_data(init_data)
+            
+            # Если не получилось, используем userId из запроса (для локального тестирования)
+            if not user_id and user_id_from_request:
+                try:
+                    user_id = int(user_id_from_request)
+                except (ValueError, TypeError):
+                    pass
+            
             if not user_id:
                 return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
             

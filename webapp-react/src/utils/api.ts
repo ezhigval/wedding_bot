@@ -355,9 +355,20 @@ export async function getWordleProgress(): Promise<string[]> {
   const config = await loadConfig()
   try {
     const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
+    let initData = (tg as any)?.initData || ''
     
+    // Если initData нет, пытаемся использовать userId из localStorage
     if (!initData) {
+      const savedUserId = localStorage.getItem('telegram_user_id')
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      
+      if (isLocalhost && savedUserId) {
+        const response = await fetch(`${config.apiUrl}/wordle/progress?userId=${savedUserId}`)
+        if (response.ok) {
+          const data = await response.json()
+          return data.guessed_words || []
+        }
+      }
       return []
     }
     
@@ -376,10 +387,31 @@ export async function submitWordleGuess(word: string): Promise<{ success: boolea
   const config = await loadConfig()
   try {
     const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
+    let initData = (tg as any)?.initData || ''
     
+    // Если initData нет, пытаемся получить user_id из localStorage и использовать parse-init-data
     if (!initData) {
-      return { success: false, message: 'Не удалось получить данные пользователя' }
+      const savedUserId = localStorage.getItem('telegram_user_id')
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      
+      if (isLocalhost && savedUserId) {
+        // Для локального тестирования используем прямой вызов с userId
+        const response = await fetch(`${config.apiUrl}/wordle/guess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word, userId: parseInt(savedUserId) }),
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          return data
+        } else {
+          const error = await response.json()
+          return { success: false, message: error.error || 'Ошибка' }
+        }
+      } else {
+        return { success: false, message: 'Не удалось получить данные пользователя' }
+      }
     }
     
     const response = await fetch(`${config.apiUrl}/wordle/guess`, {
