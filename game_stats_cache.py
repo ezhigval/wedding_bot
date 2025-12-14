@@ -27,7 +27,7 @@ async def init_game_stats_cache():
                 dragon_score INTEGER DEFAULT 0,
                 flappy_score INTEGER DEFAULT 0,
                 crossword_score INTEGER DEFAULT 0,
-                rank TEXT DEFAULT 'новичок',
+                rank TEXT DEFAULT 'Незнакомец',
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -56,7 +56,7 @@ async def get_cached_stats(user_id: int) -> Optional[Dict]:
                         'dragon_score': row['dragon_score'],
                         'flappy_score': row['flappy_score'],
                         'crossword_score': row['crossword_score'],
-                        'rank': row['rank'] or 'новичок',
+                        'rank': row['rank'] or 'Незнакомец',
                         'last_updated': row['last_updated'],
                     }
         return None
@@ -81,7 +81,7 @@ async def save_cached_stats(stats: Dict) -> bool:
                 stats.get('dragon_score', 0),
                 stats.get('flappy_score', 0),
                 stats.get('crossword_score', 0),
-                stats.get('rank', 'новичок'),
+                stats.get('rank', 'Незнакомец'),
                 stats.get('last_updated', datetime.now().isoformat()),
             ))
             await db.commit()
@@ -130,7 +130,7 @@ async def sync_game_stats(user_id: int, sheets_stats: Optional[Dict], cached_sta
             'dragon_score': 0,
             'flappy_score': 0,
             'crossword_score': 0,
-            'rank': 'новичок',
+            'rank': 'Незнакомец',
             'last_updated': datetime.now().isoformat(),
         }
     

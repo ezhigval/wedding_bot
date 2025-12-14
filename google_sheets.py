@@ -2081,6 +2081,34 @@ async def save_photo_from_webapp(
 
 # ========== ИГРЫ: СТАТИСТИКА И ОЧКИ ==========
 
+def _get_rank_by_score(total_score: int) -> str:
+    """
+    Определяет звание игрока по общему счету.
+    
+    Звания:
+    - 0-50: Незнакомец
+    - 50-100: Ты хто?
+    - 100-150: Люся
+    - 150-200: Бедный родственник
+    - 200-300: Братуха
+    - 300-400: Батя в здании
+    - 400-500: Монстр
+    """
+    if total_score < 50:
+        return 'Незнакомец'
+    elif total_score < 100:
+        return 'Ты хто?'
+    elif total_score < 150:
+        return 'Люся'
+    elif total_score < 200:
+        return 'Бедный родственник'
+    elif total_score < 300:
+        return 'Братуха'
+    elif total_score < 400:
+        return 'Батя в здании'
+    else:
+        return 'Монстр'
+
 def _get_guest_name_by_user_id(user_id: int) -> Tuple[str, str]:
     """
     Получить имя и фамилию гостя по user_id из основной таблицы гостей.
@@ -2166,7 +2194,7 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
                     'dragon_score': int(row[4]) if len(row) > 4 and row[4] else 0,
                     'flappy_score': int(row[5]) if len(row) > 5 and row[5] else 0,
                     'crossword_score': int(row[6]) if len(row) > 6 and row[6] else 0,
-                    'rank': row[7] if len(row) > 7 and row[7] else 'новичок',
+                    'rank': row[7] if len(row) > 7 and row[7] else 'Незнакомец',
                     'last_updated': row[8] if len(row) > 8 and row[8] else None,
                 }
         
@@ -2279,12 +2307,7 @@ def _update_game_score_sync(
                 sheet.update_cell(user_row_gspread, 4, total_score)  # D - total_score (столбец 4 в gspread)
                 
                 # Определяем звание
-                if total_score < 100:
-                    rank = 'новичок'
-                elif total_score < 500:
-                    rank = 'любитель'
-                else:
-                    rank = 'профи'
+                rank = _get_rank_by_score(total_score)
                 
                 sheet.update_cell(user_row_gspread, 8, rank)  # H - rank (столбец 8 в gspread)
                 
@@ -2298,19 +2321,7 @@ def _update_game_score_sync(
             flappy_score = score if game_type == 'flappy' else 0
             crossword_score = score if game_type == 'crossword' else 0
             
-            if total_score < 100:
-                rank = 'новичок'
-            elif total_score < 500:
-                rank = 'любитель'
-            else:
-                rank = 'профи'
-            
-            if total_score < 100:
-                rank = 'новичок'
-            elif total_score < 500:
-                rank = 'любитель'
-            else:
-                rank = 'профи'
+            rank = _get_rank_by_score(total_score)
             
             last_updated = datetime.now().isoformat()
             row = [
@@ -2328,12 +2339,7 @@ def _update_game_score_sync(
         
         # Определяем звание для логирования (если еще не определено)
         if 'rank' not in locals():
-            if total_score < 100:
-                rank = 'новичок'
-            elif total_score < 500:
-                rank = 'любитель'
-            else:
-                rank = 'профи'
+            rank = _get_rank_by_score(total_score)
         
         logger.info(f"Обновлен счет для user_id={user_id} ({first_name} {last_name}), игра={game_type}, счет={score}, звание={rank}")
         return True

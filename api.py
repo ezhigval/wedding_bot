@@ -1312,7 +1312,7 @@ async def get_game_stats_endpoint(request):
                 'dragon_score': 0,
                 'flappy_score': 0,
                 'crossword_score': 0,
-                'rank': 'новичок',
+                'rank': 'Незнакомец',
             })
         
         return web.json_response(stats)
@@ -1388,7 +1388,7 @@ async def update_game_score_endpoint(request):
                     'dragon_score': 0,
                     'flappy_score': 0,
                     'crossword_score': 0,
-                    'rank': 'новичок',
+                    'rank': 'Незнакомец',
                 }
         
         # Обновляем счет для конкретной игры (только если новый больше)
@@ -1411,12 +1411,20 @@ async def update_game_score_endpoint(request):
         
         # Определяем звание
         total = current_stats['total_score']
-        if total < 100:
-            current_stats['rank'] = 'новичок'
-        elif total < 500:
-            current_stats['rank'] = 'любитель'
+        if total < 50:
+            current_stats['rank'] = 'Незнакомец'
+        elif total < 100:
+            current_stats['rank'] = 'Ты хто?'
+        elif total < 150:
+            current_stats['rank'] = 'Люся'
+        elif total < 200:
+            current_stats['rank'] = 'Бедный родственник'
+        elif total < 300:
+            current_stats['rank'] = 'Братуха'
+        elif total < 400:
+            current_stats['rank'] = 'Батя в здании'
         else:
-            current_stats['rank'] = 'профи'
+            current_stats['rank'] = 'Монстр'
         
         # Обновляем имя если передано
         if firstName:

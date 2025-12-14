@@ -10,13 +10,13 @@ interface BottomNavbarProps {
 }
 
 // Все кнопки в одном массиве для сетки 4xN
-// Первый ряд: Главная, Испытание, Меню, Сделать фото
+// Первый ряд: Главная, Испытание, Фотоаппарат, Меню
 // Второй ряд: План-сетка, Дресс-код, Рассадка, Пожелания
 const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = [
   { id: 'home', label: 'Главная' },
   { id: 'challenge', label: 'Испытание' },
+  { id: 'photo', label: 'Фотоаппарат' },
   { id: 'menu', label: 'Меню' },
-  { id: 'photo', label: 'Сделать фото', isSpecial: true }, // Особенная кнопка
   { id: 'timeline', label: 'План-сетка' },
   { id: 'dresscode', label: 'Дресс-Код' },
   { id: 'seating', label: 'Рассадка' },
@@ -136,61 +136,9 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
   }, [isDragging, isExpanded])
 
   const renderNavButton = (item: { id: TabName; label: string; isSpecial?: boolean }) => {
-    const isSpecial = item.isSpecial || false
     const isActive = activeTab === item.id
     
-    if (isSpecial) {
-      // Круглая кнопка для "Сделать фото"
-      return (
-        <motion.button
-          key={item.id}
-          onClick={(e) => handleTabClick(item.id, e)}
-          className="flex flex-col items-center justify-center gap-0.5 h-20 min-w-0 transition-all"
-          whileTap={{ scale: 0.95 }}
-        >
-          <motion.div
-            className={`w-14 h-14 bg-[#FFE9AD] rounded-full shadow-lg hover:shadow-xl flex items-center justify-center transition-all relative ${
-              isActive ? 'bg-[#F5D98A] shadow-xl ring-2 ring-[#FFE9AD] ring-offset-1' : ''
-            }`}
-            whileHover={{ scale: 1.05 }}
-            animate={{ 
-              boxShadow: isActive 
-                ? '0 10px 25px rgba(255, 233, 173, 0.4)' 
-                : '0 5px 15px rgba(255, 233, 173, 0.3)'
-            }}
-          >
-            <motion.div
-              className="absolute inset-0 bg-[#FFE9AD] rounded-full opacity-20"
-              animate={{ 
-                scale: [1, 1.1, 1],
-                opacity: [0.2, 0.3, 0.2]
-              }}
-              transition={{ 
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            />
-            <motion.div
-              animate={{ scale: isActive ? 1.1 : 1 }}
-              transition={{ duration: 0.2 }}
-              className="relative z-10 w-7 h-7"
-            >
-              <NavIcon
-                name={item.id as 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'}
-                isActive={true}
-                className="w-full h-full"
-              />
-            </motion.div>
-          </motion.div>
-          <span className="text-xs font-main text-primary-dark font-bold drop-shadow-sm">
-            {item.label}
-          </span>
-        </motion.button>
-      )
-    }
-    
-    // Обычная кнопка
+    // Обычная кнопка для всех элементов
     return (
       <motion.button
         key={item.id}

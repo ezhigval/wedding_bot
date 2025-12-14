@@ -75,7 +75,7 @@ export default function ChallengeTab() {
           dragon_score: 0,
           flappy_score: 0,
           crossword_score: 0,
-          rank: 'новичок',
+          rank: 'Незнакомец',
         })
       }
     } catch (error) {
@@ -183,7 +183,7 @@ export default function ChallengeTab() {
     return <RegistrationRequired />
   }
 
-  const currentRank = stats?.rank || 'новичок'
+  const currentRank = stats?.rank || 'Незнакомец'
   const currentScore = stats?.total_score || 0
 
   // Если игра активна, показываем её
@@ -248,7 +248,7 @@ export default function ChallengeTab() {
               {/* Левая часть - Звание с иконкой */}
               <div className="flex items-center gap-3 flex-1">
                 <RankIcon 
-                  rank={currentRank as 'новичок' | 'любитель' | 'профи'} 
+                  rank={currentRank as 'Незнакомец' | 'Ты хто?' | 'Люся' | 'Бедный родственник' | 'Братуха' | 'Батя в здании' | 'Монстр'} 
                   className="flex-shrink-0"
                 />
                 <div>

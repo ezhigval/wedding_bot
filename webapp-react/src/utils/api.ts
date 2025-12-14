@@ -277,7 +277,7 @@ export async function getGameStats(userId: number): Promise<GameStats> {
     dragon_score: 0,
     flappy_score: 0,
     crossword_score: 0,
-    rank: 'новичок',
+    rank: 'Незнакомец',
   }
 }
 
