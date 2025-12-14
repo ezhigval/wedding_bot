@@ -38,8 +38,8 @@ function App() {
       <div className="h-screen bg-[#F8F8F8] flex flex-col overflow-hidden">
         <div 
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto pb-20" 
-          style={{ maxHeight: 'calc(100vh - 80px)' }}
+          className="flex-1 overflow-y-auto" 
+          style={{ maxHeight: '100vh' }}
         >
           <AnimatePresence mode="wait">
             <motion.div

@@ -278,23 +278,6 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
             }}
             transition={{ duration: 0.2 }}
           />
-          {/* Анимированная подсказка */}
-          {!isExpanded && (
-            <motion.div
-              className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap"
-              animate={{
-                opacity: [0.5, 0.8, 0.5],
-                y: [0, -2, 0],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            >
-              Потяните вверх
-            </motion.div>
-          )}
         </motion.div>
       </div>
 

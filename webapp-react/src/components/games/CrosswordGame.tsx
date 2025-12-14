@@ -572,7 +572,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="fixed bottom-20 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2 max-h-[60vh] overflow-y-auto"
+            className="fixed bottom-24 left-0 right-0 bg-white border-t-2 border-primary/30 shadow-lg z-20 p-2 max-h-[55vh] overflow-y-auto"
           >
           <div className="max-w-4xl mx-auto">
             {/* Текущий ввод */}
