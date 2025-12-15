@@ -350,7 +350,7 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		end = len(guests)
 	}
 
-	var rows []telebot.Row
+	var keyboard [][]telebot.InlineButton
 	for i := start; i < end; i++ {
 		guest := guests[i]
 		rowNum, _ := guest["row"].(int)
@@ -360,8 +360,8 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		}
 
 		buttonText := fmt.Sprintf("👤 %s", fullName)
-		rows = append(rows, telebot.Row{
-			telebot.InlineButton{
+		keyboard = append(keyboard, []telebot.InlineButton{
+			{
 				Text: buttonText,
 				Data: fmt.Sprintf("swapname:%d", rowNum),
 			},
@@ -383,16 +383,16 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		})
 	}
 	if len(navRow) > 0 {
-		rows = append(rows, telebot.Row(navRow))
+		keyboard = append(keyboard, navRow)
 	}
 
 	// Кнопка возврата
-	rows = append(rows, telebot.Row{
-		telebot.InlineButton{
+	keyboard = append(keyboard, []telebot.InlineButton{
+		{
 			Text: "⬅️ Вернуться",
 			Data: "admin:back",
 		},
 	})
 
-	return &telebot.ReplyMarkup{InlineKeyboard: rows}
+	return &telebot.ReplyMarkup{InlineKeyboard: keyboard}
 }
