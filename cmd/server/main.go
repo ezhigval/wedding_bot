@@ -73,6 +73,13 @@ func main() {
 		log.Println("✅ Google Sheets инициализирован")
 	}
 
+	// Проверяем структуру листа гостей
+	if err := google_sheets.ValidateGuestSheetStructure(ctx); err != nil {
+		log.Printf("⚠️ Ошибка проверки структуры листа гостей: %v", err)
+	} else {
+		log.Println("✅ Структура листа гостей проверена")
+	}
+
 	// Инициализируем API
 	apiRouter, err := api.InitAPI(ctx)
 	if err != nil {
