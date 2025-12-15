@@ -58,7 +58,7 @@ func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) *telebot.ReplyMar
 
 	if isAdmin {
 		row2 := markup.Row(
-			telebot.Btn{Text: "🛠 Админ-панель"},
+			telebot.Btn{Text: "⚙️ Админ-панель"},
 		)
 		markup.Reply(row1, row2)
 	} else {
@@ -68,20 +68,6 @@ func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) *telebot.ReplyMar
 	return markup
 }
 
-// GetGroupLinkKeyboard возвращает кнопку для перехода в общий чат
-func GetGroupLinkKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "Перейти в общий чат",
-					URL:  config.GroupLink,
-				},
-			},
-		},
-	}
-}
-
 // GetAdminRootReplyKeyboard возвращает корневое меню администратора
 func GetAdminRootReplyKeyboard() *telebot.ReplyMarkup {
 	markup := &telebot.ReplyMarkup{
@@ -89,13 +75,13 @@ func GetAdminRootReplyKeyboard() *telebot.ReplyMarkup {
 	}
 
 	row1 := markup.Row(
-		telebot.Btn{Text: "Гости"},
-		telebot.Btn{Text: "Таблица"},
+		telebot.Btn{Text: "👥 Гости"},
+		telebot.Btn{Text: "🪑 Столы"},
 	)
 
 	row2 := markup.Row(
-		telebot.Btn{Text: "Группа"},
-		telebot.Btn{Text: "Бот"},
+		telebot.Btn{Text: "💬 Группа"},
+		telebot.Btn{Text: "🤖 Бот"},
 	)
 
 	row3 := markup.Row(
@@ -113,24 +99,19 @@ func GetAdminGuestsReplyKeyboard() *telebot.ReplyMarkup {
 	}
 
 	row1 := markup.Row(
-		telebot.Btn{Text: "Список гостей"},
-		telebot.Btn{Text: "Рассадка"},
+		telebot.Btn{Text: "📋 Список гостей"},
+		telebot.Btn{Text: "📤 Отправить приглашение"},
 	)
 
 	row2 := markup.Row(
-		telebot.Btn{Text: "Отправить приглашение"},
-		telebot.Btn{Text: "Исправить имя/фамилию"},
+		telebot.Btn{Text: "🔁 Исправление Имя/Фамилия"},
 	)
 
 	row3 := markup.Row(
-		telebot.Btn{Text: "Рассылка в ЛС"},
-	)
-
-	row4 := markup.Row(
 		telebot.Btn{Text: "⬅️ Вернуться"},
 	)
 
-	markup.Reply(row1, row2, row3, row4)
+	markup.Reply(row1, row2, row3)
 	return markup
 }
 
@@ -141,19 +122,15 @@ func GetAdminTableReplyKeyboard() *telebot.ReplyMarkup {
 	}
 
 	row1 := markup.Row(
-		telebot.Btn{Text: "Открыть таблицу"},
-		telebot.Btn{Text: "Проверить связь"},
+		telebot.Btn{Text: "📊 Посмотреть рассадку"},
+		telebot.Btn{Text: "🔄 Обновить рассадку"},
 	)
 
-	row3 := markup.Row(
-		telebot.Btn{Text: "Закрепить рассадку"},
-	)
-
-	row4 := markup.Row(
+	row2 := markup.Row(
 		telebot.Btn{Text: "⬅️ Вернуться"},
 	)
 
-	markup.Reply(row1, row3, row4)
+	markup.Reply(row1, row2)
 	return markup
 }
 
@@ -190,30 +167,27 @@ func GetAdminBotReplyKeyboard() *telebot.ReplyMarkup {
 	}
 
 	row1 := markup.Row(
-		telebot.Btn{Text: "Статус бота"},
+		telebot.Btn{Text: "📊 Статус бота"},
+		telebot.Btn{Text: "🎮 Игры"},
 	)
 
 	row2 := markup.Row(
-		telebot.Btn{Text: "🔐 Авторизовать клиент"},
-	)
-
-	row3 := markup.Row(
 		telebot.Btn{Text: "Начать с нуля"},
 	)
 
-	row4 := markup.Row(
+	row3 := markup.Row(
 		telebot.Btn{Text: "Добавить админа"},
 	)
 
-	row5 := markup.Row(
+	row4 := markup.Row(
 		telebot.Btn{Text: "🆔 Найти user_id"},
 	)
 
-	row6 := markup.Row(
+	row5 := markup.Row(
 		telebot.Btn{Text: "⬅️ Вернуться"},
 	)
 
-	markup.Reply(row1, row2, row3, row4, row5, row6)
+	markup.Reply(row1, row2, row3, row4, row5)
 	return markup
 }
 
@@ -299,7 +273,7 @@ type InvitationInfoForKeyboard struct {
 	IsSent bool
 }
 
-// GetGuestsSelectionKeyboard возвращает клавиатуру с кнопками для выбора гостя из списка приглашений
+// GetGuestsSelectionKeyboard создает клавиатуру с кнопками для выбора гостя
 func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebot.ReplyMarkup {
 	var keyboard [][]telebot.InlineButton
 	for i := 0; i < len(invitations); i += 2 {
@@ -363,7 +337,7 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		keyboard = append(keyboard, []telebot.InlineButton{
 			{
 				Text: buttonText,
-				Data: fmt.Sprintf("swapname:%d", rowNum),
+				Data: fmt.Sprintf("swapname:%d:%d", rowNum, page),
 			},
 		})
 	}
@@ -395,4 +369,47 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 	})
 
 	return &telebot.ReplyMarkup{InlineKeyboard: keyboard}
+}
+
+// GetGroupManagementKeyboard возвращает inline клавиатуру для управления группой
+func GetGroupManagementKeyboard() *telebot.ReplyMarkup {
+	return &telebot.ReplyMarkup{
+		InlineKeyboard: [][]telebot.InlineButton{
+			{
+				telebot.InlineButton{
+					Text: "👥 Посмотреть участников",
+					Data: "admin:group:list_members",
+				},
+			},
+			{
+				telebot.InlineButton{
+					Text: "⬅️ Вернуться",
+					Data: "admin:back",
+				},
+			},
+		},
+	}
+}
+
+// GetContactsInlineKeyboard возвращает inline клавиатуру для контактов
+func GetContactsInlineKeyboard() *telebot.ReplyMarkup {
+	var webAppButton telebot.InlineButton
+	if strings.HasPrefix(config.WebappURL, "https://") {
+		webAppButton = telebot.InlineButton{
+			Text: "💒 Открыть приглашение",
+			WebApp: &telebot.WebApp{
+				URL: config.WebappURL,
+			},
+		}
+	} else {
+		webAppButton = telebot.InlineButton{
+			Text: "📱 Приглашение",
+			Data: "open_invitation",
+		}
+	}
+	return &telebot.ReplyMarkup{
+		InlineKeyboard: [][]telebot.InlineButton{
+			{webAppButton},
+		},
+	}
 }

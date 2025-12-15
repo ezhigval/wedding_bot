@@ -77,7 +77,7 @@ func handleText(c telebot.Context) error {
 
 	// Проверяем другие кнопки
 	if text == "💬 Общий чат" {
-		keyboard := keyboards.GetGroupLinkKeyboard()
+		keyboard := keyboards.GetContactsInlineKeyboard()
 		return c.Send("Перейдите в общий чат:", keyboard)
 	}
 
