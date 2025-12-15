@@ -218,8 +218,79 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 		return c.Send("❌ GROUP_ID не настроен в конфигурации.")
 	}
 
-	// TODO: Реализовать получение списка участников
-	return c.Send("👥 <b>Информация о группе</b>\n\nФункция в разработке.", telebot.ModeHTML)
+	// Получаем бота
+	mu.RLock()
+	bot := botInstance
+	mu.RUnlock()
+
+	if bot == nil {
+		return c.Send("❌ Бот не инициализирован")
+	}
+
+	// Получаем информацию о чате
+	chat, err := bot.ChatByID(config.GroupID)
+	if err != nil {
+		log.Printf("Ошибка получения информации о группе: %v", err)
+		return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
+	}
+
+	// Получаем количество участников
+	membersCount, err := bot.ChatMemberCount(chat)
+	if err != nil {
+		log.Printf("Ошибка получения количества участников: %v", err)
+		membersCount = 0
+	}
+
+	// Получаем список администраторов
+	admins, err := bot.AdminsOf(chat)
+	if err != nil {
+		log.Printf("Ошибка получения списка администраторов: %v", err)
+		admins = []telebot.ChatMember{}
+	}
+
+	// Формируем сообщение
+	message := fmt.Sprintf(
+		"👥 <b>Информация о группе</b>\n\n"+
+			"📝 Название: <b>%s</b>\n"+
+			"🆔 ID: <code>%s</code>\n"+
+			"👥 Участников: <b>%d</b>\n"+
+			"👑 Администраторов: <b>%d</b>\n",
+		chat.Title, config.GroupID, membersCount, len(admins),
+	)
+
+	// Добавляем список администраторов
+	if len(admins) > 0 {
+		message += "\n<b>👑 Администраторы:</b>\n"
+		for i, admin := range admins {
+			if i >= 20 { // Ограничиваем 20 администраторами
+				message += fmt.Sprintf("\n... и еще %d администраторов", len(admins)-20)
+				break
+			}
+			user := admin.User
+			name := user.FirstName
+			if user.LastName != "" {
+				name += " " + user.LastName
+			}
+			if user.Username != "" {
+				name += fmt.Sprintf(" (@%s)", user.Username)
+			}
+			status := "👤 Участник"
+			if admin.Rights.IsAdmin {
+				status = "👑 Админ"
+			}
+			if admin.Rights.IsOwner {
+				status = "👑 Создатель"
+			}
+			message += fmt.Sprintf("%d. %s - %s\n", i+1, name, status)
+		}
+	}
+
+	// Добавляем ссылку на группу
+	if config.GroupLink != "" {
+		message += fmt.Sprintf("\n🔗 <a href=\"%s\">Открыть группу</a>", config.GroupLink)
+	}
+
+	return c.Send(message, telebot.ModeHTML)
 }
 
 // handleAdminGroupAddRemove показывает управление участниками группы
