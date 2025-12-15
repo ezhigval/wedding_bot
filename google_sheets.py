@@ -2578,6 +2578,190 @@ async def save_wordle_progress(user_id: int, guessed_words: List[str]) -> bool:
     return await loop.run_in_executor(None, _save_wordle_progress_sync, user_id, guessed_words)
 
 
+# ========== WORDLE: СОХРАНЕНИЕ СОСТОЯНИЯ ИГРЫ ==========
+
+def _get_wordle_state_sync(user_id: int) -> Optional[Dict]:
+    """
+    Получить состояние игры Wordle для пользователя.
+    Возвращает: {current_word, attempts: [[...]], last_word_date}
+    """
+    if not GSPREAD_AVAILABLE:
+        return None
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle_Состояние")
+        except Exception:
+            return None
+        
+        all_values = sheet.get_all_values()
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
+                current_word = row[1].strip() if len(row) > 1 and row[1] else None
+                attempts_json = row[2].strip() if len(row) > 2 and row[2] else "[]"
+                last_word_date = row[3].strip() if len(row) > 3 and row[3] else None
+                
+                try:
+                    attempts = json.loads(attempts_json) if attempts_json else []
+                except:
+                    attempts = []
+                
+                return {
+                    'current_word': current_word,
+                    'attempts': attempts,
+                    'last_word_date': last_word_date
+                }
+        
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка получения состояния Wordle для user_id={user_id}: {e}")
+        return None
+
+
+def _save_wordle_state_sync(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str) -> bool:
+    """
+    Сохранить состояние игры Wordle для пользователя.
+    """
+    if not GSPREAD_AVAILABLE:
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle_Состояние")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Wordle_Состояние", rows=100, cols=4)
+            sheet.append_row(["user_id", "current_word", "attempts", "last_word_date"])
+        
+        all_values = sheet.get_all_values()
+        user_row_index = None
+        
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
+                user_row_index = i
+                break
+        
+        attempts_json = json.dumps(attempts)
+        
+        if user_row_index:
+            # Обновляем существующую строку
+            sheet.update_cell(user_row_index, 2, current_word)  # current_word
+            sheet.update_cell(user_row_index, 3, attempts_json)  # attempts
+            sheet.update_cell(user_row_index, 4, last_word_date)  # last_word_date
+        else:
+            # Создаем новую строку
+            sheet.append_row([str(user_id), current_word, attempts_json, last_word_date])
+        
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения состояния Wordle для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+def _get_wordle_word_for_user_sync(user_id: int) -> Optional[str]:
+    """
+    Получить актуальное слово для пользователя с учетом автоматической смены раз в сутки.
+    Если прошло больше суток с последнего слова, берем следующее из таблицы.
+    """
+    if not GSPREAD_AVAILABLE:
+        return None
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return None
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        # Получаем все слова из таблицы Wordle
+        try:
+            word_sheet = spreadsheet.worksheet("Wordle")
+        except Exception:
+            return None
+        
+        all_values = word_sheet.get_all_values()
+        words = []
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and row[0].strip():
+                words.append(row[0].strip().upper())
+        
+        if not words:
+            return None
+        
+        # Получаем состояние пользователя
+        state = _get_wordle_state_sync(user_id)
+        
+        if not state or not state.get('current_word') or not state.get('last_word_date'):
+            # Первый раз или нет сохраненного состояния - берем первое слово
+            current_word = words[0]
+            today = datetime.now().strftime('%Y-%m-%d')
+            _save_wordle_state_sync(user_id, current_word, [], today)
+            return current_word
+        
+        # Проверяем, прошло ли больше суток
+        last_date = state['last_word_date']
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        if last_date != today:
+            # Нужно сменить слово на следующее
+            current_word = state['current_word']
+            try:
+                current_index = words.index(current_word)
+                next_index = (current_index + 1) % len(words)  # Циклически переходим к следующему
+                next_word = words[next_index]
+            except ValueError:
+                # Текущее слово не найдено в списке, берем первое
+                next_word = words[0]
+            
+            # Сохраняем новое слово и сбрасываем попытки
+            _save_wordle_state_sync(user_id, next_word, [], today)
+            return next_word
+        
+        # Слово не менялось, возвращаем текущее
+        return state['current_word']
+    
+    except Exception as e:
+        logger.error(f"Ошибка получения слова Wordle для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def get_wordle_word_for_user(user_id: int) -> Optional[str]:
+    """Асинхронная обёртка для получения слова Wordle для пользователя"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_wordle_word_for_user_sync, user_id)
+
+
+async def get_wordle_state(user_id: int) -> Optional[Dict]:
+    """Асинхронная обёртка для получения состояния Wordle"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_wordle_state_sync, user_id)
+
+
+async def save_wordle_state(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str) -> bool:
+    """Асинхронная обёртка для сохранения состояния Wordle"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _save_wordle_state_sync, user_id, current_word, attempts, last_word_date)
+
+
 # ========== КРОССВОД ==========
 
 def _ensure_required_sheets_sync():
@@ -2610,7 +2794,7 @@ def _ensure_required_sheets_sync():
                 ]
             },
             "Кроссвод_Прогресс": {
-                "headers": ["user_id", "отгаданные_слова"],
+                "headers": ["user_id", "current_crossword_index", "guessed_words_json"],
                 "default_data": []
             },
             "Wordle": {
@@ -2623,6 +2807,10 @@ def _ensure_required_sheets_sync():
             },
             "Wordle_Прогресс": {
                 "headers": ["user_id", "отгаданные_слова"],
+                "default_data": []
+            },
+            "Wordle_Состояние": {
+                "headers": ["user_id", "current_word", "attempts", "last_word_date"],
                 "default_data": []
             },
             "Игры": {
@@ -2661,13 +2849,19 @@ def _ensure_required_sheets_sync():
         return False
 
 
-def _get_crossword_words_sync() -> List[Dict[str, str]]:
+def _get_crossword_words_sync(crossword_index: int = 0) -> List[Dict[str, str]]:
     """
     Получить слова для кроссвода из листа 'Кроссвод'.
     
-    Формат строки:
-      A: слово
-      B: описание/вопрос
+    Каждый столбец = один кроссворд:
+      Столбец A (index 0): слова для кроссворда 1
+      Столбец B (index 1): описания для кроссворда 1
+      Столбец C (index 2): слова для кроссворда 2
+      Столбец D (index 3): описания для кроссворда 2
+      и т.д.
+    
+    Args:
+        crossword_index: Индекс кроссворда (0 = первый, 1 = второй, и т.д.)
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -2687,27 +2881,37 @@ def _get_crossword_words_sync() -> List[Dict[str, str]]:
             sheet = spreadsheet.worksheet("Кроссвод")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Кроссвод", rows=100, cols=2)
-            # Добавляем заголовки
-            sheet.append_row(["слово", "описание"])
+            sheet = spreadsheet.add_worksheet(title="Кроссвод", rows=100, cols=10)
             return []
         
         all_values = sheet.get_all_values()
         words = []
         
-        # Пропускаем заголовок
-        for row in all_values[1:]:
-            if len(row) >= 2 and row[0] and row[1]:
-                word = row[0].strip().upper()
-                description = row[1].strip()
+        # Вычисляем индексы столбцов для данного кроссворда
+        # crossword_index 0: столбцы 0 (слова) и 1 (описания)
+        # crossword_index 1: столбцы 2 (слова) и 3 (описания)
+        word_col = crossword_index * 2
+        desc_col = crossword_index * 2 + 1
+        
+        # Пропускаем заголовок (если есть)
+        start_row = 0
+        if all_values and len(all_values) > 0:
+            # Проверяем, есть ли заголовок (первая строка может быть заголовком)
+            if all_values[0] and (all_values[0][0] == 'слово' or all_values[0][0] == 'Слово'):
+                start_row = 1
+        
+        for row in all_values[start_row:]:
+            if len(row) > max(word_col, desc_col):
+                word = row[word_col].strip().upper() if row[word_col] else ''
+                description = row[desc_col].strip() if row[desc_col] else ''
                 if word and description:
                     words.append({
                         'word': word,
                         'description': description
                     })
         
-        # Если слов нет, добавляем дефолтные
-        if not words:
+        # Если слов нет для данного кроссворда и это первый кроссворд, добавляем дефолтные
+        if not words and crossword_index == 0:
             default_words = [
                 ["СВАДЬБА", "Главное событие дня"],
                 ["ТАМАДА", "Ведущий праздника"],
@@ -2719,8 +2923,27 @@ def _get_crossword_words_sync() -> List[Dict[str, str]]:
                 ["ТАНЕЦ", "Развлечение на празднике"],
             ]
             try:
-                for row in default_words:
-                    sheet.append_row(row)
+                # Заполняем столбцы A и B (первый кроссворд)
+                for i, word_desc in enumerate(default_words):
+                    row_num = i + 1  # Начинаем с первой строки (после заголовка, если есть)
+                    if start_row == 0:
+                        row_num = i  # Если заголовка нет, начинаем с 0
+                    
+                    # Убеждаемся, что строка существует
+                    while len(all_values) <= row_num:
+                        all_values.append([''] * (desc_col + 1))
+                    
+                    # Обновляем значения
+                    if len(all_values[row_num]) <= word_col:
+                        all_values[row_num].extend([''] * (word_col - len(all_values[row_num]) + 1))
+                    if len(all_values[row_num]) <= desc_col:
+                        all_values[row_num].extend([''] * (desc_col - len(all_values[row_num]) + 1))
+                    
+                    all_values[row_num][word_col] = word_desc[0]
+                    all_values[row_num][desc_col] = word_desc[1]
+                
+                # Обновляем лист
+                sheet.update('A1', all_values)
                 logger.info(f"Добавлены дефолтные слова в кроссвод: {len(default_words)} слов")
                 # Возвращаем дефолтные слова
                 words = [
@@ -2738,13 +2961,18 @@ def _get_crossword_words_sync() -> List[Dict[str, str]]:
         return []
 
 
-def _get_crossword_progress_sync(user_id: int) -> List[str]:
+def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List[str]:
     """
-    Получить прогресс пользователя в кроссводе (список отгаданных слов).
+    Получить прогресс пользователя в кроссводе (список отгаданных слов для конкретного кроссворда).
     
     Формат строки в листе 'Кроссвод_Прогресс':
       A: user_id
-      B: отгаданные_слова (через запятую)
+      B: current_crossword_index
+      C: guessed_words_json (JSON объект: {"0": ["слово1", "слово2"], "1": ["слово3"], ...})
+    
+    Args:
+        user_id: ID пользователя
+        crossword_index: Индекс кроссворда (0 = первый, 1 = второй, и т.д.)
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -2785,9 +3013,14 @@ def _get_crossword_progress_sync(user_id: int) -> List[str]:
         return []
 
 
-def _save_crossword_progress_sync(user_id: int, guessed_words: List[str]) -> bool:
+def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossword_index: int = 0) -> bool:
     """
-    Сохранить прогресс пользователя в кроссводе.
+    Сохранить прогресс пользователя в кроссводе для конкретного кроссворда.
+    
+    Args:
+        user_id: ID пользователя
+        guessed_words: Список отгаданных слов
+        crossword_index: Индекс кроссворда (0 = первый, 1 = второй, и т.д.)
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -2807,29 +3040,48 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str]) -> boo
             sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=2)
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=3)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "отгаданные_слова"])
+            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json"])
         
         all_values = sheet.get_all_values()
         user_row_gspread = None
+        existing_guessed_words_json = {}
+        existing_crossword_index = crossword_index
         
         for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
             if row and len(row) > 0 and str(row[0]) == str(user_id):
                 user_row_gspread = i
+                # Получаем существующий прогресс
+                if len(row) > 1 and row[1]:
+                    try:
+                        existing_crossword_index = int(row[1])
+                    except:
+                        pass
+                if len(row) > 2 and row[2]:
+                    try:
+                        existing_guessed_words_json = json.loads(row[2])
+                    except:
+                        existing_guessed_words_json = {}
                 break
         
-        # Сохраняем слова через запятую
-        words_str = ','.join([w.upper() for w in guessed_words])
+        # Обновляем прогресс для данного кроссворда
+        crossword_key = str(crossword_index)
+        existing_guessed_words_json[crossword_key] = [w.upper() for w in guessed_words]
+        guessed_words_json_str = json.dumps(existing_guessed_words_json)
         
         if user_row_gspread:
             # Обновляем существующую строку
-            sheet.update_cell(user_row_gspread, 2, words_str)
+            # Обновляем индекс только если он больше текущего (нельзя вернуться назад)
+            existing_index = existing_crossword_index
+            if crossword_index > existing_index:
+                sheet.update_cell(user_row_gspread, 2, crossword_index)  # current_crossword_index
+            sheet.update_cell(user_row_gspread, 3, guessed_words_json_str)  # guessed_words_json
         else:
             # Создаем новую строку
-            sheet.append_row([str(user_id), words_str])
+            sheet.append_row([str(user_id), crossword_index, guessed_words_json_str])
         
-        logger.info(f"Сохранен прогресс кроссвода для user_id={user_id}: {len(guessed_words)} слов")
+        logger.info(f"Сохранен прогресс кроссвода для user_id={user_id}, кроссворд {crossword_index}: {len(guessed_words)} слов")
         return True
     except Exception as e:
         logger.error(f"Ошибка сохранения прогресса кроссвода для {user_id}: {e}")
@@ -2844,22 +3096,64 @@ async def ensure_required_sheets():
     return await loop.run_in_executor(None, _ensure_required_sheets_sync)
 
 
-async def get_crossword_words() -> List[Dict[str, str]]:
+async def get_crossword_words(crossword_index: int = 0) -> List[Dict[str, str]]:
     """Асинхронная обёртка для получения слов кроссвода"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _get_crossword_words_sync)
+    return await loop.run_in_executor(None, _get_crossword_words_sync, crossword_index)
 
 
-async def get_crossword_progress(user_id: int) -> List[str]:
+async def get_crossword_progress(user_id: int, crossword_index: int = 0) -> List[str]:
     """Асинхронная обёртка для получения прогресса кроссвода"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _get_crossword_progress_sync, user_id)
+    return await loop.run_in_executor(None, _get_crossword_progress_sync, user_id, crossword_index)
 
 
-async def save_crossword_progress(user_id: int, guessed_words: List[str]) -> bool:
+async def save_crossword_progress(user_id: int, guessed_words: List[str], crossword_index: int = 0) -> bool:
     """Асинхронная обёртка для сохранения прогресса кроссвода"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words)
+    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words, crossword_index)
+
+
+def _get_crossword_state_sync(user_id: int) -> Dict:
+    """
+    Получить состояние кроссворда для пользователя (текущий индекс кроссворда).
+    """
+    if not GSPREAD_AVAILABLE:
+        return {'current_crossword_index': 0}
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return {'current_crossword_index': 0}
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
+        except Exception:
+            return {'current_crossword_index': 0}
+        
+        all_values = sheet.get_all_values()
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
+                if len(row) > 1 and row[1]:
+                    try:
+                        return {'current_crossword_index': int(row[1])}
+                    except:
+                        pass
+                return {'current_crossword_index': 0}
+        
+        return {'current_crossword_index': 0}
+    except Exception as e:
+        logger.error(f"Ошибка получения состояния кроссворда для user_id={user_id}: {e}")
+        return {'current_crossword_index': 0}
+
+
+async def get_crossword_state(user_id: int) -> Dict:
+    """Асинхронная обёртка для получения состояния кроссворда"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _get_crossword_state_sync, user_id)
 
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""

@@ -29,8 +29,11 @@ from google_sheets import (
     add_guest_to_sheets,
     cancel_invitation,
     get_wordle_word,
+    get_wordle_word_for_user,
     get_wordle_guessed_words,
     save_wordle_progress,
+    get_wordle_state,
+    save_wordle_state,
     get_timeline,
     check_guest_registration,
     get_all_guests_from_sheets,
@@ -49,6 +52,7 @@ from google_sheets import (
     get_crossword_words,
     get_crossword_progress,
     save_crossword_progress,
+    get_crossword_state,
     ensure_required_sheets,
 )
 from game_stats_cache import (
@@ -474,15 +478,103 @@ async def init_api():
     
     # Wordle endpoints
     async def get_wordle_word_endpoint(request):
-        """Получить актуальное слово для Wordle (последнее в таблице)"""
+        """Получить актуальное слово для Wordle для пользователя (с учетом автоматической смены)"""
         try:
-            word = await get_wordle_word()
+            # Получаем user_id из initData или userId (для локального тестирования)
+            init_data = request.query.get('initData', '')
+            user_id_from_query = request.query.get('userId')
+            
+            user_id = None
+            
+            # Сначала пытаемся получить user_id из initData
+            if init_data:
+                user_id = await parse_user_id_from_init_data(init_data)
+            
+            # Если не получилось, используем userId из query (для локального тестирования)
+            if not user_id and user_id_from_query:
+                try:
+                    user_id = int(user_id_from_query)
+                except (ValueError, TypeError):
+                    pass
+            
+            if not user_id:
+                return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
+            
+            # Получаем слово для пользователя (с автоматической сменой раз в сутки)
+            word = await get_wordle_word_for_user(user_id)
             if word:
                 return web.json_response({'word': word})
             else:
                 return web.json_response({'error': 'Слово не найдено'}, status=404)
         except Exception as e:
             logger.error(f"Ошибка получения слова Wordle: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
+    async def get_wordle_state_endpoint(request):
+        """Получить состояние игры Wordle для пользователя (слово, попытки, дата)"""
+        try:
+            # Получаем user_id из initData или userId (для локального тестирования)
+            init_data = request.query.get('initData', '')
+            user_id_from_query = request.query.get('userId')
+            
+            user_id = None
+            
+            # Сначала пытаемся получить user_id из initData
+            if init_data:
+                user_id = await parse_user_id_from_init_data(init_data)
+            
+            # Если не получилось, используем userId из query (для локального тестирования)
+            if not user_id and user_id_from_query:
+                try:
+                    user_id = int(user_id_from_query)
+                except (ValueError, TypeError):
+                    pass
+            
+            if not user_id:
+                return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
+            
+            state = await get_wordle_state(user_id)
+            if state:
+                return web.json_response(state)
+            else:
+                return web.json_response({'current_word': None, 'attempts': [], 'last_word_date': None})
+        except Exception as e:
+            logger.error(f"Ошибка получения состояния Wordle: {e}")
+            return web.json_response({'error': str(e)}, status=500)
+    
+    async def save_wordle_state_endpoint(request):
+        """Сохранить состояние игры Wordle для пользователя"""
+        try:
+            data = await request.json()
+            init_data = data.get('initData', '')
+            user_id_from_request = data.get('userId')
+            current_word = data.get('current_word', '')
+            attempts = data.get('attempts', [])
+            last_word_date = data.get('last_word_date', '')
+            
+            user_id = None
+            
+            # Сначала пытаемся получить user_id из initData
+            if init_data:
+                user_id = await parse_user_id_from_init_data(init_data)
+            
+            # Если не получилось, используем userId из запроса (для локального тестирования)
+            if not user_id and user_id_from_request:
+                try:
+                    user_id = int(user_id_from_request)
+                except (ValueError, TypeError):
+                    pass
+            
+            if not user_id:
+                return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
+            
+            success = await save_wordle_state(user_id, current_word, attempts, last_word_date)
+            if success:
+                return web.json_response({'success': True})
+            else:
+                return web.json_response({'error': 'Не удалось сохранить состояние'}, status=500)
+        except Exception as e:
+            logger.error(f"Ошибка сохранения состояния Wordle: {e}")
             return web.json_response({'error': str(e)}, status=500)
     
     async def get_wordle_progress_endpoint(request):
@@ -546,8 +638,8 @@ async def init_api():
             if not user_id:
                 return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
             
-            # Получаем текущее актуальное слово
-            current_word = await get_wordle_word()
+            # Получаем текущее актуальное слово для пользователя
+            current_word = await get_wordle_word_for_user(user_id)
             if not current_word:
                 return web.json_response({'error': 'Актуальное слово не найдено'}, status=404)
             
@@ -585,6 +677,8 @@ async def init_api():
             return web.json_response({'error': str(e)}, status=500)
     
     api.router.add_get('/wordle/word', get_wordle_word_endpoint)
+    api.router.add_get('/wordle/state', get_wordle_state_endpoint)
+    api.router.add_post('/wordle/state', save_wordle_state_endpoint)
     api.router.add_get('/wordle/progress', get_wordle_progress_endpoint)
     api.router.add_post('/wordle/guess', wordle_guess_endpoint)
 
@@ -1754,13 +1848,18 @@ async def get_crossword_data_endpoint(request):
         
         user_id = int(user_id_str)
         
-        # Получаем слова и прогресс параллельно
-        words = await get_crossword_words()
-        progress = await get_crossword_progress(user_id)
+        # Получаем состояние кроссворда (текущий индекс)
+        state = await get_crossword_state(user_id)
+        crossword_index = state.get('current_crossword_index', 0)
+        
+        # Получаем слова и прогресс для текущего кроссворда
+        words = await get_crossword_words(crossword_index)
+        progress = await get_crossword_progress(user_id, crossword_index)
         
         return web.json_response({
             'words': words,
-            'guessed_words': progress
+            'guessed_words': progress,
+            'crossword_index': crossword_index
         })
     except Exception as e:
         logger.error(f"Ошибка получения данных кроссвода: {e}")
@@ -1776,6 +1875,7 @@ async def save_crossword_progress_endpoint(request):
         data = await request.json()
         user_id_str = data.get('userId')
         guessed_words = data.get('guessedWords', [])
+        crossword_index = data.get('crossword_index', 0)
         
         if not user_id_str:
             return web.json_response({'error': 'userId required'}, status=400)
@@ -1785,7 +1885,7 @@ async def save_crossword_progress_endpoint(request):
         if not isinstance(guessed_words, list):
             return web.json_response({'error': 'guessedWords must be a list'}, status=400)
         
-        success = await save_crossword_progress(user_id, guessed_words)
+        success = await save_crossword_progress(user_id, guessed_words, crossword_index)
         
         if success:
             return web.json_response({'success': True})
