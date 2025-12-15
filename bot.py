@@ -51,6 +51,10 @@ from google_sheets import (
     save_photo_from_user,
     get_admin_login_code_and_clear,
     check_guest_registration,
+    switch_wordle_word_for_all,
+    add_wordle_word,
+    can_generate_crossword,
+    add_crossword,
 )
 from telegram_client import init_telegram_client, get_username_by_phone, get_or_init_client, start_phone_login, authorize_with_code, authorize_with_password, resend_code, get_qr_code, check_qr_authorization
 from datetime import datetime
