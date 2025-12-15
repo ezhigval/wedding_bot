@@ -2992,18 +2992,24 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
             sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=2)
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=3)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "отгаданные_слова"])
+            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json"])
             return []
         
         all_values = sheet.get_all_values()
         for row in all_values[1:]:  # Пропускаем заголовок
             if len(row) > 0 and str(row[0]) == str(user_id):
-                if len(row) > 1 and row[1]:
-                    # Разбиваем строку с отгаданными словами
-                    guessed_words = [w.strip().upper() for w in row[1].split(',') if w.strip()]
-                    return guessed_words
+                if len(row) > 2 and row[2]:
+                    # Парсим JSON с отгаданными словами по кроссвордам
+                    try:
+                        guessed_words_json = json.loads(row[2])
+                        crossword_key = str(crossword_index)
+                        if crossword_key in guessed_words_json:
+                            return [w.strip().upper() for w in guessed_words_json[crossword_key] if w.strip()]
+                    except:
+                        pass
+                return []
         
         return []
     except Exception as e:
