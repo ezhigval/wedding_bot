@@ -114,6 +114,8 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
     // ВРЕМЕННАЯ СИМУЛЯЦИЯ ДЛЯ ТЕСТА - УДАЛИТЬ ПОСЛЕ ПРОВЕРКИ
     // Симулируем user_id = 1034074077 для локального тестирования
     const TEST_USER_ID = 1034074077
+    
+    // Проверяем, запущено ли локально (не в Telegram)
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     if (isLocalhost) {
       console.log('[TEST MODE] Simulating user_id:', TEST_USER_ID)

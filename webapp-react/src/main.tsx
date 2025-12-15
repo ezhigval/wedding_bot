@@ -23,10 +23,28 @@ declare global {
   }
 }
 
+// Инициализация Telegram Web App (или симуляция для локальной разработки)
 const tg = window.Telegram?.WebApp
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
 if (tg) {
   tg.ready()
   tg.expand()
+} else if (isLocalhost) {
+  // Симулируем Telegram WebApp для локальной разработки
+  console.log('[LOCAL DEV] Simulating Telegram WebApp')
+  window.Telegram = {
+    WebApp: {
+      ready: () => console.log('[LOCAL DEV] WebApp ready'),
+      expand: () => console.log('[LOCAL DEV] WebApp expanded'),
+      initData: '',
+      colorScheme: 'light' as const,
+      showAlert: (message: string) => alert(message),
+      showConfirm: (message: string) => Promise.resolve(window.confirm(message)),
+    }
+  }
+  // Сохраняем статичный user_id для локальной разработки
+  localStorage.setItem('telegram_user_id', '1034074077')
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

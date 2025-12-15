@@ -1,56 +1,12 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-**/.DS_Store
-
-# Логи
-*.log
-server.log
-
-# Временные файлы
-tmp_*/
-*.tmp
-
-# Git
-.git/
-.gitignore
-
-# Документация
-*.md
-!README.md
-!DOCKER_DEPLOY.md
-
-# Старые/неиспользуемые файлы
-Procfile
-runtime.txt
-run.sh
-database.py
-webapp_api.py
-example_message.txt
-ENV_VARS_COPY.txt
-webapp/LOTTIE_SETUP.md
-
-# Локальные файлы
-dev_server.py
+node_modules
+.git
 .env
-.env.local
-
-# Данные (будут созданы в контейнере)
-data/*.db
-data/*.db-journal
-
+*.pyc
+__pycache__
+data
+*.db
+*.log
+.DS_Store
+webapp-react/node_modules
+webapp-react/dist
+webapp-react/.vite
