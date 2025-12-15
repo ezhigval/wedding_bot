@@ -571,13 +571,13 @@ func handleGroupListMembers(c telebot.Context) error {
 // handleSwapNameCallback обрабатывает смену имени/фамилии
 func handleSwapNameCallback(c telebot.Context, parts []string) error {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.CallbackResponse{Text: "❌ Неверный формат запроса"})
+		return c.Answer(&telebot.QueryResponse{})
 	}
 
 	rowStr := parts[0]
 	row, err := strconv.Atoi(rowStr)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{Text: "❌ Неверный номер строки"})
+		return c.Answer(&telebot.QueryResponse{})
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -586,14 +586,14 @@ func handleSwapNameCallback(c telebot.Context, parts []string) error {
 	err = google_sheets.SwapGuestNameOrder(ctx, row)
 	if err != nil {
 		log.Printf("Ошибка смены имени/фамилии: %v", err)
-		return c.Answer(&telebot.QueryResponse{Text: "❌ Ошибка обмена имени/фамилии"})
+		return c.Answer(&telebot.QueryResponse{})
 	}
 
 	// Обновляем список гостей и показываем обновленную страницу
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Answer(&telebot.QueryResponse{Text: "✅ Имя и фамилия поменяны местами"})
+		return c.Answer(&telebot.QueryResponse{})
 	}
 
 	// Определяем текущую страницу (просто показываем первую)
@@ -625,7 +625,7 @@ func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Answer(&telebot.CallbackResponse{Text: "❌ Ошибка получения списка гостей"})
+		return c.Answer(&telebot.QueryResponse{})
 	}
 
 	keyboard := keyboards.GetGuestsSwapKeyboard(guests, page)
