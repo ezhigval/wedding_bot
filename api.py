@@ -550,6 +550,7 @@ async def init_api():
             user_id_from_request = data.get('userId')
             current_word = data.get('current_word', '')
             attempts = data.get('attempts', [])
+            current_guess = data.get('current_guess', '')
             last_word_date = data.get('last_word_date', '')
             
             user_id = None
@@ -568,7 +569,7 @@ async def init_api():
             if not user_id:
                 return web.json_response({'error': 'Не удалось определить user_id'}, status=400)
             
-            success = await save_wordle_state(user_id, current_word, attempts, last_word_date)
+            success = await save_wordle_state(user_id, current_word, attempts, last_word_date, current_guess)
             if success:
                 return web.json_response({'success': True})
             else:

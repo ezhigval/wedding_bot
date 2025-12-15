@@ -2664,7 +2664,7 @@ async def save_wordle_progress(user_id: int, guessed_words: List[str]) -> bool:
 def _get_wordle_state_sync(user_id: int) -> Optional[Dict]:
     """
     Получить состояние игры Wordle для пользователя.
-    Возвращает: {current_word, attempts: [[...]], last_word_date}
+    Возвращает: {current_word, attempts: [[...]], current_guess: str, last_word_date}
     """
     if not GSPREAD_AVAILABLE:
         return None
@@ -2687,7 +2687,8 @@ def _get_wordle_state_sync(user_id: int) -> Optional[Dict]:
             if row and len(row) > 0 and str(row[0]).strip() == str(user_id):
                 current_word = row[1].strip() if len(row) > 1 and row[1] else None
                 attempts_json = row[2].strip() if len(row) > 2 and row[2] else "[]"
-                last_word_date = row[3].strip() if len(row) > 3 and row[3] else None
+                current_guess = row[3].strip() if len(row) > 3 and row[3] else ""
+                last_word_date = row[4].strip() if len(row) > 4 and row[4] else None
                 
                 try:
                     attempts = json.loads(attempts_json) if attempts_json else []
@@ -2697,6 +2698,7 @@ def _get_wordle_state_sync(user_id: int) -> Optional[Dict]:
                 return {
                     'current_word': current_word,
                     'attempts': attempts,
+                    'current_guess': current_guess,
                     'last_word_date': last_word_date
                 }
         
@@ -2706,7 +2708,7 @@ def _get_wordle_state_sync(user_id: int) -> Optional[Dict]:
         return None
 
 
-def _save_wordle_state_sync(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str) -> bool:
+def _save_wordle_state_sync(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str, current_guess: str = "") -> bool:
     """
     Сохранить состояние игры Wordle для пользователя.
     """
@@ -2725,8 +2727,8 @@ def _save_wordle_state_sync(user_id: int, current_word: str, attempts: List[List
             sheet = spreadsheet.worksheet("Wordle_Состояние")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Wordle_Состояние", rows=100, cols=4)
-            sheet.append_row(["user_id", "current_word", "attempts", "last_word_date"])
+            sheet = spreadsheet.add_worksheet(title="Wordle_Состояние", rows=100, cols=5)
+            sheet.append_row(["user_id", "current_word", "attempts", "current_guess", "last_word_date"])
         
         all_values = sheet.get_all_values()
         user_row_index = None
@@ -2742,10 +2744,11 @@ def _save_wordle_state_sync(user_id: int, current_word: str, attempts: List[List
             # Обновляем существующую строку
             sheet.update_cell(user_row_index, 2, current_word)  # current_word
             sheet.update_cell(user_row_index, 3, attempts_json)  # attempts
-            sheet.update_cell(user_row_index, 4, last_word_date)  # last_word_date
+            sheet.update_cell(user_row_index, 4, current_guess)  # current_guess
+            sheet.update_cell(user_row_index, 5, last_word_date)  # last_word_date
         else:
             # Создаем новую строку
-            sheet.append_row([str(user_id), current_word, attempts_json, last_word_date])
+            sheet.append_row([str(user_id), current_word, attempts_json, current_guess, last_word_date])
         
         return True
     except Exception as e:
@@ -2793,7 +2796,7 @@ def _get_wordle_word_for_user_sync(user_id: int) -> Optional[str]:
             # Первый раз или нет сохраненного состояния - берем первое слово
             current_word = words[0]
             today = datetime.now().strftime('%Y-%m-%d')
-            _save_wordle_state_sync(user_id, current_word, [], today)
+            _save_wordle_state_sync(user_id, current_word, [], today, "")
             return current_word
         
         # Проверяем, прошло ли больше суток
@@ -2812,7 +2815,7 @@ def _get_wordle_word_for_user_sync(user_id: int) -> Optional[str]:
                 next_word = words[0]
             
             # Сохраняем новое слово и сбрасываем попытки
-            _save_wordle_state_sync(user_id, next_word, [], today)
+            _save_wordle_state_sync(user_id, next_word, [], today, "")
             return next_word
         
         # Слово не менялось, возвращаем текущее
@@ -2837,10 +2840,10 @@ async def get_wordle_state(user_id: int) -> Optional[Dict]:
     return await loop.run_in_executor(None, _get_wordle_state_sync, user_id)
 
 
-async def save_wordle_state(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str) -> bool:
+async def save_wordle_state(user_id: int, current_word: str, attempts: List[List[Dict]], last_word_date: str, current_guess: str = "") -> bool:
     """Асинхронная обёртка для сохранения состояния Wordle"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _save_wordle_state_sync, user_id, current_word, attempts, last_word_date)
+    return await loop.run_in_executor(None, _save_wordle_state_sync, user_id, current_word, attempts, last_word_date, current_guess)
 
 
 # ========== КРОССВОД ==========
@@ -2891,7 +2894,7 @@ def _ensure_required_sheets_sync():
                 "default_data": []
             },
             "Wordle_Состояние": {
-                "headers": ["user_id", "current_word", "attempts", "last_word_date"],
+                "headers": ["user_id", "current_word", "attempts", "current_guess", "last_word_date"],
                 "default_data": []
             },
             "Игры": {

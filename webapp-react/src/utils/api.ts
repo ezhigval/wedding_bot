@@ -359,6 +359,7 @@ export async function getWordleWord(userId?: number): Promise<string | null> {
 export interface WordleState {
   current_word: string | null
   attempts: Array<Array<{ letter: string; state: string }>>
+  current_guess?: string
   last_word_date: string | null
 }
 
@@ -380,7 +381,8 @@ export async function saveWordleState(
   userId: number,
   currentWord: string,
   attempts: Array<Array<{ letter: string; state: string }>>,
-  lastWordDate: string
+  lastWordDate: string,
+  currentGuess: string = ''
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
@@ -393,6 +395,7 @@ export async function saveWordleState(
         userId,
         current_word: currentWord,
         attempts,
+        current_guess: currentGuess,
         last_word_date: lastWordDate,
       }),
     })

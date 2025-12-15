@@ -123,12 +123,17 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
             
             setGuesses(restoredGuesses)
             
-            // Определяем текущую попытку (первая пустая)
-            const currentAttemptIndex = restoredGuesses.findIndex(row => row[0].state === 'empty' || !row[0].letter)
-            if (currentAttemptIndex !== -1) {
-              const currentAttempt = restoredGuesses[currentAttemptIndex]
-              const currentGuessStr = currentAttempt.map(c => c.letter).join('')
-              setCurrentGuess(currentGuessStr)
+            // Восстанавливаем текущий ввод (current_guess)
+            if (state.current_guess) {
+              setCurrentGuess(state.current_guess.toUpperCase())
+            } else {
+              // Если нет сохраненного current_guess, определяем из первой пустой попытки
+              const currentAttemptIndex = restoredGuesses.findIndex(row => row[0].state === 'empty' || !row[0].letter)
+              if (currentAttemptIndex !== -1) {
+                const currentAttempt = restoredGuesses[currentAttemptIndex]
+                const currentGuessStr = currentAttempt.map(c => c.letter).join('')
+                setCurrentGuess(currentGuessStr)
+              }
             }
             
             // Проверяем, не закончена ли игра
@@ -179,7 +184,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           // Сохраняем начальное состояние
           setTimeout(() => {
             if (currentUserId && word) {
-              saveWordleState(currentUserId, word.toUpperCase(), [], today).catch(console.error)
+              saveWordleState(currentUserId, word.toUpperCase(), [], today, '').catch(console.error)
             }
           }, 1000)
         }
@@ -250,45 +255,51 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     // Сохраняем с небольшой задержкой, чтобы не спамить запросами
     saveStateTimeoutRef.current = setTimeout(async () => {
       try {
-        // Преобразуем guesses в формат для сохранения
-        const attemptsToSave = guesses.map(row => 
-          row.map(cell => ({
-            letter: cell.letter,
-            state: cell.state
-          }))
-        )
+        // Преобразуем guesses в формат для сохранения (только отправленные попытки)
+        const attemptsToSave = guesses
+          .filter(row => row.some(cell => cell.state !== 'empty' && cell.letter !== ''))
+          .map(row => 
+            row.map(cell => ({
+              letter: cell.letter,
+              state: cell.state
+            }))
+          )
         
-        await saveWordleState(userId, targetWord, attemptsToSave, lastWordDate)
+        // Сохраняем текущий ввод (currentGuess) отдельно
+        await saveWordleState(userId, targetWord, attemptsToSave, lastWordDate, currentGuess)
       } catch (error) {
         console.error('Error saving Wordle state:', error)
       }
     }, 1000)
   }
 
-  // Сохраняем состояние при изменении guesses
+  // Сохраняем состояние при изменении guesses или currentGuess
   useEffect(() => {
     if (userId && targetWord && !loading) {
       saveGameState()
     }
-  }, [guesses, userId, targetWord, loading])
+  }, [guesses, currentGuess, userId, targetWord, loading])
 
   // Сохраняем состояние при выходе из компонента
   useEffect(() => {
     return () => {
       if (userId && targetWord && lastWordDate) {
-        const attemptsToSave = guesses.map(row => 
-          row.map(cell => ({
-            letter: cell.letter,
-            state: cell.state
-          }))
-        )
-        saveWordleState(userId, targetWord, attemptsToSave, lastWordDate).catch(console.error)
+        // Сохраняем только отправленные попытки
+        const attemptsToSave = guesses
+          .filter(row => row.some(cell => cell.state !== 'empty' && cell.letter !== ''))
+          .map(row => 
+            row.map(cell => ({
+              letter: cell.letter,
+              state: cell.state
+            }))
+          )
+        saveWordleState(userId, targetWord, attemptsToSave, lastWordDate, currentGuess).catch(console.error)
       }
       if (saveStateTimeoutRef.current) {
         clearTimeout(saveStateTimeoutRef.current)
       }
     }
-  }, [])
+  }, [userId, targetWord, lastWordDate, guesses, currentGuess])
 
   const handleSubmit = async () => {
     if (currentGuess.length !== WORD_LENGTH) return
