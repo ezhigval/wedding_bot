@@ -1,4 +1,4 @@
-// Утилита для автоматического составления кроссвода
+// Утилита для автоматического составления кроссворда
 
 export interface CrosswordWord {
   word: string
@@ -16,7 +16,7 @@ export interface CrosswordGrid {
 }
 
 /**
- * Автоматически составляет кроссвод из списка слов
+ * Автоматически составляет кроссворд из списка слов
  */
 export function generateCrossword(words: Array<{ word: string; description: string }>): CrosswordGrid {
   // Оптимальный размер для мобильных (5+ дюймов) - 12x12

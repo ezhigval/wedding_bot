@@ -29,7 +29,7 @@ func EnsureRequiredSheets(ctx context.Context) error {
 	}
 
 	requiredSheets := map[string]SheetConfig{
-		"Кроссвод": {
+		"Кроссворд": {
 			Headers: []string{"слово", "описание"},
 			DefaultData: [][]interface{}{
 				{"СВАДЬБА", "Главное событие дня"},
@@ -42,7 +42,7 @@ func EnsureRequiredSheets(ctx context.Context) error {
 				{"ТАНЕЦ", "Развлечение на празднике"},
 			},
 		},
-		"Кроссвод_Прогресс": {
+		"Кроссворд_Прогресс": {
 			Headers: []string{"user_id", "current_crossword_index", "guessed_words_json", "crossword_start_date"},
 		},
 		"Wordle": {

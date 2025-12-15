@@ -69,7 +69,7 @@ func processWordleReset(ctx context.Context, today, yesterday string) error {
 
 // processCrosswordReset обрабатывает сброс Crossword для всех пользователей
 func processCrosswordReset(ctx context.Context, today, yesterday string) error {
-	// TODO: Получить список всех пользователей из Кроссвод_Прогресс
+	// TODO: Получить список всех пользователей из Кроссворд_Прогресс
 	// Для каждого пользователя:
 	// 1. Проверить, решен ли кроссворд
 	// 2. Если нет - добавить 13 баллов

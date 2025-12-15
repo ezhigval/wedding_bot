@@ -27,7 +27,7 @@ type CrosswordProgress struct {
 	WrongAttempts []string
 }
 
-// GetCrosswordWords получает слова для кроссворда из листа 'Кроссвод'
+// GetCrosswordWords получает слова для кроссворда из листа 'Кроссворд'
 func GetCrosswordWords(ctx context.Context, crosswordIndex int) ([]CrosswordWord, error) {
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
@@ -35,7 +35,7 @@ func GetCrosswordWords(ctx context.Context, crosswordIndex int) ([]CrosswordWord
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Кроссвод"
+	sheetName := "Кроссворд"
 
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func GetCrosswordProgress(ctx context.Context, userID int, crosswordIndex int) (
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Кроссвод_Прогресс"
+	sheetName := "Кроссворд_Прогресс"
 
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return nil, err
@@ -216,7 +216,7 @@ func SaveCrosswordProgress(ctx context.Context, userID int, guessedWords []strin
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Кроссвод_Прогресс"
+	sheetName := "Кроссворд_Прогресс"
 
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return err
@@ -380,7 +380,7 @@ func GetCrosswordState(ctx context.Context, userID int) (int, error) {
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Кроссвод_Прогресс"
+	sheetName := "Кроссворд_Прогресс"
 
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return 0, err
@@ -428,7 +428,7 @@ func SetCrosswordIndex(ctx context.Context, userID int, crosswordIndex int) erro
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Кроссвод_Прогресс"
+	sheetName := "Кроссворд_Прогресс"
 
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return err
