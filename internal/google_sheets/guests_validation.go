@@ -29,11 +29,9 @@ func ValidateGuestSheetStructure(ctx context.Context) error {
 	}
 
 	sheetExists := false
-	var sheetID int64
 	for _, sheet := range spreadsheet.Sheets {
 		if sheet.Properties.Title == sheetName {
 			sheetExists = true
-			sheetID = sheet.Properties.SheetId
 			break
 		}
 	}
