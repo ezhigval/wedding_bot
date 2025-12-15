@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"wedding-bot/internal/config"
-
-	"google.golang.org/api/sheets/v4"
 )
 
 // SeatingTable представляет стол с гостями
