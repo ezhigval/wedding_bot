@@ -9,6 +9,7 @@ import (
 	"gopkg.in/telebot.v3"
 
 	"wedding-bot/internal/config"
+	"wedding-bot/internal/keyboards"
 )
 
 // handleAdminBroadcastDM запускает рассылку в ЛС
@@ -35,7 +36,7 @@ func handleAdminBroadcastDM(c telebot.Context) error {
 			{
 				telebot.InlineButton{
 					Text: "❌ Отмена",
-					Data: "admin:back",
+					Data: "broadcast:cancel",
 				},
 			},
 		},

@@ -709,6 +709,8 @@ func handleBroadcastCallback(c telebot.Context, parts []string) error {
 			return handleBroadcastSendConfirm(c)
 		}
 		return c.Answer(&telebot.QueryResponse{})
+	case "cancel":
+		return handleBroadcastCancel(c)
 	default:
 		return c.Answer(&telebot.QueryResponse{})
 	}
