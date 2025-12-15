@@ -182,13 +182,22 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	if userID == 0 && req.InitData != "" {
 		result, err := ParseInitData(req.InitData)
 		if err == nil {
+			// Пробуем разные типы для userId
 			if uid, ok := result["userId"].(int); ok {
 				userID = uid
+			} else if uidFloat, ok := result["userId"].(float64); ok {
+				userID = int(uidFloat)
+			} else if uidInt64, ok := result["userId"].(int64); ok {
+				userID = int(uidInt64)
 			}
+			log.Printf("Parsed user_id from initData: %d", userID)
+		} else {
+			log.Printf("Error parsing initData: %v", err)
 		}
 	}
 
 	if userID == 0 {
+		log.Printf("Registration failed: user_id is 0. InitData provided: %v, UserID in request: %d", req.InitData != "", req.UserID)
 		JSONError(w, http.StatusBadRequest, "user_id required")
 		return
 	}

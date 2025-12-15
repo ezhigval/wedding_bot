@@ -58,17 +58,75 @@ export async function submitRSVP(formData: {
   try {
     // Получаем user_id из Telegram WebApp
     const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
+    const initData = tg?.initData || ''
+    
+    // Пытаемся получить userId
+    let userId: number | null = null
+    
+    // Способ 1: Из initDataUnsafe (самый надежный способ)
+    if (tg?.initDataUnsafe?.user?.id) {
+      userId = tg.initDataUnsafe.user.id
+      console.log('[submitRSVP] Got user_id from initDataUnsafe:', userId)
+    }
+    
+    // Способ 2: Из localStorage (если был сохранен ранее)
+    if (!userId) {
+      const savedUserId = localStorage.getItem('telegram_user_id')
+      if (savedUserId) {
+        userId = parseInt(savedUserId, 10)
+        if (!isNaN(userId)) {
+          console.log('[submitRSVP] Got user_id from localStorage:', userId)
+        } else {
+          userId = null
+        }
+      }
+    }
+    
+    // Способ 3: Из initData через API (если initDataUnsafe недоступен)
+    if (!userId && initData) {
+      try {
+        const response = await fetch(`${config.apiUrl}/parse-init-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ initData }),
+        })
+        
+        if (response.ok) {
+          const parsed = await response.json()
+          if (parsed.userId) {
+            userId = parsed.userId
+            console.log('[submitRSVP] Got user_id from parse-init-data:', userId)
+            // Сохраняем в localStorage
+            localStorage.setItem('telegram_user_id', userId.toString())
+          }
+        }
+      } catch (error) {
+        console.error('[submitRSVP] Error parsing initData:', error)
+      }
+    }
+    
+    // Формируем тело запроса
+    const requestBody: any = {
+      ...formData,
+      initData, // Telegram WebApp initData для проверки подлинности
+    }
+    
+    // Добавляем userId если он доступен
+    if (userId) {
+      requestBody.userId = userId
+      console.log('[submitRSVP] Sending registration with user_id:', userId)
+    } else {
+      console.warn('[submitRSVP] No user_id available, will try to extract from initData')
+    }
     
     const response = await fetch(`${config.apiUrl}/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...formData,
-        initData, // Telegram WebApp initData для проверки подлинности
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (response.ok) {
