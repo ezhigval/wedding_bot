@@ -570,16 +570,14 @@ func handleGroupListMembers(c telebot.Context) error {
 
 // handleSwapNameCallback обрабатывает смену имени/фамилии
 func handleSwapNameCallback(c telebot.Context, parts []string) error {
-	if len(parts) < 2 {
-		return c.Answer(&telebot.QueryResponse{})
+	if len(parts) == 0 {
+		return c.Answer(&telebot.QueryResponse{Text: "❌ Неверный формат запроса"})
 	}
 
 	rowStr := parts[0]
-	pageStr := parts[1]
-
 	row, err := strconv.Atoi(rowStr)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		return c.Answer(&telebot.QueryResponse{Text: "❌ Неверный номер строки"})
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -588,24 +586,26 @@ func handleSwapNameCallback(c telebot.Context, parts []string) error {
 	err = google_sheets.SwapGuestNameOrder(ctx, row)
 	if err != nil {
 		log.Printf("Ошибка смены имени/фамилии: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		return c.Answer(&telebot.QueryResponse{Text: "❌ Ошибка обмена имени/фамилии"})
 	}
 
-	// Обновляем клавиатуру
-	page, _ := strconv.Atoi(pageStr)
+	// Обновляем список гостей и показываем обновленную страницу
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		log.Printf("Ошибка получения списка гостей: %v", err)
+		return c.Answer(&telebot.QueryResponse{Text: "✅ Имя и фамилия поменяны местами"})
 	}
 
-	// Обновляем сообщение
-	message := "✅ <b>Имя гостя обновлено в Google Sheets</b>\n\nМожно продолжать исправлять имена."
-	
-	// TODO: Создать клавиатуру с обновленным списком (build_guest_swap_page)
-	_ = guests
-	_ = page
+	// Определяем текущую страницу (просто показываем первую)
+	keyboard := keyboards.GetGuestsSwapKeyboard(guests, 0)
+	message := fmt.Sprintf(
+		"✅ <b>Имя и фамилия поменяны местами!</b>\n\n"+
+			"Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n\n"+
+			"Всего гостей: <b>%d</b>",
+		len(guests),
+	)
 
-	return c.Edit(message, telebot.ModeHTML)
+	return c.Edit(message, keyboard, telebot.ModeHTML)
 }
 
 // handleFixNamesPageCallback обрабатывает переключение страницы в исправлении имен
@@ -624,15 +624,19 @@ func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
 
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		log.Printf("Ошибка получения списка гостей: %v", err)
+		return c.Answer(&telebot.QueryResponse{Text: "❌ Ошибка получения списка гостей"})
 	}
 
-	// TODO: Создать клавиатуру для страницы (build_guest_swap_page)
-	message := "🔁 <b>Исправление Имя/Фамилия</b>\n\nНажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets."
-	_ = guests
-	_ = page
+	keyboard := keyboards.GetGuestsSwapKeyboard(guests, page)
+	message := fmt.Sprintf(
+		"🔁 <b>Исправление Имя/Фамилия</b>\n\n"+
+			"Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n\n"+
+			"Всего гостей: <b>%d</b>",
+		len(guests),
+	)
 
-	return c.Edit(message, telebot.ModeHTML)
+	return c.Edit(message, keyboard, telebot.ModeHTML)
 }
 
 // handleDeleteGuestCallback обрабатывает удаление гостя

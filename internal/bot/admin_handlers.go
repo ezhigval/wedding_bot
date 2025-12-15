@@ -114,8 +114,30 @@ func handleAdminBack(c telebot.Context) error {
 
 // handleAdminFixNames запускает исправление имени/фамилии
 func handleAdminFixNames(c telebot.Context) error {
-	// TODO: Реализовать исправление имени/фамилии
-	return c.Send("🔁 <b>Исправление Имя/Фамилия</b>\n\nФункция в разработке.", telebot.ModeHTML)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	guests, err := google_sheets.ListConfirmedGuests(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения списка гостей: %v", err)
+		return c.Send("❌ Ошибка получения списка гостей.", telebot.ModeHTML)
+	}
+
+	if len(guests) == 0 {
+		return c.Send("📋 Нет подтвержденных гостей для исправления.", telebot.ModeHTML)
+	}
+
+	// Создаем клавиатуру с кнопками для каждого гостя
+	keyboard := keyboards.GetGuestsSwapKeyboard(guests, 0)
+
+	message := fmt.Sprintf(
+		"🔁 <b>Исправление Имя/Фамилия</b>\n\n"+
+			"Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n\n"+
+			"Всего гостей: <b>%d</b>",
+		len(guests),
+	)
+
+	return c.Send(message, keyboard, telebot.ModeHTML)
 }
 
 // handleAdminBroadcastDM запускает рассылку в ЛС - реализация в broadcast_handlers.go
