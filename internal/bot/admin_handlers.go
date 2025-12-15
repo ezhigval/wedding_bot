@@ -254,12 +254,6 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 		return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
 	}
 
-	// Получаем количество участников (используем ChatMemberCount через Raw)
-	membersCount := 0
-	if chat.MembersCount > 0 {
-		membersCount = chat.MembersCount
-	}
-
 	// Получаем список администраторов
 	admins, err := bot.AdminsOf(chat)
 	if err != nil {
@@ -272,9 +266,8 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 		"👥 <b>Информация о группе</b>\n\n"+
 			"📝 Название: <b>%s</b>\n"+
 			"🆔 ID: <code>%s</code>\n"+
-			"👥 Участников: <b>%d</b>\n"+
 			"👑 Администраторов: <b>%d</b>\n",
-		chat.Title, config.GroupID, membersCount, len(admins),
+		chat.Title, config.GroupID, len(admins),
 	)
 
 	// Добавляем список администраторов
@@ -293,15 +286,19 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 			if user.Username != "" {
 				name += fmt.Sprintf(" (@%s)", user.Username)
 			}
+			// Определяем статус по правам
 			status := "👤 Участник"
-			if admin.Rights.IsAdmin {
+			if admin.Rights.CanDeleteMessages || admin.Rights.CanRestrictMembers || admin.Rights.CanPromoteMembers {
 				status = "👑 Админ"
 			}
-			if admin.Rights.IsOwner {
+			// Первый администратор обычно создатель
+			if i == 0 {
 				status = "👑 Создатель"
 			}
 			message += fmt.Sprintf("%d. %s - %s\n", i+1, name, status)
 		}
+	} else {
+		message += "\n⚠️ Не удалось получить список администраторов."
 	}
 
 	// Добавляем ссылку на группу
