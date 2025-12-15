@@ -103,7 +103,7 @@ func handleAdminBotMenu(c telebot.Context) error {
 func handleAdminBack(c telebot.Context) error {
 	userID := c.Sender().ID
 	isAdmin := isAdminUser(int(userID))
-	photoModeEnabled := isPhotoModeEnabled(userID)
+	photoModeEnabled := IsPhotoModeEnabled(userID)
 	
 	message := "Главное меню:"
 	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, photoModeEnabled)
