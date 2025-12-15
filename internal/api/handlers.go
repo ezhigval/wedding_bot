@@ -193,6 +193,10 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Таймаут для регистрации (может быть долгой операцией)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
 	var age *int
 	if req.Age != nil {
 		age = req.Age
