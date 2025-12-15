@@ -23,7 +23,7 @@ export default function HomeTab() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-[120px]">
       {/* Hero Section */}
       <section className="relative w-full">
         <div className="relative h-[60vh] min-h-[400px] overflow-hidden">

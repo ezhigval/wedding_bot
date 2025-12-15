@@ -42,7 +42,7 @@ export default function MenuTab() {
 
   if (!isRegistered) {
     return (
-      <div className="min-h-screen px-4 py-4">
+      <div className="min-h-screen px-4 py-4 pb-[120px]">
         <SectionCard>
           <SectionTitle>МЕНЮ</SectionTitle>
           <p className="text-center text-gray-600 mb-2 leading-[1.2] text-[19.2px]">
@@ -54,7 +54,7 @@ export default function MenuTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4">
+    <div className="min-h-screen px-4 py-4 pb-[120px]">
       {/* RSVP Form for registered users (guests only) */}
       <section className="rsvp-section">
         <SectionCard className="rsvp-section">

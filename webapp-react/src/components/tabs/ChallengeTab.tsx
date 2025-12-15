@@ -316,7 +316,7 @@ export default function ChallengeTab() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden pb-[120px]">
       {/* Прокручиваемая область с играми */}
       <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: '200px' }}>
         <SectionCard>

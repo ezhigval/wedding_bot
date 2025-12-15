@@ -34,7 +34,7 @@ export default function TimelineTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4">
+    <div className="min-h-screen px-4 py-4 pb-[120px]">
       <SectionCard>
         <SectionTitle>ПЛАН ДНЯ</SectionTitle>
         {loading ? (

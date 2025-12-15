@@ -122,7 +122,7 @@ export default function PhotoTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4">
+    <div className="min-h-screen px-4 py-4 pb-[120px]">
       <SectionCard>
         <SectionTitle>СДЕЛАТЬ ФОТО</SectionTitle>
         

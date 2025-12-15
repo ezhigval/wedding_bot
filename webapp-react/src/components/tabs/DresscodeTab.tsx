@@ -20,7 +20,7 @@ export default function DresscodeTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4">
+    <div className="min-h-screen px-4 py-4 pb-[120px]">
       <SectionCard>
         <SectionTitle>ДРЕСС-КОД</SectionTitle>
         <motion.p
