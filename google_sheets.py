@@ -3161,6 +3161,227 @@ async def get_crossword_state(user_id: int) -> Dict:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_crossword_state_sync, user_id)
 
+
+# ========== АДМИН-ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ ИГРАМИ ==========
+
+def _switch_wordle_word_for_all_sync() -> bool:
+    """
+    Переключить слово Wordle для всех пользователей на следующее.
+    Обновляет last_word_date в Wordle_Состояние для всех пользователей.
+    """
+    if not GSPREAD_AVAILABLE:
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle_Состояние")
+        except Exception:
+            logger.error("Вкладка 'Wordle_Состояние' не найдена")
+            return False
+        
+        all_values = sheet.get_all_values()
+        if len(all_values) < 2:  # Только заголовок
+            return True  # Нет пользователей, ничего делать не нужно
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Обновляем last_word_date для всех пользователей
+        for i in range(1, len(all_values)):  # Пропускаем заголовок
+            row = all_values[i]
+            if row and len(row) > 0 and row[0].strip():  # Есть user_id
+                sheet.update_cell(i + 1, 4, today)  # Обновляем last_word_date (столбец D)
+        
+        logger.info(f"Обновлена дата слова Wordle для всех пользователей: {today}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка переключения слова Wordle для всех: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+def _add_wordle_word_sync(word: str) -> bool:
+    """
+    Добавить новое слово в список Wordle.
+    """
+    if not GSPREAD_AVAILABLE:
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Wordle")
+        except Exception:
+            logger.error("Вкладка 'Wordle' не найдена")
+            return False
+        
+        # Проверяем, нет ли уже такого слова
+        all_values = sheet.get_all_values()
+        for row in all_values[1:]:  # Пропускаем заголовок
+            if row and len(row) > 0 and row[0].strip().upper() == word.upper():
+                logger.warning(f"Слово '{word}' уже есть в списке")
+                return False
+        
+        # Добавляем слово
+        sheet.append_row([word.upper()])
+        logger.info(f"Добавлено новое слово в Wordle: {word.upper()}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка добавления слова в Wordle: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
+
+
+def _can_generate_crossword_sync(words: List[Dict[str, str]]) -> tuple[bool, str]:
+    """
+    Проверяет, можно ли собрать кроссворд из списка слов.
+    Возвращает (можно_ли, сообщение_об_ошибке).
+    
+    Минимальные требования:
+    - Должно быть хотя бы 2 слова
+    - Слова должны иметь общие буквы для пересечения
+    """
+    if len(words) < 2:
+        return False, "Нужно минимум 2 слова для кроссворда"
+    
+    # Проверяем, что все слова имеют описания
+    for word_data in words:
+        if not word_data.get('word') or not word_data.get('description'):
+            return False, "Все слова должны иметь описание"
+    
+    # Проверяем наличие общих букв между словами
+    word_strings = [w['word'].upper() for w in words]
+    
+    # Проверяем, есть ли хотя бы одна пара слов с общей буквой
+    has_common_letter = False
+    for i in range(len(word_strings)):
+        for j in range(i + 1, len(word_strings)):
+            word1 = word_strings[i]
+            word2 = word_strings[j]
+            # Проверяем наличие общих букв
+            for letter in word1:
+                if letter in word2:
+                    has_common_letter = True
+                    break
+            if has_common_letter:
+                break
+        if has_common_letter:
+            break
+    
+    if not has_common_letter:
+        return False, "Слова не имеют общих букв для пересечения. Невозможно собрать кроссворд."
+    
+    # Пробуем сгенерировать кроссворд (упрощенная проверка)
+    # Если хотя бы 2 слова можно разместить - считаем, что кроссворд возможен
+    return True, "Кроссворд можно собрать"
+
+
+def _add_crossword_sync(words: List[Dict[str, str]]) -> tuple[bool, str]:
+    """
+    Добавить новый кроссворд в таблицу.
+    words: список словарей с ключами 'word' и 'description'
+    
+    Возвращает (успех, сообщение)
+    """
+    if not GSPREAD_AVAILABLE:
+        return False, "Google Sheets недоступен"
+    
+    try:
+        # Проверяем возможность сборки
+        can_generate, error_msg = _can_generate_crossword_sync(words)
+        if not can_generate:
+            return False, error_msg
+        
+        client = get_google_sheets_client()
+        if not client:
+            return False, "Не удалось получить клиент Google Sheets"
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Кроссвод")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Кроссвод", rows=100, cols=10)
+        
+        # Находим следующий свободный столбец для кроссворда
+        all_values = sheet.get_all_values()
+        max_col = 0
+        if all_values:
+            max_col = max(len(row) for row in all_values) if all_values else 0
+        
+        # Следующий кроссворд будет в столбцах max_col и max_col+1
+        word_col = max_col
+        desc_col = max_col + 1
+        
+        # Заполняем данные
+        for i, word_data in enumerate(words):
+            row_num = i + 1  # Начинаем с первой строки (после заголовка, если есть)
+            
+            # Убеждаемся, что строка существует
+            while len(all_values) <= row_num:
+                all_values.append([''] * (desc_col + 1))
+            
+            # Расширяем строку если нужно
+            while len(all_values[row_num]) <= word_col:
+                all_values[row_num].extend([''] * (word_col - len(all_values[row_num]) + 1))
+            while len(all_values[row_num]) <= desc_col:
+                all_values[row_num].extend([''] * (desc_col - len(all_values[row_num]) + 1))
+            
+            all_values[row_num][word_col] = word_data['word'].upper()
+            all_values[row_num][desc_col] = word_data['description']
+        
+        # Обновляем лист
+        sheet.update('A1', all_values)
+        
+        crossword_index = word_col // 2
+        logger.info(f"Добавлен новый кроссворд (индекс {crossword_index}) с {len(words)} словами")
+        return True, f"Кроссворд успешно добавлен! Индекс: {crossword_index}, слов: {len(words)}"
+    except Exception as e:
+        logger.error(f"Ошибка добавления кроссворда: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False, f"Ошибка: {str(e)}"
+
+
+async def switch_wordle_word_for_all() -> bool:
+    """Асинхронная обёртка для переключения слова Wordle для всех"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _switch_wordle_word_for_all_sync)
+
+
+async def add_wordle_word(word: str) -> bool:
+    """Асинхронная обёртка для добавления слова в Wordle"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _add_wordle_word_sync, word)
+
+
+async def can_generate_crossword(words: List[Dict[str, str]]) -> tuple[bool, str]:
+    """Асинхронная обёртка для проверки возможности сборки кроссворда"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _can_generate_crossword_sync, words)
+
+
+async def add_crossword(words: List[Dict[str, str]]) -> tuple[bool, str]:
+    """Асинхронная обёртка для добавления кроссворда"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _add_crossword_sync, words)
+
 def _update_guest_user_id_sync(row: int, user_id: int) -> bool:
     """Синхронная функция для обновления user_id"""
     try:

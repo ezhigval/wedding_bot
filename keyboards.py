@@ -194,9 +194,40 @@ def get_admin_keyboard():
         [InlineKeyboardButton(text="📶 Проверка связи", callback_data="admin_ping")],
         [InlineKeyboardButton(text="🔒 Закрепить рассадку", callback_data="admin_lock_seating")],
         [InlineKeyboardButton(text="💬 Управление группой", callback_data="admin_group")],
+        [InlineKeyboardButton(text="🎮 Управление играми", callback_data="admin_games")],
         [InlineKeyboardButton(text="🤖 Статус бота", callback_data="admin_bot_status")],
         [InlineKeyboardButton(text="🔄 Начать с нуля", callback_data="admin_reset_me")],
         [InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="admin_back")]
+    ])
+    return keyboard
+
+
+def get_admin_games_keyboard():
+    """Клавиатура для управления играми"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔤 Wordle", callback_data="admin_wordle")],
+        [InlineKeyboardButton(text="📝 Кроссворд", callback_data="admin_crossword")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back")]
+    ])
+    return keyboard
+
+
+def get_admin_wordle_keyboard():
+    """Клавиатура для управления Wordle"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Переключить слово для всех", callback_data="admin_wordle_switch")],
+        [InlineKeyboardButton(text="➕ Добавить слово", callback_data="admin_wordle_add")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_games")]
+    ])
+    return keyboard
+
+
+def get_admin_crossword_keyboard():
+    """Клавиатура для управления кроссвордом"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить кроссворд", callback_data="admin_crossword_refresh")],
+        [InlineKeyboardButton(text="➕ Добавить кроссворд", callback_data="admin_crossword_add")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_games")]
     ])
     return keyboard
 

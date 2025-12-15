@@ -14,6 +14,9 @@ from utils import format_wedding_date
 from keyboards import (
     get_invitation_keyboard,
     get_admin_keyboard,
+    get_admin_games_keyboard,
+    get_admin_wordle_keyboard,
+    get_admin_crossword_keyboard,
     get_group_management_keyboard,
     get_guests_selection_keyboard,
     get_invitation_dialog_keyboard,
@@ -87,6 +90,11 @@ class BroadcastStates(StatesGroup):
     waiting_custom_button_text = State()
     waiting_custom_button_url = State()
     waiting_confirm = State()
+
+# Состояния для управления играми
+class GamesAdminStates(StatesGroup):
+    waiting_wordle_word = State()
+    waiting_crossword_words = State()
 
 
 # Состояния для навигации по реплай-админ-меню
@@ -2836,6 +2844,287 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
     )
     await callback.answer()
+
+# ========== ОБРАБОТЧИКИ ДЛЯ УПРАВЛЕНИЯ ИГРАМИ ==========
+
+@dp.callback_query(F.data == "admin_games")
+async def admin_games(callback: CallbackQuery, state: FSMContext):
+    """Меню управления играми"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    await state.clear()
+    
+    await callback.message.answer(
+        "🎮 <b>Управление играми</b>\n\n"
+        "Выберите игру для управления:",
+        reply_markup=get_admin_games_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "admin_wordle")
+async def admin_wordle(callback: CallbackQuery, state: FSMContext):
+    """Меню управления Wordle"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    await state.clear()
+    
+    await callback.message.answer(
+        "🔤 <b>Управление Wordle</b>\n\n"
+        "Выберите действие:",
+        reply_markup=get_admin_wordle_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "admin_wordle_switch")
+async def admin_wordle_switch(callback: CallbackQuery, state: FSMContext):
+    """Переключить слово Wordle для всех пользователей"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    await callback.message.answer("⏳ Переключаю слово для всех пользователей...")
+    
+    success = await switch_wordle_word_for_all()
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_wordle")]
+    ])
+    
+    if success:
+        await callback.message.answer(
+            "✅ <b>Слово переключено!</b>\n\n"
+            "Все пользователи получат новое слово при следующем открытии Wordle.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.answer(
+            "❌ <b>Ошибка</b>\n\n"
+            "Не удалось переключить слово. Проверьте логи.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+@dp.callback_query(F.data == "admin_wordle_add")
+async def admin_wordle_add(callback: CallbackQuery, state: FSMContext):
+    """Добавить новое слово в Wordle"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    await state.set_state(GamesAdminStates.waiting_wordle_word)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_wordle")]
+    ])
+    
+    await callback.message.answer(
+        "➕ <b>Добавить слово в Wordle</b>\n\n"
+        "Отправьте слово (существительное в именительном падеже единственного числа):",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@dp.message(GamesAdminStates.waiting_wordle_word)
+async def process_wordle_word(message: Message, state: FSMContext):
+    """Обработка добавления слова в Wordle"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Нет доступа")
+        return
+    
+    word = message.text.strip().upper()
+    
+    if not word or len(word) < 2:
+        await message.answer("❌ Слово слишком короткое. Попробуйте еще раз:")
+        return
+    
+    # Проверяем слово через API
+    from api import validate_word
+    word_valid, validation_error = await validate_word(word)
+    
+    if not word_valid:
+        await message.answer(
+            f"❌ <b>Слово не прошло проверку:</b> {validation_error}\n\n"
+            "Попробуйте еще раз:",
+            parse_mode="HTML"
+        )
+        return
+    
+    await message.answer("⏳ Добавляю слово...")
+    
+    success = await add_wordle_word(word)
+    
+    await state.clear()
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_wordle")]
+    ])
+    
+    if success:
+        await message.answer(
+            f"✅ <b>Слово добавлено!</b>\n\n"
+            f"Слово <b>{word}</b> успешно добавлено в список Wordle.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ <b>Ошибка</b>\n\n"
+            f"Не удалось добавить слово. Возможно, оно уже есть в списке.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+@dp.callback_query(F.data == "admin_crossword")
+async def admin_crossword(callback: CallbackQuery, state: FSMContext):
+    """Меню управления кроссвордом"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    await state.clear()
+    
+    await callback.message.answer(
+        "📝 <b>Управление кроссвордом</b>\n\n"
+        "Выберите действие:",
+        reply_markup=get_admin_crossword_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "admin_crossword_refresh")
+async def admin_crossword_refresh(callback: CallbackQuery, state: FSMContext):
+    """Обновить кроссворд (пересобрать из текущих слов)"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_crossword")]
+    ])
+    
+    await callback.message.answer(
+        "ℹ️ <b>Обновление кроссворда</b>\n\n"
+        "Кроссворд автоматически пересобирается при каждом открытии игры из слов в таблице.\n\n"
+        "Если вы изменили слова в таблице 'Кроссвод', кроссворд обновится автоматически при следующем открытии.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(F.data == "admin_crossword_add")
+async def admin_crossword_add(callback: CallbackQuery, state: FSMContext):
+    """Добавить новый кроссворд"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.answer()
+    await state.set_state(GamesAdminStates.waiting_crossword_words)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_crossword")]
+    ])
+    
+    await callback.message.answer(
+        "➕ <b>Добавить новый кроссворд</b>\n\n"
+        "Отправьте слова через запятую в формате:\n"
+        "<code>СЛОВО1:описание1, СЛОВО2:описание2, СЛОВО3:описание3</code>\n\n"
+        "Пример:\n"
+        "<code>СВАДЬБА:Главное событие дня, ТАНЕЦ:Развлечение, БУКЕТ:Цветы</code>\n\n"
+        "⚠️ Система проверит, можно ли собрать кроссворд из этих слов.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@dp.message(GamesAdminStates.waiting_crossword_words)
+async def process_crossword_words(message: Message, state: FSMContext):
+    """Обработка добавления кроссворда"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Нет доступа")
+        return
+    
+    text = message.text.strip()
+    
+    # Парсим слова в формате "СЛОВО:описание, СЛОВО2:описание2"
+    words_data = []
+    try:
+        parts = [p.strip() for p in text.split(',')]
+        for part in parts:
+            if ':' in part:
+                word_part, desc_part = part.split(':', 1)
+                word = word_part.strip().upper()
+                description = desc_part.strip()
+                if word and description:
+                    words_data.append({'word': word, 'description': description})
+        
+        if not words_data:
+            await message.answer(
+                "❌ <b>Неверный формат</b>\n\n"
+                "Используйте формат: <code>СЛОВО:описание, СЛОВО2:описание2</code>\n\n"
+                "Попробуйте еще раз:",
+                parse_mode="HTML"
+            )
+            return
+        
+        await message.answer("⏳ Проверяю возможность сборки кроссворда...")
+        
+        # Проверяем возможность сборки
+        can_generate, error_msg = await can_generate_crossword(words_data)
+        
+        if not can_generate:
+            await message.answer(
+                f"❌ <b>Невозможно собрать кроссворд</b>\n\n"
+                f"{error_msg}\n\n"
+                "Попробуйте добавить слова с общими буквами.",
+                parse_mode="HTML"
+            )
+            return
+        
+        await message.answer("⏳ Добавляю кроссворд...")
+        
+        # Добавляем кроссворд
+        success, result_msg = await add_crossword(words_data)
+        
+        await state.clear()
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_crossword")]
+        ])
+        
+        if success:
+            await message.answer(
+                f"✅ <b>Кроссворд добавлен!</b>\n\n"
+                f"{result_msg}\n\n"
+                f"Добавлено слов: {len(words_data)}",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                f"❌ <b>Ошибка</b>\n\n"
+                f"{result_msg}",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка обработки кроссворда: {e}")
+        await message.answer(
+            "❌ <b>Ошибка</b>\n\n"
+            f"Произошла ошибка: {str(e)}\n\n"
+            "Попробуйте еще раз:",
+            parse_mode="HTML"
+        )
 
 @dp.callback_query(F.data == "admin_send_invite")
 async def admin_send_invite(callback: CallbackQuery, state: FSMContext):
