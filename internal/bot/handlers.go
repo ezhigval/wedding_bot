@@ -180,15 +180,6 @@ func handlePhoto(c telebot.Context) error {
 
 	userID := c.Sender().ID
 
-	// Проверяем, есть ли активная рассылка для админа
-	if isAdminUser(int(userID)) {
-		state := GetBroadcastState(userID)
-		if state != nil && state.Text != "" && state.PhotoID == "" {
-			// Это фото для рассылки
-			return handleBroadcastPhoto(c, photo.FileID)
-		}
-	}
-
 	// Проверяем, включен ли фоторежим
 	if !IsPhotoModeEnabled(userID) {
 		// Проверяем, зарегистрирован ли пользователь
