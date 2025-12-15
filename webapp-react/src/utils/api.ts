@@ -140,7 +140,7 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
     
     // Получаем данные пользователя из Telegram WebApp
     const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
+    const initData = tg?.initData || ''
     
     // Пытаемся получить userId из Telegram WebApp
     let userId: number | null = null
@@ -148,8 +148,18 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
     let lastName = ''
     
     if (tg) {
-      // Способ 1: Из initData (если доступен)
-      if (initData) {
+      // Способ 1: Из initDataUnsafe (самый надежный способ)
+      if (tg.initDataUnsafe?.user?.id) {
+        userId = tg.initDataUnsafe.user.id
+        firstName = tg.initDataUnsafe.user.first_name || ''
+        lastName = tg.initDataUnsafe.user.last_name || ''
+        console.log('[Telegram WebApp] Got user_id from initDataUnsafe:', userId)
+        // Сохраняем в localStorage
+        localStorage.setItem('telegram_user_id', userId.toString())
+      }
+      
+      // Способ 2: Из initData через API (если initDataUnsafe недоступен)
+      if (!userId && initData) {
         try {
           const response = await fetch(`${config.apiUrl}/parse-init-data`, {
             method: 'POST',
@@ -165,45 +175,41 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
               userId = parsed.userId
               firstName = parsed.firstName || ''
               lastName = parsed.lastName || ''
+              console.log('[Telegram WebApp] Got user_id from parse-init-data:', userId)
               // Сохраняем в localStorage
-              if (userId !== null) {
-                localStorage.setItem('telegram_user_id', userId.toString())
-              }
+              localStorage.setItem('telegram_user_id', userId.toString())
             }
+          } else {
+            const errorText = await response.text()
+            console.error('[Telegram WebApp] Error parsing initData:', response.status, errorText)
           }
         } catch (error) {
-          console.error('Error parsing initData:', error)
+          console.error('[Telegram WebApp] Error parsing initData:', error)
         }
       }
       
-      // Способ 2: Из localStorage (если был сохранен ранее)
+      // Способ 3: Из localStorage (если был сохранен ранее)
       if (!userId) {
         const savedUserId = localStorage.getItem('telegram_user_id')
         if (savedUserId) {
-          userId = parseInt(savedUserId)
+          userId = parseInt(savedUserId, 10)
+          if (!isNaN(userId)) {
+            console.log('[Telegram WebApp] Got user_id from localStorage:', userId)
+          } else {
+            userId = null
+          }
         }
       }
-      
-      // Способ 3: Из Telegram WebApp (если доступен напрямую)
-      if (!userId && (tg as any).initDataUnsafe?.user) {
-        userId = (tg as any).initDataUnsafe.user.id
-        firstName = (tg as any).initDataUnsafe.user.first_name || ''
-        lastName = (tg as any).initDataUnsafe.user.last_name || ''
-        // Сохраняем в localStorage
-        if (userId) {
-          localStorage.setItem('telegram_user_id', userId.toString())
-        }
-      }
-      
-      // Способ 4: Прямо из window.Telegram.WebApp (если доступен)
-      if (!userId && (tg as any).initDataUnsafe?.user?.id) {
-        userId = (tg as any).initDataUnsafe.user.id
-        firstName = (tg as any).initDataUnsafe.user.first_name || ''
-        lastName = (tg as any).initDataUnsafe.user.last_name || ''
-        if (userId) {
-          localStorage.setItem('telegram_user_id', userId.toString())
-        }
-      }
+    }
+    
+    // Логируем результат
+    if (!userId) {
+      console.warn('[Telegram WebApp] Could not get user_id. Available:', {
+        hasTg: !!tg,
+        hasInitData: !!initData,
+        hasInitDataUnsafe: !!tg?.initDataUnsafe,
+        hasInitDataUnsafeUser: !!tg?.initDataUnsafe?.user,
+      })
     }
     
     // Если нет userId, но есть имя/фамилия - пробуем поиск только по имени
