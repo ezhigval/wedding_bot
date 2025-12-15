@@ -86,38 +86,11 @@ func registerHandlers(bot *telebot.Bot) {
 
 	// Админ команды
 	bot.Handle("/admin", handleAdmin)
+
+	// Обработчики событий (должны быть после команд)
 	bot.Handle(telebot.OnText, handleText)
 	bot.Handle(telebot.OnPhoto, handlePhoto)
 	bot.Handle(telebot.OnCallback, handleCallback)
-}
-
-// handleStart обрабатывает команду /start
-func handleStart(c telebot.Context) error {
-	user := c.Sender()
-	
-	message := fmt.Sprintf(
-		"Привет, %s! 👋\n\n"+
-			"Добро пожаловать на свадьбу %s и %s! 💒\n\n"+
-			"Используй кнопку ниже, чтобы открыть Mini App и зарегистрироваться.",
-		user.FirstName,
-		config.GroomName,
-		config.BrideName,
-	)
-
-	keyboard := &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "Открыть Mini App",
-					WebApp: &telebot.WebApp{
-						URL: config.WebappURL,
-					},
-				},
-			},
-		},
-	}
-
-	return c.Send(message, keyboard)
 }
 
 // handleHelp обрабатывает команду /help
@@ -159,78 +132,11 @@ func handleMenu(c telebot.Context) error {
 func handleAdmin(c telebot.Context) error {
 	userID := c.Sender().ID
 
-	// Проверяем, является ли пользователь админом
-	ctx := context.Background()
-	admins, err := google_sheets.GetAdminsList(ctx)
-	if err != nil {
-		log.Printf("Error getting admins: %v", err)
-		return c.Send("Ошибка проверки прав доступа")
+	if !isAdminUser(int(userID)) {
+		return c.Send("❌ У вас нет прав администратора")
 	}
 
-	isAdmin := false
-	for _, admin := range admins {
-		if admin.UserID != nil && *admin.UserID == int(userID) {
-			isAdmin = true
-			break
-		}
-	}
-
-	if !isAdmin {
-		return c.Send("У вас нет прав администратора")
-	}
-
-	// TODO: Показать админ панель
-	message := "Админ панель:\n\n" +
-		"Доступные команды:\n" +
-		"/admin_guests - Управление гостями\n" +
-		"/admin_games - Управление играми"
-
-	return c.Send(message)
-}
-
-// handleText обрабатывает текстовые сообщения
-func handleText(c telebot.Context) error {
-	// TODO: Реализовать обработку текстовых сообщений
-	return nil
-}
-
-// handlePhoto обрабатывает фото
-func handlePhoto(c telebot.Context) error {
-	photo := c.Message().Photo
-	if photo == nil {
-		return nil
-	}
-
-	user := c.Sender()
-	ctx := context.Background()
-
-	// Сохраняем фото в Google Sheets
-	fullName := fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-	username := user.Username
-	if username != "" {
-		username = "@" + username
-	}
-
-	// Получаем file_id
-	fileID := photo.FileID
-
-	// TODO: Получить file_id и сохранить
-	// Пока просто логируем
-	log.Printf("Photo received from user_id=%d, username=%s, file_id=%s", user.ID, username, fileID)
-
-	// Сохраняем в Google Sheets
-	if err := google_sheets.SavePhotoFromUser(ctx, int(user.ID), &username, fullName, fileID); err != nil {
-		log.Printf("Error saving photo: %v", err)
-		return c.Send("Ошибка сохранения фото")
-	}
-
-	return c.Send("Фото сохранено! 📸")
-}
-
-// handleCallback обрабатывает callback queries
-func handleCallback(c telebot.Context) error {
-	// TODO: Реализовать обработку callback queries
-	return c.Answer(&telebot.QueryResponse{})
+	return handleAdminPanel(c)
 }
 
 // NotifyAdmins отправляет уведомление всем админам

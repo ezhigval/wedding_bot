@@ -75,7 +75,8 @@ var (
 
 // LoadConfig загружает конфигурацию из переменных окружения
 func LoadConfig() error {
-	// Загружаем .env файл если он существует
+	// Загружаем .env файл если он существует (сначала .env.local, потом .env)
+	_ = godotenv.Load(".env.local")
 	_ = godotenv.Load()
 
 	// Токен бота

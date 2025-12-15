@@ -280,8 +280,16 @@ func confirmIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Реализовать update_guest_user_id в google_sheets
-	// Пока просто возвращаем успех
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	err := google_sheets.UpdateGuestUserID(ctx, req.Row, req.UserID)
+	if err != nil {
+		log.Printf("Ошибка обновления user_id гостя: %v", err)
+		JSONError(w, http.StatusInternalServerError, "update_failed")
+		return
+	}
+
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 	})
