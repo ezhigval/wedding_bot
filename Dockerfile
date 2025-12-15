@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:alpine AS builder
 
+# Install build dependencies for CGO
+RUN apk add --no-cache gcc musl-dev
+
 WORKDIR /app
 
 # Copy go mod files
