@@ -387,37 +387,43 @@ export async function submitWordleGuess(word: string): Promise<{ success: boolea
   const config = await loadConfig()
   try {
     const tg = window.Telegram?.WebApp
-    let initData = (tg as any)?.initData || ''
+    const initData = (tg as any)?.initData || ''
+    let userId: number | null = null
     
-    // Если initData нет, пытаемся получить user_id из localStorage и использовать parse-init-data
-    if (!initData) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      
-      if (isLocalhost && savedUserId) {
-        // Для локального тестирования используем прямой вызов с userId
-        const response = await fetch(`${config.apiUrl}/wordle/guess`, {
+    // Сначала пытаемся получить userId из initData
+    if (initData) {
+      try {
+        const response = await fetch(`${config.apiUrl}/parse-init-data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word, userId: parseInt(savedUserId) }),
+          body: JSON.stringify({ initData }),
         })
-        
         if (response.ok) {
-          const data = await response.json()
-          return data
-        } else {
-          const error = await response.json()
-          return { success: false, message: error.error || 'Ошибка' }
+          const parsed = await response.json()
+          userId = parsed.userId
         }
-      } else {
-        return { success: false, message: 'Не удалось получить данные пользователя' }
+      } catch (e) {
+        console.error('Error parsing initData:', e)
       }
     }
     
+    // Если не получилось, пытаемся использовать userId из localStorage
+    if (!userId) {
+      const savedUserId = localStorage.getItem('telegram_user_id')
+      if (savedUserId) {
+        userId = parseInt(savedUserId)
+      }
+    }
+    
+    if (!userId) {
+      return { success: false, message: 'Не удалось получить данные пользователя' }
+    }
+    
+    // Отправляем запрос с userId
     const response = await fetch(`${config.apiUrl}/wordle/guess`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word, initData }),
+      body: JSON.stringify({ word, userId }),
     })
     
     if (response.ok) {
