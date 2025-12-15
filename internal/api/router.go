@@ -115,8 +115,8 @@ func corsMiddleware(next http.Handler) http.Handler {
 func recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("🚨 Паника в API handler %s %s: %v", r.Method, r.URL.Path, r)
+			if rec := recover(); rec != nil {
+				log.Printf("🚨 Паника в API handler %s %s: %v", r.Method, r.URL.Path, rec)
 				JSONError(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
 			}
 		}()
