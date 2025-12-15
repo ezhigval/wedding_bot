@@ -301,7 +301,7 @@ type InvitationInfoForKeyboard struct {
 
 // GetGuestsSelectionKeyboard возвращает клавиатуру с кнопками для выбора гостя из списка приглашений
 func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebot.ReplyMarkup {
-	var rows []telebot.Row
+	var keyboard [][]telebot.InlineButton
 	for i := 0; i < len(invitations); i += 2 {
 		var row []telebot.InlineButton
 		// Первая кнопка в ряду
@@ -327,18 +327,18 @@ func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebo
 				Data: fmt.Sprintf("admin:invite_guest:%d", i+1),
 			})
 		}
-		rows = append(rows, telebot.Row(row))
+		keyboard = append(keyboard, row)
 	}
 
 	// Кнопка возврата
-	rows = append(rows, telebot.Row{
-		telebot.InlineButton{
+	keyboard = append(keyboard, []telebot.InlineButton{
+		{
 			Text: "⬅️ Вернуться",
 			Data: "admin:back",
 		},
 	})
 
-	return &telebot.ReplyMarkup{InlineKeyboard: rows}
+	return &telebot.ReplyMarkup{InlineKeyboard: keyboard}
 }
 
 // GetGuestsSwapKeyboard создает клавиатуру с кнопками для выбора гостя для обмена имени/фамилии
