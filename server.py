@@ -30,6 +30,7 @@ from bot import dp, init_bot, notify_admins
 from api import init_api, set_notify_function
 from config import WEBAPP_PATH, WEBAPP_PHOTO_PATH
 from game_stats_cache import init_game_stats_cache
+from daily_reset import schedule_daily_reset
 
 logger_import.info("✅ Модули bot, api и config импортированы успешно")
 
@@ -288,6 +289,10 @@ async def main():
         # Запуск веб-сервера
         logger.info("🌐 Запуск веб-сервера...")
         runner = await start_web_server()
+        
+        # Запускаем задачу ежедневного сброса в фоне
+        asyncio.create_task(schedule_daily_reset())
+        logger.info("✅ Задача ежедневного сброса запущена")
         
         # Запуск бота только если есть переменная PORT (значит на сервере)
         # Это предотвращает конфликт с локальным запуском

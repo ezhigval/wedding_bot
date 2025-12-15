@@ -40,8 +40,10 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [lastWordDate, setLastWordDate] = useState<string>('')
+  const [timeUntilNextWord, setTimeUntilNextWord] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const saveStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Русская раскладка клавиатуры ЙЦУКЕН (как в кроссворде)
   const russianLetters = [
@@ -156,6 +158,9 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           if (progress.map(w => w.toUpperCase()).includes(word)) {
             setAlreadyGuessed(true)
           }
+          
+          // Запускаем таймер обратного отсчета
+          startCountdownTimer(state.last_word_date)
         } else {
           // Нет сохраненного состояния - загружаем новое слово
           const word = await getWordleWord(currentUserId)
@@ -180,6 +185,9 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           // Получаем дату для нового слова
           const today = new Date().toISOString().split('T')[0]
           setLastWordDate(today)
+          
+          // Запускаем таймер обратного отсчета
+          startCountdownTimer(today)
           
           // Сохраняем начальное состояние
           setTimeout(() => {
@@ -280,6 +288,52 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     }
   }, [guesses, currentGuess, userId, targetWord, loading])
 
+  // Функция для расчета времени до следующего слова
+  const calculateTimeUntilNext = (lastDate: string) => {
+    const lastDateObj = new Date(lastDate + 'T00:00:00')
+    const nextDateObj = new Date(lastDateObj)
+    nextDateObj.setDate(nextDateObj.getDate() + 1)
+    
+    const now = new Date()
+    const diff = nextDateObj.getTime() - now.getTime()
+    
+    if (diff <= 0) {
+      return { hours: 0, minutes: 0, seconds: 0 }
+    }
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+    
+    return { hours, minutes, seconds }
+  }
+
+  // Запуск таймера обратного отсчета
+  const startCountdownTimer = (lastDate: string) => {
+    // Очищаем предыдущий таймер
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+    }
+    
+    // Обновляем сразу
+    setTimeUntilNextWord(calculateTimeUntilNext(lastDate))
+    
+    // Обновляем каждую секунду
+    timerIntervalRef.current = setInterval(() => {
+      const time = calculateTimeUntilNext(lastDate)
+      setTimeUntilNextWord(time)
+      
+      // Если время истекло, перезагружаем игру
+      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current)
+        }
+        // Перезагружаем игру для получения нового слова
+        window.location.reload()
+      }
+    }, 1000)
+  }
+
   // Сохраняем состояние при выходе из компонента
   useEffect(() => {
     return () => {
@@ -297,6 +351,9 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       }
       if (saveStateTimeoutRef.current) {
         clearTimeout(saveStateTimeoutRef.current)
+      }
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
       }
     }
   }, [userId, targetWord, lastWordDate, guesses, currentGuess])
@@ -507,8 +564,20 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
         
         {/* Сообщение о том, что слово уже отгадано */}
         {alreadyGuessed && (
-          <div className="mb-4 p-3 bg-[#FFE9AD] text-[#5A7C52] rounded-lg text-center font-semibold">
-            Это слово уже отгадано! Ждите новое слово в таблице.
+          <div className="mb-4 p-3 bg-[#FFE9AD] text-[#5A7C52] rounded-lg text-center">
+            <div className="font-semibold mb-2">Это слово уже отгадано!</div>
+            {timeUntilNextWord && (
+              <div className="text-sm">
+                Следующее слово через: {timeUntilNextWord.hours}ч {timeUntilNextWord.minutes}м {timeUntilNextWord.seconds}с
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Таймер для неотгаданного слова */}
+        {!alreadyGuessed && timeUntilNextWord && (
+          <div className="mb-4 p-3 bg-[#FDFBF5] text-[#5A7C52] rounded-lg text-center text-sm border border-[#5A7C52]/20">
+            Следующее слово через: {timeUntilNextWord.hours}ч {timeUntilNextWord.minutes}м {timeUntilNextWord.seconds}с
           </div>
         )}
 

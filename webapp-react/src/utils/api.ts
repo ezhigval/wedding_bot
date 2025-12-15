@@ -323,6 +323,8 @@ export interface CrosswordData {
   guessed_words: string[]
   cell_letters?: { [key: string]: string }
   crossword_index?: number
+  start_date?: string
+  wrong_attempts?: string[]
 }
 
 export async function getCrosswordData(userId: number): Promise<CrosswordData> {
@@ -505,7 +507,9 @@ export async function saveCrosswordProgress(
   userId: number,
   guessedWords: string[],
   crosswordIndex: number = 0,
-  cellLetters?: { [key: string]: string }
+  cellLetters?: { [key: string]: string },
+  wrongAttempts?: string[],
+  startDate?: string
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
@@ -519,6 +523,8 @@ export async function saveCrosswordProgress(
         guessedWords,
         crossword_index: crosswordIndex,
         cell_letters: cellLetters,
+        wrong_attempts: wrongAttempts,
+        start_date: startDate,
       }),
     })
 

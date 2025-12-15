@@ -2878,7 +2878,7 @@ def _ensure_required_sheets_sync():
                 ]
             },
             "Кроссвод_Прогресс": {
-                "headers": ["user_id", "current_crossword_index", "guessed_words_json"],
+                "headers": ["user_id", "current_crossword_index", "guessed_words_json", "crossword_start_date"],
                 "default_data": []
             },
             "Wordle": {
@@ -3045,7 +3045,7 @@ def _get_crossword_words_sync(crossword_index: int = 0) -> List[Dict[str, str]]:
         return []
 
 
-def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List[str]:
+def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> tuple[List[str], Optional[Dict[str, str]], Optional[str], Optional[List[str]]]:
     """
     Получить прогресс пользователя в кроссводе (список отгаданных слов для конкретного кроссворда).
     
@@ -3053,6 +3053,9 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
       A: user_id
       B: current_crossword_index
       C: guessed_words_json (JSON объект: {"0": ["слово1", "слово2"], "1": ["слово3"], ...})
+      D: crossword_start_date (дата начала кроссворда в формате YYYY-MM-DD)
+    
+    Возвращает: (guessed_words, cell_letters, start_date, wrong_attempts)
     
     Args:
         user_id: ID пользователя
@@ -3076,14 +3079,16 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
             sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=3)
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=4)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json"])
-            return ([], None)
+            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json", "crossword_start_date"])
+            return ([], None, None, [])
         
         all_values = sheet.get_all_values()
         for row in all_values[1:]:  # Пропускаем заголовок
             if len(row) > 0 and str(row[0]) == str(user_id):
+                start_date = row[3].strip() if len(row) > 3 and row[3] else None
+                
                 if len(row) > 2 and row[2]:
                     # Парсим JSON с отгаданными словами по кроссвордам
                     try:
@@ -3091,6 +3096,7 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
                         crossword_key = str(crossword_index)
                         guessed_words = []
                         cell_letters = None
+                        wrong_attempts = []
                         
                         if crossword_key in guessed_words_json:
                             guessed_words = [w.strip().upper() for w in guessed_words_json[crossword_key] if w.strip()]
@@ -3100,12 +3106,17 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
                         if cell_letters_key in guessed_words_json:
                             cell_letters = guessed_words_json[cell_letters_key]
                         
-                        return (guessed_words, cell_letters)
+                        # Получаем историю неправильных попыток
+                        wrong_attempts_key = f"{crossword_key}_wrong_attempts"
+                        if wrong_attempts_key in guessed_words_json:
+                            wrong_attempts = guessed_words_json[wrong_attempts_key] if isinstance(guessed_words_json[wrong_attempts_key], list) else []
+                        
+                        return (guessed_words, cell_letters, start_date, wrong_attempts)
                     except:
                         pass
-                return ([], None)
+                return ([], None, start_date, [])
         
-        return ([], None)
+        return ([], None, None, [])
     except Exception as e:
         logger.error(f"Ошибка получения прогресса кроссворда для {user_id}: {e}")
         import traceback
@@ -3113,7 +3124,7 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
         return []
 
 
-def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None) -> bool:
+def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None, wrong_attempts: Optional[List[str]] = None, start_date: Optional[str] = None) -> bool:
     """
     Сохранить прогресс пользователя в кроссводе для конкретного кроссворда.
     
@@ -3121,6 +3132,9 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
         user_id: ID пользователя
         guessed_words: Список отгаданных слов
         crossword_index: Индекс кроссворда (0 = первый, 1 = второй, и т.д.)
+        cell_letters: Словарь с текущими буквами в клетках {row,col: letter}
+        wrong_attempts: Список неправильных попыток
+        start_date: Дата начала кроссворда (YYYY-MM-DD), если None - устанавливается сегодня
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
@@ -3140,14 +3154,15 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
             sheet = spreadsheet.worksheet("Кроссвод_Прогресс")
         except Exception:
             # Создаем лист если его нет
-            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=3)
+            sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=4)
             # Добавляем заголовки
-            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json"])
+            sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json", "crossword_start_date"])
         
         all_values = sheet.get_all_values()
         user_row_gspread = None
         existing_guessed_words_json = {}
         existing_crossword_index = crossword_index
+        existing_start_date = None
         
         for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
             if row and len(row) > 0 and str(row[0]) == str(user_id):
@@ -3163,6 +3178,8 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
                         existing_guessed_words_json = json.loads(row[2])
                     except:
                         existing_guessed_words_json = {}
+                if len(row) > 3 and row[3]:
+                    existing_start_date = row[3].strip()
                 break
         
         # Обновляем прогресс для данного кроссворда
@@ -3174,7 +3191,20 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
             cell_letters_key = f"{crossword_key}_cells"
             existing_guessed_words_json[cell_letters_key] = cell_letters
         
+        # Добавляем историю неправильных попыток, если они переданы
+        if wrong_attempts is not None:
+            wrong_attempts_key = f"{crossword_key}_wrong_attempts"
+            existing_guessed_words_json[wrong_attempts_key] = wrong_attempts
+        
         guessed_words_json_str = json.dumps(existing_guessed_words_json)
+        
+        # Определяем дату начала кроссворда
+        if start_date is None:
+            # Если дата не передана, используем существующую или устанавливаем сегодня
+            if existing_start_date:
+                start_date = existing_start_date
+            else:
+                start_date = datetime.now().strftime('%Y-%m-%d')
         
         if user_row_gspread:
             # Обновляем существующую строку
@@ -3183,9 +3213,10 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
             if crossword_index > existing_index:
                 sheet.update_cell(user_row_gspread, 2, crossword_index)  # current_crossword_index
             sheet.update_cell(user_row_gspread, 3, guessed_words_json_str)  # guessed_words_json
+            sheet.update_cell(user_row_gspread, 4, start_date)  # crossword_start_date
         else:
             # Создаем новую строку
-            sheet.append_row([str(user_id), crossword_index, guessed_words_json_str])
+            sheet.append_row([str(user_id), crossword_index, guessed_words_json_str, start_date])
         
         logger.info(f"Сохранен прогресс кроссвода для user_id={user_id}, кроссворд {crossword_index}: {len(guessed_words)} слов")
         return True
@@ -3208,16 +3239,19 @@ async def get_crossword_words(crossword_index: int = 0) -> List[Dict[str, str]]:
     return await loop.run_in_executor(None, _get_crossword_words_sync, crossword_index)
 
 
-async def get_crossword_progress(user_id: int, crossword_index: int = 0) -> tuple[List[str], Optional[Dict[str, str]]]:
-    """Асинхронная обёртка для получения прогресса кроссвода"""
+async def get_crossword_progress(user_id: int, crossword_index: int = 0) -> tuple[List[str], Optional[Dict[str, str]], Optional[str], Optional[List[str]]]:
+    """Асинхронная обёртка для получения прогресса кроссвода
+    
+    Возвращает: (guessed_words, cell_letters, start_date, wrong_attempts)
+    """
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_crossword_progress_sync, user_id, crossword_index)
 
 
-async def save_crossword_progress(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None) -> bool:
+async def save_crossword_progress(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None, wrong_attempts: Optional[List[str]] = None, start_date: Optional[str] = None) -> bool:
     """Асинхронная обёртка для сохранения прогресса кроссвода"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words, crossword_index, cell_letters)
+    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words, crossword_index, cell_letters, wrong_attempts, start_date)
 
 
 def _get_crossword_state_sync(user_id: int) -> Dict:

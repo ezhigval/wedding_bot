@@ -26,12 +26,16 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [selectedWord, setSelectedWord] = useState<CrosswordWord | null>(null)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
   const [guessedWords, setGuessedWords] = useState<Set<string>>(new Set())
+  const [wrongAttempts, setWrongAttempts] = useState<Set<string>>(new Set())
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [crosswordIndex, setCrosswordIndex] = useState<number>(0)
+  const [crosswordStartDate, setCrosswordStartDate] = useState<string>('')
+  const [timeUntilNextCrossword, setTimeUntilNextCrossword] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [currentInput, setCurrentInput] = useState('')
   const [showKeyboard, setShowKeyboard] = useState(false)
@@ -114,8 +118,27 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         // Генерируем кроссворд
         const generated = generateCrossword(data.words)
         const guessedSet = new Set(data.guessed_words.map((w: string) => w.toUpperCase()))
+        const wrongSet = new Set((data.wrong_attempts || []).map((w: string) => w.toUpperCase()))
         setCrossword(generated)
         setGuessedWords(guessedSet)
+        setWrongAttempts(wrongSet)
+        
+        // Устанавливаем дату начала кроссворда
+        if (data.start_date) {
+          setCrosswordStartDate(data.start_date)
+        } else {
+          // Если даты нет, устанавливаем сегодня
+          const today = new Date().toISOString().split('T')[0]
+          setCrosswordStartDate(today)
+        }
+        
+        // Запускаем таймер обратного отсчета
+        if (data.start_date) {
+          startCountdownTimer(data.start_date)
+        } else {
+          const today = new Date().toISOString().split('T')[0]
+          startCountdownTimer(today)
+        }
 
         // Инициализируем клетки
         const newCells: Cell[][] = Array(generated.size)
@@ -406,19 +429,68 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       })
     })
     
-    // Сохраняем прогресс с текущими буквами
+    // Сохраняем прогресс с текущими буквами и историей попыток
     try {
-      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters)
+      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongAttempts), crosswordStartDate)
     } catch (error) {
       console.error('Error saving crossword cell state:', error)
     }
   }
   
+  // Функция для расчета времени до следующего кроссворда
+  const calculateTimeUntilNext = (startDate: string) => {
+    const startDateObj = new Date(startDate + 'T00:00:00')
+    const nextDateObj = new Date(startDateObj)
+    nextDateObj.setDate(nextDateObj.getDate() + 1)
+    
+    const now = new Date()
+    const diff = nextDateObj.getTime() - now.getTime()
+    
+    if (diff <= 0) {
+      return { hours: 0, minutes: 0, seconds: 0 }
+    }
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+    
+    return { hours, minutes, seconds }
+  }
+
+  // Запуск таймера обратного отсчета
+  const startCountdownTimer = (startDate: string) => {
+    // Очищаем предыдущий таймер
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+    }
+    
+    // Обновляем сразу
+    setTimeUntilNextCrossword(calculateTimeUntilNext(startDate))
+    
+    // Обновляем каждую секунду
+    timerIntervalRef.current = setInterval(() => {
+      const time = calculateTimeUntilNext(startDate)
+      setTimeUntilNextCrossword(time)
+      
+      // Если время истекло, перезагружаем игру
+      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current)
+        }
+        // Перезагружаем игру для получения нового кроссворда
+        window.location.reload()
+      }
+    }, 1000)
+  }
+
   // Сохраняем состояние при выходе
   useEffect(() => {
     return () => {
       if (userId && crossword) {
         saveCrosswordCellState().catch(console.error)
+      }
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
       }
     }
   }, [])
@@ -433,6 +505,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       const newGuessedWords = new Set([...guessedWords, word.word.toUpperCase()])
       setGuessedWords(newGuessedWords)
       setScore(newGuessedWords.size)
+      
+      // Удаляем из неправильных попыток, если было там
+      const newWrongAttempts = new Set(wrongAttempts)
+      newWrongAttempts.delete(userInput.toUpperCase())
+      setWrongAttempts(newWrongAttempts)
       
       // Запускаем салют
       setShowConfetti(true)
@@ -464,7 +541,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
             }
           })
         })
-        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters)
+        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters, Array.from(wrongAttempts), crosswordStartDate)
       }
       
       // Обновляем счет в статистике (1 слово = 1 очко, баланс 5:1)
@@ -473,7 +550,10 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       
       hapticFeedback('heavy')
     } else if (!isCorrect) {
-      // Неправильное слово - очищаем ввод
+      // Неправильное слово - сохраняем попытку и очищаем ввод
+      const newWrongAttempts = new Set([...wrongAttempts, userInput.toUpperCase()])
+      setWrongAttempts(newWrongAttempts)
+      
       const newCells = [...cells]
       for (let i = 0; i < word.word.length; i++) {
         const row = word.direction === 'down' ? word.row + i : word.row
@@ -486,6 +566,20 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         }
       }
       setCells(newCells)
+      
+      // Сохраняем состояние с неправильной попыткой
+      if (userId !== null) {
+        const cellLetters: { [key: string]: string } = {}
+        newCells.forEach((row, rowIndex) => {
+          row.forEach((cell, colIndex) => {
+            if (cell.isFilled && !cell.isCorrect && cell.letter) {
+              cellLetters[`${rowIndex},${colIndex}`] = cell.letter
+            }
+          })
+        })
+        await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(newWrongAttempts), crosswordStartDate)
+      }
+      
       hapticFeedback('light')
     }
   }
@@ -594,6 +688,23 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
       <div className="flex-1 overflow-y-auto p-4 pt-20">
         <div className="max-w-4xl mx-auto">
+          {/* Таймер до следующего кроссворда */}
+          {timeUntilNextCrossword && (
+            <div className={`mb-4 p-3 rounded-lg text-center text-sm border ${
+              crossword.words.every(word => guessedWords.has(word.word.toUpperCase()))
+                ? 'bg-[#FFE9AD] text-[#5A7C52] border-[#5A7C52]/20' 
+                : 'bg-[#FDFBF5] text-[#5A7C52] border-[#5A7C52]/20'
+            }`}>
+              {crossword.words.every(word => guessedWords.has(word.word.toUpperCase())) ? (
+                <div>
+                  <div className="font-semibold mb-2">Кроссворд решен!</div>
+                  <div>Следующий кроссворд через: {timeUntilNextCrossword.hours}ч {timeUntilNextCrossword.minutes}м {timeUntilNextCrossword.seconds}с</div>
+                </div>
+              ) : (
+                <div>Следующий кроссворд через: {timeUntilNextCrossword.hours}ч {timeUntilNextCrossword.minutes}м {timeUntilNextCrossword.seconds}с</div>
+              )}
+            </div>
+          )}
           {/* Сетка кроссворда */}
           <div className="mb-6">
             <div
