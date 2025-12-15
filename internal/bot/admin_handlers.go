@@ -227,18 +227,37 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 		return c.Send("❌ Бот не инициализирован")
 	}
 
+	// Парсим GroupID (может быть строкой или числом)
+	var chatID int64
+	if _, err := fmt.Sscanf(config.GroupID, "%d", &chatID); err != nil {
+		// Если не число, пытаемся использовать как username
+		chat, err := bot.ChatByUsername(config.GroupID)
+		if err != nil {
+			log.Printf("Ошибка получения информации о группе: %v", err)
+			return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
+		}
+		chatID = chat.ID
+	} else {
+		// Если это число, используем напрямую
+		chat, err := bot.ChatByID(chatID)
+		if err != nil {
+			log.Printf("Ошибка получения информации о группе: %v", err)
+			return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
+		}
+		chatID = chat.ID
+	}
+
 	// Получаем информацию о чате
-	chat, err := bot.ChatByID(config.GroupID)
+	chat, err := bot.ChatByID(chatID)
 	if err != nil {
 		log.Printf("Ошибка получения информации о группе: %v", err)
 		return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
 	}
 
-	// Получаем количество участников
-	membersCount, err := bot.ChatMemberCount(chat)
-	if err != nil {
-		log.Printf("Ошибка получения количества участников: %v", err)
-		membersCount = 0
+	// Получаем количество участников (используем ChatMemberCount через Raw)
+	membersCount := 0
+	if chat.MembersCount > 0 {
+		membersCount = chat.MembersCount
 	}
 
 	// Получаем список администраторов
