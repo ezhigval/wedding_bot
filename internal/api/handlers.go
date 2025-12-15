@@ -41,7 +41,7 @@ func parseInitData(w http.ResponseWriter, r *http.Request) {
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
 	userIDStr := r.URL.Query().Get("userId")
@@ -192,8 +192,6 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
-
-	ctx := r.Context()
 
 	var age *int
 	if req.Age != nil {
