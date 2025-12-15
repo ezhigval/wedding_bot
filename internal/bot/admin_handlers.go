@@ -99,10 +99,14 @@ func handleAdminBotMenu(c telebot.Context) error {
 	return c.Send(message, keyboard, telebot.ModeHTML)
 }
 
-// handleAdminBack возвращает в предыдущее меню
+// handleAdminBack возвращает в главное меню бота из корневого меню админки
 func handleAdminBack(c telebot.Context) error {
-	message := "🔧 <b>Панель администратора</b>\n\nВыберите раздел:"
-	keyboard := keyboards.GetAdminRootReplyKeyboard()
+	userID := c.Sender().ID
+	isAdmin := isAdminUser(int(userID))
+	photoModeEnabled := isPhotoModeEnabled(userID)
+	
+	message := "Главное меню:"
+	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, photoModeEnabled)
 	return c.Send(message, keyboard, telebot.ModeHTML)
 }
 
