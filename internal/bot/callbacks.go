@@ -571,7 +571,7 @@ func handleGroupListMembers(c telebot.Context) error {
 // handleSwapNameCallback обрабатывает смену имени/фамилии
 func handleSwapNameCallback(c telebot.Context, parts []string) error {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{Text: "❌ Неверный формат запроса"})
+		return c.Answer(&telebot.CallbackResponse{Text: "❌ Неверный формат запроса"})
 	}
 
 	rowStr := parts[0]
@@ -625,7 +625,7 @@ func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Answer(&telebot.QueryResponse{Text: "❌ Ошибка получения списка гостей"})
+		return c.Answer(&telebot.CallbackResponse{Text: "❌ Ошибка получения списка гостей"})
 	}
 
 	keyboard := keyboards.GetGuestsSwapKeyboard(guests, page)

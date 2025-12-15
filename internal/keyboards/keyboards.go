@@ -36,88 +36,36 @@ func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) *telebot.ReplyMar
 		ResizeKeyboard: true,
 	}
 
-	// Временно отключаем Web App для локального тестирования (HTTP не поддерживается Telegram)
-	// Используем обычную кнопку вместо Web App
-	var row1 telebot.Row
+	var webAppButton telebot.Btn
 	if strings.HasPrefix(config.WebappURL, "https://") {
-		// Только для HTTPS используем Web App
-		row1 = markup.Row(
-			telebot.Btn{
-				Text: "📱 Приглашение",
-				WebApp: &telebot.WebApp{
-					URL: config.WebappURL,
-				},
-			},
-			telebot.Btn{Text: photoLabel},
-		)
-	} else {
-		// Для HTTP используем обычную кнопку с URL
-		row1 = markup.Row(
-			telebot.Btn{
-				Text: "📱 Приглашение",
+		webAppButton = telebot.Btn{
+			Text: "💒 Открыть приглашение",
+			WebApp: &telebot.WebApp{
 				URL: config.WebappURL,
 			},
-			telebot.Btn{Text: photoLabel},
-		)
+		}
+	} else {
+		// Если URL не HTTPS, используем обычную кнопку
+		webAppButton = telebot.Btn{
+			Text: "📱 Приглашение (локально)",
+		}
 	}
 
-	row2 := markup.Row(
-		telebot.Btn{Text: "💬 Общий чат"},
-		telebot.Btn{Text: "📞 Связаться с нами"},
+	row1 := markup.Row(
+		webAppButton,
+		telebot.Btn{Text: photoLabel},
 	)
 
-	rows := []telebot.Row{row1, row2}
-
 	if isAdmin {
-		rows = append(rows, markup.Row(
+		row2 := markup.Row(
 			telebot.Btn{Text: "🛠 Админ-панель"},
-		))
+		)
+		markup.Reply(row1, row2)
+	} else {
+		markup.Reply(row1)
 	}
 
-	markup.Reply(rows...)
 	return markup
-}
-
-// GetContactsInlineKeyboard возвращает кнопки для быстрого перехода в диалог с организаторами
-func GetContactsInlineKeyboard() *telebot.ReplyMarkup {
-	var buttons []telebot.InlineButton
-
-	if config.GroomTelegram != "" {
-		buttons = append(buttons, telebot.InlineButton{
-			Text: fmt.Sprintf("Валентин (@%s)", config.GroomTelegram),
-			URL:  fmt.Sprintf("https://t.me/%s", config.GroomTelegram),
-		})
-	}
-
-	if config.BrideTelegram != "" {
-		buttons = append(buttons, telebot.InlineButton{
-			Text: fmt.Sprintf("Мария (@%s)", config.BrideTelegram),
-			URL:  fmt.Sprintf("https://t.me/%s", config.BrideTelegram),
-		})
-	}
-
-	if len(buttons) == 0 {
-		// Fallback
-		telegram := config.GroomTelegram
-		if telegram == "" {
-			telegram = config.BrideTelegram
-		}
-		if telegram != "" {
-			buttons = append(buttons, telebot.InlineButton{
-				Text: "Организатор",
-				URL:  fmt.Sprintf("https://t.me/%s", telegram),
-			})
-		}
-	}
-
-	keyboard := make([][]telebot.InlineButton, len(buttons))
-	for i, btn := range buttons {
-		keyboard[i] = []telebot.InlineButton{btn}
-	}
-
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: keyboard,
-	}
 }
 
 // GetGroupLinkKeyboard возвращает кнопку для перехода в общий чат
@@ -194,9 +142,6 @@ func GetAdminTableReplyKeyboard() *telebot.ReplyMarkup {
 
 	row1 := markup.Row(
 		telebot.Btn{Text: "Открыть таблицу"},
-	)
-
-	row2 := markup.Row(
 		telebot.Btn{Text: "Проверить связь"},
 	)
 
@@ -208,7 +153,7 @@ func GetAdminTableReplyKeyboard() *telebot.ReplyMarkup {
 		telebot.Btn{Text: "⬅️ Вернуться"},
 	)
 
-	markup.Reply(row1, row2, row3, row4)
+	markup.Reply(row1, row3, row4)
 	return markup
 }
 
@@ -348,43 +293,7 @@ func GetAdminCrosswordKeyboard() *telebot.ReplyMarkup {
 	}
 }
 
-// GetGroupManagementKeyboard возвращает клавиатуру для управления группой
-func GetGroupManagementKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "📢 Отправить сообщение в группу",
-					Data: "group:send_message",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "➕ Добавить участника",
-					Data: "group:add_member",
-				},
-				telebot.InlineButton{
-					Text: "➖ Удалить участника",
-					Data: "group:remove_member",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "👥 Список участников",
-					Data: "group:list_members",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Вернуться",
-					Data: "admin:back",
-				},
-			},
-		},
-	}
-}
-
-// InvitationInfoForKeyboard представляет информацию о приглашении для клавиатуры
+// InvitationInfoForKeyboard структура для передачи информации о приглашении в клавиатуру
 type InvitationInfoForKeyboard struct {
 	Name   string
 	IsSent bool
@@ -392,55 +301,98 @@ type InvitationInfoForKeyboard struct {
 
 // GetGuestsSelectionKeyboard возвращает клавиатуру с кнопками для выбора гостя из списка приглашений
 func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebot.ReplyMarkup {
-	var keyboard [][]telebot.InlineButton
-
-	// Создаем кнопки для каждого гостя (максимум 2 кнопки в ряд)
+	var rows []telebot.Row
 	for i := 0; i < len(invitations); i += 2 {
 		var row []telebot.InlineButton
-
 		// Первая кнопка в ряду
-		if i < len(invitations) {
-			inv := invitations[i]
-			var buttonText string
-			if inv.IsSent {
-				buttonText = fmt.Sprintf("✅ %s", inv.Name)
-			} else {
-				buttonText = fmt.Sprintf("👤 %s", inv.Name)
-			}
-			row = append(row, telebot.InlineButton{
-				Text: buttonText,
-				Data: fmt.Sprintf("invite_guest_%d", i),
-			})
+		inv1 := invitations[i]
+		buttonText1 := fmt.Sprintf("👤 %s", inv1.Name)
+		if inv1.IsSent {
+			buttonText1 = fmt.Sprintf("✅ %s", inv1.Name)
 		}
+		row = append(row, telebot.InlineButton{
+			Text: buttonText1,
+			Data: fmt.Sprintf("admin:invite_guest:%d", i),
+		})
 
 		// Вторая кнопка в ряду (если есть)
 		if i+1 < len(invitations) {
-			inv := invitations[i+1]
-			var buttonText string
-			if inv.IsSent {
-				buttonText = fmt.Sprintf("✅ %s", inv.Name)
-			} else {
-				buttonText = fmt.Sprintf("👤 %s", inv.Name)
+			inv2 := invitations[i+1]
+			buttonText2 := fmt.Sprintf("👤 %s", inv2.Name)
+			if inv2.IsSent {
+				buttonText2 = fmt.Sprintf("✅ %s", inv2.Name)
 			}
 			row = append(row, telebot.InlineButton{
-				Text: buttonText,
-				Data: fmt.Sprintf("invite_guest_%d", i+1),
+				Text: buttonText2,
+				Data: fmt.Sprintf("admin:invite_guest:%d", i+1),
 			})
 		}
-
-		keyboard = append(keyboard, row)
+		rows = append(rows, telebot.Row(row))
 	}
 
 	// Кнопка возврата
-	keyboard = append(keyboard, []telebot.InlineButton{
-		{
+	rows = append(rows, telebot.Row{
+		telebot.InlineButton{
 			Text: "⬅️ Вернуться",
 			Data: "admin:back",
 		},
 	})
 
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: keyboard,
-	}
+	return &telebot.ReplyMarkup{InlineKeyboard: rows}
 }
 
+// GetGuestsSwapKeyboard создает клавиатуру с кнопками для выбора гостя для обмена имени/фамилии
+func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.ReplyMarkup {
+	const itemsPerPage = 10
+	start := page * itemsPerPage
+	end := start + itemsPerPage
+	if end > len(guests) {
+		end = len(guests)
+	}
+
+	var rows []telebot.Row
+	for i := start; i < end; i++ {
+		guest := guests[i]
+		rowNum, _ := guest["row"].(int)
+		fullName, _ := guest["full_name"].(string)
+		if fullName == "" {
+			fullName = "Без имени"
+		}
+
+		buttonText := fmt.Sprintf("👤 %s", fullName)
+		rows = append(rows, telebot.Row{
+			telebot.InlineButton{
+				Text: buttonText,
+				Data: fmt.Sprintf("swapname:%d", rowNum),
+			},
+		})
+	}
+
+	// Навигация по страницам
+	var navRow []telebot.InlineButton
+	if page > 0 {
+		navRow = append(navRow, telebot.InlineButton{
+			Text: "⬅️ Назад",
+			Data: fmt.Sprintf("fixnames_page:%d", page-1),
+		})
+	}
+	if end < len(guests) {
+		navRow = append(navRow, telebot.InlineButton{
+			Text: "Вперед ➡️",
+			Data: fmt.Sprintf("fixnames_page:%d", page+1),
+		})
+	}
+	if len(navRow) > 0 {
+		rows = append(rows, telebot.Row(navRow))
+	}
+
+	// Кнопка возврата
+	rows = append(rows, telebot.Row{
+		telebot.InlineButton{
+			Text: "⬅️ Вернуться",
+			Data: "admin:back",
+		},
+	})
+
+	return &telebot.ReplyMarkup{InlineKeyboard: rows}
+}
