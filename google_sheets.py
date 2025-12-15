@@ -2976,12 +2976,12 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
     """
     if not GSPREAD_AVAILABLE:
         logger.warning("Google Sheets недоступен")
-        return []
+        return ([], None)
     
     try:
         client = get_google_sheets_client()
         if not client:
-            return []
+            return ([], None)
         
         spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
         
@@ -2995,7 +2995,7 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
             sheet = spreadsheet.add_worksheet(title="Кроссвод_Прогресс", rows=100, cols=3)
             # Добавляем заголовки
             sheet.append_row(["user_id", "current_crossword_index", "guessed_words_json"])
-            return []
+            return ([], None)
         
         all_values = sheet.get_all_values()
         for row in all_values[1:]:  # Пропускаем заголовок
@@ -3005,13 +3005,23 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
                     try:
                         guessed_words_json = json.loads(row[2])
                         crossword_key = str(crossword_index)
+                        guessed_words = []
+                        cell_letters = None
+                        
                         if crossword_key in guessed_words_json:
-                            return [w.strip().upper() for w in guessed_words_json[crossword_key] if w.strip()]
+                            guessed_words = [w.strip().upper() for w in guessed_words_json[crossword_key] if w.strip()]
+                        
+                        # Получаем сохраненные буквы в клетках
+                        cell_letters_key = f"{crossword_key}_cells"
+                        if cell_letters_key in guessed_words_json:
+                            cell_letters = guessed_words_json[cell_letters_key]
+                        
+                        return (guessed_words, cell_letters)
                     except:
                         pass
-                return []
+                return ([], None)
         
-        return []
+        return ([], None)
     except Exception as e:
         logger.error(f"Ошибка получения прогресса кроссворда для {user_id}: {e}")
         import traceback
@@ -3019,7 +3029,7 @@ def _get_crossword_progress_sync(user_id: int, crossword_index: int = 0) -> List
         return []
 
 
-def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossword_index: int = 0) -> bool:
+def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None) -> bool:
     """
     Сохранить прогресс пользователя в кроссводе для конкретного кроссворда.
     
@@ -3074,6 +3084,12 @@ def _save_crossword_progress_sync(user_id: int, guessed_words: List[str], crossw
         # Обновляем прогресс для данного кроссворда
         crossword_key = str(crossword_index)
         existing_guessed_words_json[crossword_key] = [w.upper() for w in guessed_words]
+        
+        # Добавляем текущие буквы в клетках, если они переданы
+        if cell_letters is not None:
+            cell_letters_key = f"{crossword_key}_cells"
+            existing_guessed_words_json[cell_letters_key] = cell_letters
+        
         guessed_words_json_str = json.dumps(existing_guessed_words_json)
         
         if user_row_gspread:
@@ -3108,16 +3124,16 @@ async def get_crossword_words(crossword_index: int = 0) -> List[Dict[str, str]]:
     return await loop.run_in_executor(None, _get_crossword_words_sync, crossword_index)
 
 
-async def get_crossword_progress(user_id: int, crossword_index: int = 0) -> List[str]:
+async def get_crossword_progress(user_id: int, crossword_index: int = 0) -> tuple[List[str], Optional[Dict[str, str]]]:
     """Асинхронная обёртка для получения прогресса кроссвода"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_crossword_progress_sync, user_id, crossword_index)
 
 
-async def save_crossword_progress(user_id: int, guessed_words: List[str], crossword_index: int = 0) -> bool:
+async def save_crossword_progress(user_id: int, guessed_words: List[str], crossword_index: int = 0, cell_letters: Optional[Dict[str, str]] = None) -> bool:
     """Асинхронная обёртка для сохранения прогресса кроссвода"""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words, crossword_index)
+    return await loop.run_in_executor(None, _save_crossword_progress_sync, user_id, guessed_words, crossword_index, cell_letters)
 
 
 def _get_crossword_state_sync(user_id: int) -> Dict:

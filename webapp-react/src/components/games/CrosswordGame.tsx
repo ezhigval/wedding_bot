@@ -159,6 +159,21 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           }
         })
 
+        // Восстанавливаем сохраненные буквы в клетках (если есть)
+        if (data.cell_letters && typeof data.cell_letters === 'object') {
+          const cellLetters = data.cell_letters
+          Object.keys(cellLetters).forEach(key => {
+            const [row, col] = key.split(',').map(Number)
+            if (row >= 0 && row < newCells.length && col >= 0 && col < newCells[row].length) {
+              const cell = newCells[row][col]
+              // Восстанавливаем букву только если клетка не отгадана
+              if (!cell.isCorrect && cell.isFilled && cellLetters[key]) {
+                newCells[row][col].letter = cellLetters[key]
+              }
+            }
+          })
+        }
+
         setCells(newCells)
         setScore(data.guessed_words.length)
         
@@ -370,7 +385,43 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
 
     setCells(newCells)
+    
+    // Сохраняем состояние клеток при изменении
+    if (userId !== null) {
+      saveCrosswordCellState()
+    }
   }
+
+  // Функция для сохранения состояния клеток
+  const saveCrosswordCellState = async () => {
+    if (!userId || !crossword) return
+    
+    // Собираем текущие буквы в клетках (только неотгаданные)
+    const cellLetters: { [key: string]: string } = {}
+    cells.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (cell.isFilled && !cell.isCorrect && cell.letter) {
+          cellLetters[`${rowIndex},${colIndex}`] = cell.letter
+        }
+      })
+    })
+    
+    // Сохраняем прогресс с текущими буквами
+    try {
+      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters)
+    } catch (error) {
+      console.error('Error saving crossword cell state:', error)
+    }
+  }
+  
+  // Сохраняем состояние при выходе
+  useEffect(() => {
+    return () => {
+      if (userId && crossword) {
+        saveCrosswordCellState().catch(console.error)
+      }
+    }
+  }, [])
 
   const checkWord = async (word: CrosswordWord, userInput: string) => {
     if (!userId || !crossword) return
@@ -404,7 +455,16 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
       // Сохраняем прогресс
       if (userId !== null) {
-        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex)
+        // Собираем текущие буквы в клетках
+        const cellLetters: { [key: string]: string } = {}
+        newCells.forEach((row, rowIndex) => {
+          row.forEach((cell, colIndex) => {
+            if (cell.isFilled && !cell.isCorrect && cell.letter) {
+              cellLetters[`${rowIndex},${colIndex}`] = cell.letter
+            }
+          })
+        })
+        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters)
       }
       
       // Обновляем счет в статистике (1 слово = 1 очко, баланс 5:1)

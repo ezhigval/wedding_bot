@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { getWordleWord, getWordleProgress, submitWordleGuess } from '../../utils/api'
+import { getWordleWord, getWordleProgress, submitWordleGuess, getWordleState, saveWordleState, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
 import Confetti from '../common/Confetti'
+import type { Config } from '../../types'
 
 interface WordleGameProps {
   onScore?: (score: number) => void
@@ -36,7 +37,11 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [guessedWords, setGuessedWords] = useState<string[]>([])
   const [alreadyGuessed, setAlreadyGuessed] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [userId, setUserId] = useState<number | null>(null)
+  const [config, setConfig] = useState<Config | null>(null)
+  const [lastWordDate, setLastWordDate] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const saveStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Русская раскладка клавиатуры ЙЦУКЕН (как в кроссворде)
   const russianLetters = [
@@ -46,32 +51,140 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   ]
 
   useEffect(() => {
-    // Загружаем актуальное слово из Google Sheets
-    const loadWord = async () => {
+    loadConfig().then(setConfig)
+  }, [])
+
+  useEffect(() => {
+    if (!config) return
+
+    const loadGame = async () => {
       setLoading(true)
       try {
-        const word = await getWordleWord()
+        // Получаем userId
+        const tg = window.Telegram?.WebApp
+        const initData = (tg as any)?.initData || ''
+        let currentUserId: number | null = null
+
+        if (initData) {
+          try {
+            const response = await fetch(`${config.apiUrl}/parse-init-data`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ initData }),
+            })
+            if (response.ok) {
+              const parsed = await response.json()
+              currentUserId = parsed.userId
+            }
+          } catch (e) {
+            console.error('Error parsing initData:', e)
+          }
+        }
+
+        if (!currentUserId) {
+          const savedUserId = localStorage.getItem('telegram_user_id')
+          if (savedUserId) {
+            currentUserId = parseInt(savedUserId)
+          }
+        }
+
+        if (!currentUserId) {
+          console.error('Cannot load Wordle: userId not found')
+          setLoading(false)
+          return
+        }
+
+        setUserId(currentUserId)
+
+        // Загружаем состояние игры
+        const state = await getWordleState(currentUserId)
         const progress = await getWordleProgress()
         
-        if (word) {
-          setTargetWord(word.toUpperCase())
+        if (state && state.current_word && state.attempts && state.last_word_date) {
+          // Восстанавливаем состояние из сохраненного
+          const word = state.current_word.toUpperCase()
+          setTargetWord(word)
+          setLastWordDate(state.last_word_date)
           setGuessedWords(progress.map(w => w.toUpperCase()))
           
+          // Восстанавливаем попытки
+          if (state.attempts && state.attempts.length > 0) {
+            const restoredGuesses: Cell[][] = state.attempts.map((attempt: any[]) => 
+              attempt.map((cell: any) => ({
+                letter: cell.letter || '',
+                state: (cell.state || 'empty') as LetterState
+              }))
+            )
+            
+            // Заполняем пустые попытки
+            while (restoredGuesses.length < MAX_ATTEMPTS) {
+              restoredGuesses.push(Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' })))
+            }
+            
+            setGuesses(restoredGuesses)
+            
+            // Определяем текущую попытку (первая пустая)
+            const currentAttemptIndex = restoredGuesses.findIndex(row => row[0].state === 'empty' || !row[0].letter)
+            if (currentAttemptIndex !== -1) {
+              const currentAttempt = restoredGuesses[currentAttemptIndex]
+              const currentGuessStr = currentAttempt.map(c => c.letter).join('')
+              setCurrentGuess(currentGuessStr)
+            }
+            
+            // Проверяем, не закончена ли игра
+            const hasWin = restoredGuesses.some(row => row.every(cell => cell.state === 'correct'))
+            const hasLose = restoredGuesses.every(row => row[0].letter !== '' && !row.every(cell => cell.state === 'correct'))
+            
+            if (hasWin) {
+              setGameOver('win')
+            } else if (hasLose && restoredGuesses.filter(row => row[0].letter !== '').length === MAX_ATTEMPTS) {
+              setGameOver('lose')
+            }
+          } else {
+            // Нет сохраненных попыток - начинаем заново
+            setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
+              Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
+            ))
+          }
+          
           // Проверяем, не отгадано ли уже это слово
-          if (progress.map(w => w.toUpperCase()).includes(word.toUpperCase())) {
+          if (progress.map(w => w.toUpperCase()).includes(word)) {
             setAlreadyGuessed(true)
           }
         } else {
-          // Fallback на случайное слово из резервного списка
-          const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
-          setTargetWord(randomWord)
+          // Нет сохраненного состояния - загружаем новое слово
+          const word = await getWordleWord(currentUserId)
+          
+          if (word) {
+            setTargetWord(word.toUpperCase())
+            setGuessedWords(progress.map(w => w.toUpperCase()))
+            
+            if (progress.map(w => w.toUpperCase()).includes(word.toUpperCase())) {
+              setAlreadyGuessed(true)
+            }
+          } else {
+            // Fallback
+            const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
+            setTargetWord(randomWord)
+          }
+          
+          setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
+            Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
+          ))
+          
+          // Получаем дату для нового слова
+          const today = new Date().toISOString().split('T')[0]
+          setLastWordDate(today)
+          
+          // Сохраняем начальное состояние
+          setTimeout(() => {
+            if (currentUserId && word) {
+              saveWordleState(currentUserId, word.toUpperCase(), [], today).catch(console.error)
+            }
+          }, 1000)
         }
-        
-        setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
-          Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
-        ))
       } catch (error) {
-        console.error('Error loading Wordle word:', error)
+        console.error('Error loading Wordle:', error)
         // Fallback
         const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
         setTargetWord(randomWord)
@@ -80,15 +193,14 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
         ))
       } finally {
         setLoading(false)
-        // Фокус на input при загрузке
         if (inputRef.current) {
           inputRef.current.focus()
         }
       }
     }
     
-    loadWord()
-  }, [])
+    loadGame()
+  }, [config])
 
   // Используем ref для предотвращения двойных нажатий
   const lastKeyPressTime = useRef<number>(0)
@@ -110,11 +222,73 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     if (key === 'ENTER') {
       handleSubmit()
     } else if (key === 'BACKSPACE') {
-      setCurrentGuess(prev => prev.slice(0, -1))
+      setCurrentGuess(prev => {
+        const newGuess = prev.slice(0, -1)
+        // Сохраняем состояние после изменения
+        setTimeout(() => saveGameState(), 500)
+        return newGuess
+      })
     } else if (currentGuess.length < WORD_LENGTH && /[А-ЯЁ]/.test(key)) {
-      setCurrentGuess(prev => prev + key.toUpperCase())
+      setCurrentGuess(prev => {
+        const newGuess = prev + key.toUpperCase()
+        // Сохраняем состояние после изменения
+        setTimeout(() => saveGameState(), 500)
+        return newGuess
+      })
     }
   }
+
+  // Функция сохранения состояния игры
+  const saveGameState = async () => {
+    if (!userId || !targetWord || !lastWordDate) return
+    
+    // Отменяем предыдущий таймер, если он есть
+    if (saveStateTimeoutRef.current) {
+      clearTimeout(saveStateTimeoutRef.current)
+    }
+    
+    // Сохраняем с небольшой задержкой, чтобы не спамить запросами
+    saveStateTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Преобразуем guesses в формат для сохранения
+        const attemptsToSave = guesses.map(row => 
+          row.map(cell => ({
+            letter: cell.letter,
+            state: cell.state
+          }))
+        )
+        
+        await saveWordleState(userId, targetWord, attemptsToSave, lastWordDate)
+      } catch (error) {
+        console.error('Error saving Wordle state:', error)
+      }
+    }, 1000)
+  }
+
+  // Сохраняем состояние при изменении guesses
+  useEffect(() => {
+    if (userId && targetWord && !loading) {
+      saveGameState()
+    }
+  }, [guesses, userId, targetWord, loading])
+
+  // Сохраняем состояние при выходе из компонента
+  useEffect(() => {
+    return () => {
+      if (userId && targetWord && lastWordDate) {
+        const attemptsToSave = guesses.map(row => 
+          row.map(cell => ({
+            letter: cell.letter,
+            state: cell.state
+          }))
+        )
+        saveWordleState(userId, targetWord, attemptsToSave, lastWordDate).catch(console.error)
+      }
+      if (saveStateTimeoutRef.current) {
+        clearTimeout(saveStateTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleSubmit = async () => {
     if (currentGuess.length !== WORD_LENGTH) return
@@ -165,12 +339,15 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       }
     })
 
-    const newGuesses = [...guesses]
-    const currentAttempt = guesses.findIndex(row => row[0].state === 'empty')
-    if (currentAttempt !== -1) {
-      newGuesses[currentAttempt] = newGuess
-      setGuesses(newGuesses)
-    }
+        const newGuesses = [...guesses]
+        const currentAttempt = guesses.findIndex(row => row[0].state === 'empty' || !row[0].letter)
+        if (currentAttempt !== -1) {
+          newGuesses[currentAttempt] = newGuess
+          setGuesses(newGuesses)
+          
+          // Сохраняем состояние после отправки попытки
+          setTimeout(() => saveGameState(), 500)
+        }
 
     // Обновляем использованные буквы
     const newUsedLetters = new Map(usedLetters)

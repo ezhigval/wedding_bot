@@ -321,6 +321,7 @@ export interface CrosswordWord {
 export interface CrosswordData {
   words: CrosswordWord[]
   guessed_words: string[]
+  cell_letters?: { [key: string]: string }
   crossword_index?: number
 }
 
@@ -338,10 +339,13 @@ export async function getCrosswordData(userId: number): Promise<CrosswordData> {
   return { words: [], guessed_words: [] }
 }
 
-export async function getWordleWord(): Promise<string | null> {
+export async function getWordleWord(userId?: number): Promise<string | null> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/wordle/word`)
+    const url = userId 
+      ? `${config.apiUrl}/wordle/word?userId=${userId}`
+      : `${config.apiUrl}/wordle/word`
+    const response = await fetch(url)
     if (response.ok) {
       const data = await response.json()
       return data.word || null
@@ -350,6 +354,60 @@ export async function getWordleWord(): Promise<string | null> {
     console.error('Error loading Wordle word:', error)
   }
   return null
+}
+
+export interface WordleState {
+  current_word: string | null
+  attempts: Array<Array<{ letter: string; state: string }>>
+  last_word_date: string | null
+}
+
+export async function getWordleState(userId: number): Promise<WordleState | null> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/wordle/state?userId=${userId}`)
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    }
+  } catch (error) {
+    console.error('Error loading Wordle state:', error)
+  }
+  return null
+}
+
+export async function saveWordleState(
+  userId: number,
+  currentWord: string,
+  attempts: Array<Array<{ letter: string; state: string }>>,
+  lastWordDate: string
+): Promise<{ success: boolean; error?: string }> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(`${config.apiUrl}/wordle/state`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        current_word: currentWord,
+        attempts,
+        last_word_date: lastWordDate,
+      }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return { success: data.success || false }
+    } else {
+      const data = await response.json()
+      return { success: false, error: data.error || 'Ошибка сохранения состояния' }
+    }
+  } catch (error) {
+    console.error('Error saving Wordle state:', error)
+    return { success: false, error: 'Ошибка сети' }
+  }
 }
 
 export async function getWordleProgress(): Promise<string[]> {
@@ -443,7 +501,8 @@ export async function submitWordleGuess(word: string): Promise<{ success: boolea
 export async function saveCrosswordProgress(
   userId: number,
   guessedWords: string[],
-  crosswordIndex: number = 0
+  crosswordIndex: number = 0,
+  cellLetters?: { [key: string]: string }
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
@@ -456,6 +515,7 @@ export async function saveCrosswordProgress(
         userId,
         guessedWords,
         crossword_index: crosswordIndex,
+        cell_letters: cellLetters,
       }),
     })
 

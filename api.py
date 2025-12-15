@@ -1854,11 +1854,12 @@ async def get_crossword_data_endpoint(request):
         
         # Получаем слова и прогресс для текущего кроссворда
         words = await get_crossword_words(crossword_index)
-        progress = await get_crossword_progress(user_id, crossword_index)
+        progress, cell_letters = await get_crossword_progress(user_id, crossword_index)
         
         return web.json_response({
             'words': words,
             'guessed_words': progress,
+            'cell_letters': cell_letters or {},
             'crossword_index': crossword_index
         })
     except Exception as e:
@@ -1876,6 +1877,7 @@ async def save_crossword_progress_endpoint(request):
         user_id_str = data.get('userId')
         guessed_words = data.get('guessedWords', [])
         crossword_index = data.get('crossword_index', 0)
+        cell_letters = data.get('cell_letters')
         
         if not user_id_str:
             return web.json_response({'error': 'userId required'}, status=400)
@@ -1885,7 +1887,7 @@ async def save_crossword_progress_endpoint(request):
         if not isinstance(guessed_words, list):
             return web.json_response({'error': 'guessedWords must be a list'}, status=400)
         
-        success = await save_crossword_progress(user_id, guessed_words, crossword_index)
+        success = await save_crossword_progress(user_id, guessed_words, crossword_index, cell_letters)
         
         if success:
             return web.json_response({'success': True})
