@@ -219,15 +219,35 @@ func CheckGuestRegistration(ctx context.Context, userID int) (bool, error) {
 	}
 
 	userIDStr := fmt.Sprintf("%d", userID)
-	for _, row := range resp.Values {
+	for i, row := range resp.Values {
 		if len(row) > 0 {
+			// Пробуем разные типы значений
+			var found bool
 			if val, ok := row[0].(string); ok {
+				// Сравниваем как строку
 				if strings.TrimSpace(val) == userIDStr {
-					return true, nil
+					found = true
 				}
+			} else if val, ok := row[0].(float64); ok {
+				// Сравниваем как число (float64 из Google Sheets)
+				if int(val) == userID {
+					found = true
+				}
+			} else if val, ok := row[0].(int64); ok {
+				// Сравниваем как int64
+				if int(val) == userID {
+					found = true
+				}
+			}
+			
+			if found {
+				log.Printf("Found registered user_id %d in row %d", userID, i+1)
+				return true, nil
 			}
 		}
 	}
+	
+	log.Printf("User_id %d not found in guest list", userID)
 
 	return false, nil
 }
