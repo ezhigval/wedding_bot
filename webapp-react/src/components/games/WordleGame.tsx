@@ -38,11 +38,11 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [showConfetti, setShowConfetti] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Русская раскладка клавиатуры
-  const keyboardRows = [
-    ['Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х', 'Ъ'],
-    ['Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э'],
-    ['Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю']
+  // Русская раскладка клавиатуры ЙЦУКЕН (как в кроссворде)
+  const russianLetters = [
+    'Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х', 'Ъ',
+    'Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э',
+    'Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю', 'Ё'
   ]
 
   useEffect(() => {
@@ -90,8 +90,22 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     loadWord()
   }, [])
 
+  // Используем ref для предотвращения двойных нажатий
+  const lastKeyPressTime = useRef<number>(0)
+  const lastKey = useRef<string>('')
+  
   const handleKeyPress = (key: string) => {
     if (gameOver) return
+    
+    // Защита от двойных нажатий (debounce 150ms)
+    const now = Date.now()
+    if (now - lastKeyPressTime.current < 150 && lastKey.current === key) {
+      return
+    }
+    lastKeyPressTime.current = now
+    lastKey.current = key
+    
+    hapticFeedback('light')
     
     if (key === 'ENTER') {
       handleSubmit()
@@ -100,8 +114,6 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     } else if (currentGuess.length < WORD_LENGTH && /[А-ЯЁ]/.test(key)) {
       setCurrentGuess(prev => prev + key.toUpperCase())
     }
-    
-    hapticFeedback('light')
   }
 
   const handleSubmit = async () => {
@@ -270,13 +282,13 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     const state = usedLetters.get(letter)
     switch (state) {
       case 'correct':
-        return 'bg-[#5A7C52] text-white'
+        return 'bg-[#5A7C52] text-white hover:bg-[#4A6B42] active:bg-[#4A6B42]'
       case 'present':
-        return 'bg-[#FFE9AD] text-[#5A7C52]'
+        return 'bg-[#FFE9AD] text-[#5A7C52] hover:bg-[#FFE099] active:bg-[#FFE099]'
       case 'absent':
-        return 'bg-gray-400 text-white'
+        return 'bg-gray-400 text-white hover:bg-gray-500 active:bg-gray-500'
       default:
-        return 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+        return 'bg-primary text-white hover:bg-primary/80 active:bg-primary/60'
     }
   }
 
@@ -364,36 +376,134 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           autoFocus
         />
 
-        {/* Виртуальная клавиатура */}
-        <div className="space-y-1 mb-4">
-          {keyboardRows.map((row, rowIndex) => (
-            <div key={rowIndex} className="flex gap-0.5 justify-center flex-wrap">
-              {row.map((letter) => (
-                <button
-                  key={letter}
-                  onClick={() => handleKeyPress(letter)}
-                  className={`px-2 py-1.5 rounded-md font-semibold text-xs min-w-[28px] ${getKeyColor(letter)} transition-colors`}
-                >
-                  {letter}
-                </button>
-              ))}
-            </div>
-          ))}
+        {/* Виртуальная клавиатура (как в кроссворде) */}
+        <div className="mb-4">
+          {/* Первый ряд */}
+          <div className="grid grid-cols-12 gap-1 mb-1">
+            {russianLetters.slice(0, 12).map((letter) => (
+              <motion.button
+                key={letter}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                whileTap={{ scale: 0.9 }}
+                className={`px-1 py-2 rounded-lg font-bold text-xs min-h-[40px] flex items-center justify-center transition-colors touch-none select-none ${getKeyColor(letter)}`}
+              >
+                {letter}
+              </motion.button>
+            ))}
+          </div>
+          {/* Второй ряд (с небольшим смещением влево, как на реальной клавиатуре) */}
+          <div className="grid grid-cols-11 gap-1 mb-1 ml-[4.17%]">
+            {russianLetters.slice(12, 23).map((letter) => (
+              <motion.button
+                key={letter}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                whileTap={{ scale: 0.9 }}
+                className={`px-1 py-2 rounded-lg font-bold text-xs min-h-[40px] flex items-center justify-center transition-colors touch-none select-none ${getKeyColor(letter)}`}
+              >
+                {letter}
+              </motion.button>
+            ))}
+          </div>
+          {/* Третий ряд (с большим смещением влево) */}
+          <div className="grid grid-cols-10 gap-1 mb-1 ml-[8.33%]">
+            {russianLetters.slice(23).map((letter) => (
+              <motion.button
+                key={letter}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleKeyPress(letter)
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                whileTap={{ scale: 0.9 }}
+                className={`px-1 py-2 rounded-lg font-bold text-xs min-h-[40px] flex items-center justify-center transition-colors touch-none select-none ${getKeyColor(letter)}`}
+              >
+                {letter}
+              </motion.button>
+            ))}
+          </div>
           
           {/* Кнопки управления */}
-          <div className="flex gap-1.5 justify-center mt-1">
-            <button
-              onClick={() => handleKeyPress('BACKSPACE')}
-              className="px-3 py-1.5 bg-gray-300 text-gray-800 rounded-md font-semibold text-xs hover:bg-gray-400 transition-colors"
+          <div className="flex gap-2 mt-2">
+            <motion.button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleKeyPress('BACKSPACE')
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleKeyPress('BACKSPACE')
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              whileTap={{ scale: 0.9 }}
+              className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors min-h-[40px] flex items-center justify-center touch-none select-none"
             >
-              ⌫
-            </button>
-            <button
-              onClick={() => handleKeyPress('ENTER')}
-              className="px-4 py-1.5 bg-[#5A7C52] text-white rounded-md font-semibold text-xs hover:bg-[#4A6B42] transition-colors"
+              ⌫ Удалить
+            </motion.button>
+            <motion.button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleKeyPress('ENTER')
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleKeyPress('ENTER')
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              whileTap={{ scale: 0.9 }}
+              disabled={currentGuess.length !== WORD_LENGTH}
+              className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors min-h-[40px] flex items-center justify-center touch-none select-none ${
+                currentGuess.length === WORD_LENGTH
+                  ? 'bg-[#5A7C52] text-white hover:bg-[#4A6B42]'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
-              ВВОД
-            </button>
+              ✓ ВВОД
+            </motion.button>
           </div>
         </div>
 
