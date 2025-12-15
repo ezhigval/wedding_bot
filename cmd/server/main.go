@@ -228,63 +228,81 @@ func serveStaticFiles() http.Handler {
 			path = "/index.html"
 		}
 
-		// Безопасность: только файлы из webapp директории
-		if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		// Безопасность: защита от path traversal
+		if strings.Contains(path, "..") {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
-		}
-
-		filePath := config.WebappPath + path
-
-		// Специальная обработка для фотографии
-		if path == "/welcome_photo.jpeg" || path == "/wedding_photo.jpg" {
-			photoPath := config.WebappPhotoPath
-			if _, err := os.Stat(photoPath); err == nil {
-				filePath = photoPath
-			} else {
-				http.NotFound(w, r)
-				return
-			}
 		}
 
 		// Специальная обработка для файлов из res/
 		if strings.HasPrefix(path, "/res/") {
 			cleanPath := strings.TrimPrefix(path, "/")
 			if _, err := os.Stat(cleanPath); err == nil {
-				filePath = cleanPath
+				filePath := cleanPath
+				contentType := getContentType(path)
+				w.Header().Set("Content-Type", contentType)
+				http.ServeFile(w, r, filePath)
+				return
 			} else {
 				http.NotFound(w, r)
 				return
 			}
 		}
 
-		// Если файл не существует, возвращаем index.html
+		// Специальная обработка для фотографии
+		if path == "/welcome_photo.jpeg" || path == "/wedding_photo.jpg" {
+			photoPath := config.WebappPhotoPath
+			if _, err := os.Stat(photoPath); err == nil {
+				contentType := getContentType(path)
+				w.Header().Set("Content-Type", contentType)
+				http.ServeFile(w, r, photoPath)
+				return
+			} else {
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		// Убираем ведущий слэш для построения пути к файлу
+		cleanPath := strings.TrimPrefix(path, "/")
+		filePath := config.WebappPath + "/" + cleanPath
+
+		// Если файл не существует, возвращаем index.html (SPA fallback)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			if path != "/index.html" {
+			if path != "/index.html" && path != "/" {
 				filePath = config.WebappPath + "/index.html"
 			}
 		}
 
-		// Определяем content-type
-		contentType := "text/html"
-		if strings.HasSuffix(path, ".css") {
-			contentType = "text/css"
-		} else if strings.HasSuffix(path, ".js") {
-			contentType = "application/javascript"
-		} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
-			contentType = "image/jpeg"
-		} else if strings.HasSuffix(path, ".png") {
-			contentType = "image/png"
-		} else if strings.HasSuffix(path, ".gif") {
-			contentType = "image/gif"
-		} else if strings.HasSuffix(path, ".svg") {
-			contentType = "image/svg+xml"
-		} else if strings.HasSuffix(path, ".json") {
-			contentType = "application/json"
-		}
-
+		contentType := getContentType(path)
 		w.Header().Set("Content-Type", contentType)
 		http.ServeFile(w, r, filePath)
 	})
+}
+
+// getContentType определяет content-type по расширению файла
+func getContentType(path string) string {
+	if strings.HasSuffix(path, ".css") {
+		return "text/css"
+	} else if strings.HasSuffix(path, ".js") {
+		return "application/javascript"
+	} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+		return "image/jpeg"
+	} else if strings.HasSuffix(path, ".png") {
+		return "image/png"
+	} else if strings.HasSuffix(path, ".gif") {
+		return "image/gif"
+	} else if strings.HasSuffix(path, ".svg") {
+		return "image/svg+xml"
+	} else if strings.HasSuffix(path, ".json") {
+		return "application/json"
+	} else if strings.HasSuffix(path, ".woff") || strings.HasSuffix(path, ".woff2") {
+		return "font/woff"
+	} else if strings.HasSuffix(path, ".ttf") {
+		return "font/ttf"
+	} else if strings.HasSuffix(path, ".ico") {
+		return "image/x-icon"
+	}
+	return "text/html"
 }
 
