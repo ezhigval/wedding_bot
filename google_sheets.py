@@ -2195,7 +2195,6 @@ def _get_game_stats_sync(user_id: int) -> Optional[Dict]:
                     'flappy_score': int(row[5]) if len(row) > 5 and row[5] else 0,
                     'crossword_score': int(row[6]) if len(row) > 6 and row[6] else 0,
                     'wordle_score': int(row[7]) if len(row) > 7 and row[7] else 0,
-                    'wordle_score': int(row[7]) if len(row) > 7 and row[7] else 0,
                     'rank': row[8] if len(row) > 8 and row[8] else 'Незнакомец',
                     'last_updated': row[9] if len(row) > 9 and row[9] else None,
                 }
@@ -2289,6 +2288,7 @@ def _update_game_score_sync(
             dragon_score = int(row_data[4]) if len(row_data) > 4 and row_data[4] else 0
             flappy_score = int(row_data[5]) if len(row_data) > 5 and row_data[5] else 0
             crossword_score = int(row_data[6]) if len(row_data) > 6 and row_data[6] else 0
+            wordle_score = int(row_data[7]) if len(row_data) > 7 and row_data[7] else 0
             
             # Прибавляем очки к счету игры (накопительно)
             # Конвертируем игровые очки в рейтинговые по формулам:
@@ -2422,6 +2422,87 @@ async def update_game_score(
     """Асинхронная обёртка для обновления счета"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _update_game_score_sync, user_id, game_type, score)
+
+
+def _sync_stats_from_cache_sync(user_id: int, cached_stats: Dict) -> bool:
+    """
+    Синхронизировать статистику в Google Sheets из кэша.
+    Прямо обновляет все значения в Sheets из кэша.
+    """
+    if not GSPREAD_AVAILABLE:
+        logger.warning("Google Sheets недоступен")
+        return False
+    
+    try:
+        client = get_google_sheets_client()
+        if not client:
+            return False
+        
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_ID)
+        _ensure_required_sheets_sync()
+        
+        try:
+            sheet = spreadsheet.worksheet("Игры")
+        except Exception:
+            # Создаем лист если его нет
+            sheet = spreadsheet.add_worksheet(title="Игры", rows=100, cols=11)
+            sheet.append_row(["user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "wordle_score", "rank", "last_updated"])
+        
+        # Ищем строку пользователя
+        all_values = sheet.get_all_values()
+        user_row_gspread = None
+        
+        for i, row in enumerate(all_values[1:], start=2):  # Пропускаем заголовок
+            if row and len(row) > 0 and str(row[0]) == str(user_id):
+                user_row_gspread = i
+                break
+        
+        # Получаем значения из кэша
+        first_name = cached_stats.get('first_name', '')
+        last_name = cached_stats.get('last_name', '')
+        total_score = cached_stats.get('total_score', 0)
+        dragon_score = cached_stats.get('dragon_score', 0)
+        flappy_score = cached_stats.get('flappy_score', 0)
+        crossword_score = cached_stats.get('crossword_score', 0)
+        wordle_score = cached_stats.get('wordle_score', 0)
+        rank = cached_stats.get('rank', 'Незнакомец')
+        last_updated = datetime.now().isoformat()
+        
+        if user_row_gspread:
+            # Обновляем существующую строку
+            sheet.update_cell(user_row_gspread, 1, str(user_id))  # A - user_id
+            sheet.update_cell(user_row_gspread, 2, first_name)  # B - first_name
+            sheet.update_cell(user_row_gspread, 3, last_name)  # C - last_name
+            sheet.update_cell(user_row_gspread, 4, total_score)  # D - total_score
+            sheet.update_cell(user_row_gspread, 5, dragon_score)  # E - dragon_score
+            sheet.update_cell(user_row_gspread, 6, flappy_score)  # F - flappy_score
+            sheet.update_cell(user_row_gspread, 7, crossword_score)  # G - crossword_score
+            sheet.update_cell(user_row_gspread, 8, wordle_score)  # H - wordle_score
+            sheet.update_cell(user_row_gspread, 9, rank)  # I - rank
+            sheet.update_cell(user_row_gspread, 10, last_updated)  # J - last_updated
+        else:
+            # Создаем новую строку
+            row = [
+                str(user_id),
+                first_name,
+                last_name,
+                total_score,
+                dragon_score,
+                flappy_score,
+                crossword_score,
+                wordle_score,
+                rank,
+                last_updated,
+            ]
+            sheet.append_row(row)
+        
+        logger.info(f"Синхронизирована статистика в Sheets из кэша для user_id={user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации статистики из кэша для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 # ========== WORDLE ==========
 

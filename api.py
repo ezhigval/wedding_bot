@@ -1635,8 +1635,19 @@ async def upload_photo(request):
         return web.json_response({'error': f'Внутренняя ошибка сервера: {str(e)}'}, status=500)
 
 async def get_game_stats_endpoint(request):
-    """Получить статистику игрока с синхронизацией между кэшем и Google Sheets"""
+    """Получить статистику игрока с синхронизацией между кэшем и Google Sheets
+    
+    Логика работы:
+    1. Проверяем и создаем необходимые вкладки/ячейки в Google Sheets
+    2. Получаем статистику из Google Sheets (основной источник)
+    3. Если Sheets недоступен, берем из кэша (резерв)
+    4. Сверяем актуальность: если кэш новее, обновляем Sheets из кэша
+    5. Возвращаем актуальные данные из Sheets (или кэша если Sheets недоступен)
+    """
     try:
+        # 1. Проверяем и создаем необходимые вкладки
+        await ensure_required_sheets()
+        
         # Получаем user_id из запроса
         user_id_str = request.query.get('userId')
         if not user_id_str:
@@ -1644,25 +1655,32 @@ async def get_game_stats_endpoint(request):
         
         user_id = int(user_id_str)
         
-        # Получаем статистику из обоих источников
+        # 2. Получаем статистику из Google Sheets (основной источник)
         sheets_stats = None
         try:
             sheets_stats = await get_game_stats(user_id)
         except Exception as e:
             logger.warning(f"Не удалось получить статистику из Google Sheets для user_id={user_id}: {e}")
         
+        # 3. Получаем из кэша (резерв)
         cached_stats = await get_cached_stats(user_id)
         
-        # Синхронизируем данные
-        stats = await sync_game_stats(user_id, sheets_stats, cached_stats)
-        
-        # Если кэш новее, пытаемся обновить Google Sheets (в фоне, не блокируем ответ)
+        # 4. Синхронизируем данные: если кэш новее, обновляем Sheets
         if cached_stats and sheets_stats:
             cached_dt = parse_datetime(cached_stats.get('last_updated'))
             sheets_dt = parse_datetime(sheets_stats.get('last_updated'))
             if cached_dt and sheets_dt and cached_dt > sheets_dt:
                 # Кэш новее - обновляем Sheets в фоне
+                logger.info(f"Кэш новее Sheets для user_id={user_id}, обновляю Sheets из кэша")
                 asyncio.create_task(_update_sheets_from_cache(user_id, cached_stats))
+                # Используем кэш как временный источник, пока Sheets обновляется
+                stats = await sync_game_stats(user_id, sheets_stats, cached_stats)
+            else:
+                # Sheets новее или равны - используем Sheets
+                stats = await sync_game_stats(user_id, sheets_stats, cached_stats)
+        else:
+            # Нет одного из источников - синхронизируем что есть
+            stats = await sync_game_stats(user_id, sheets_stats, cached_stats)
         
         # Убираем last_updated из ответа (не нужно на фронтенде)
         stats.pop('last_updated', None)
@@ -1688,16 +1706,21 @@ async def get_game_stats_endpoint(request):
         return web.json_response({'error': str(e)}, status=500)
 
 async def _update_sheets_from_cache(user_id: int, cached_stats: Dict):
-    """Обновить Google Sheets из кэша (выполняется в фоне)"""
+    """Обновить Google Sheets из кэша (когда кэш новее)
+    
+    Прямо обновляет все значения в Sheets из кэша, используя прямое обновление ячеек.
+    """
     try:
-        # Получаем текущую статистику из Sheets
-        sheets_stats = await get_game_stats(user_id)
+        from google_sheets import _sync_stats_from_cache_sync
+        import asyncio
         
-        # Обновляем каждый счет отдельно, если он больше текущего в Sheets
-        # Синхронизация теперь не нужна, так как счет накопительный
-        # Оставляем пустым, так как логика изменилась на накопительную
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _sync_stats_from_cache_sync, user_id, cached_stats)
+        logger.info(f"Успешно синхронизирован Sheets из кэша для user_id={user_id}")
     except Exception as e:
         logger.error(f"Ошибка обновления Sheets из кэша для user_id={user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
     """Парсит строку даты в datetime объект"""
@@ -1715,14 +1738,23 @@ def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
         return None
 
 async def update_game_score_endpoint(request):
-    """Обновить счет игрока с синхронизацией"""
+    """Обновить счет игрока с синхронизацией
+    
+    Логика работы:
+    1. Проверяем и создаем необходимые вкладки/ячейки в Google Sheets
+    2. Получаем текущую статистику из Google Sheets (основной источник)
+    3. Если Sheets недоступен, берем из кэша
+    4. Сверяем актуальность: если кэш новее, обновляем Sheets из кэша
+    5. Обновляем счет в Google Sheets
+    6. Сохраняем в кэш для резерва
+    """
     try:
-        # Проверяем и создаем необходимые вкладки
+        # 1. Проверяем и создаем необходимые вкладки
         await ensure_required_sheets()
         
         data = await request.json()
         user_id_str = data.get('userId')
-        game_type = data.get('gameType')  # 'dragon', 'flappy', 'crossword'
+        game_type = data.get('gameType')  # 'dragon', 'flappy', 'crossword', 'wordle'
         score = data.get('score')
         firstName = data.get('firstName', '')
         lastName = data.get('lastName', '')
@@ -1736,22 +1768,46 @@ async def update_game_score_endpoint(request):
         if game_type not in ['dragon', 'flappy', 'crossword', 'wordle']:
             return web.json_response({'error': 'Неизвестный тип игры'}, status=400)
         
-        # Получаем текущую статистику для обновления
-        current_stats = await get_cached_stats(user_id)
+        # 2. Получаем текущую статистику из Google Sheets (основной источник)
+        sheets_stats = None
+        try:
+            sheets_stats = await get_game_stats(user_id)
+        except Exception as e:
+            logger.warning(f"Не удалось получить статистику из Google Sheets для user_id={user_id}: {e}")
+        
+        # 3. Получаем из кэша (резерв)
+        cached_stats = await get_cached_stats(user_id)
+        
+        # 4. Синхронизируем: если кэш новее, обновляем Sheets из кэша
+        if cached_stats and sheets_stats:
+            cached_dt = parse_datetime(cached_stats.get('last_updated'))
+            sheets_dt = parse_datetime(sheets_stats.get('last_updated'))
+            if cached_dt and sheets_dt and cached_dt > sheets_dt:
+                # Кэш новее - обновляем Sheets из кэша перед обновлением счета
+                logger.info(f"Кэш новее Sheets для user_id={user_id}, обновляю Sheets из кэша")
+                await _update_sheets_from_cache(user_id, cached_stats)
+                # Перезагружаем статистику из Sheets после обновления
+                try:
+                    sheets_stats = await get_game_stats(user_id)
+                except Exception as e:
+                    logger.warning(f"Не удалось перезагрузить статистику из Sheets после синхронизации: {e}")
+        
+        # Используем статистику из Sheets (основной источник) или кэша (резерв)
+        current_stats = sheets_stats if sheets_stats else cached_stats
+        
         if not current_stats:
-            # Пытаемся получить из Sheets
-            current_stats = await get_game_stats(user_id)
-            if not current_stats:
-                current_stats = {
-                    'user_id': user_id,
-                    'first_name': firstName,
-                    'last_name': lastName,
-                    'total_score': 0,
-                    'dragon_score': 0,
-                    'flappy_score': 0,
-                    'crossword_score': 0,
-                    'rank': 'Незнакомец',
-                }
+            # Нет данных ни в Sheets, ни в кэше - создаем новую запись
+            current_stats = {
+                'user_id': user_id,
+                'first_name': firstName,
+                'last_name': lastName,
+                'total_score': 0,
+                'dragon_score': 0,
+                'flappy_score': 0,
+                'crossword_score': 0,
+                'wordle_score': 0,
+                'rank': 'Незнакомец',
+            }
         
         # Прибавляем очки к счету игры (накопительно)
         # Конвертируем игровые очки в рейтинговые по формулам:
@@ -1808,19 +1864,25 @@ async def update_game_score_endpoint(request):
         if lastName:
             current_stats['last_name'] = lastName
         
-        # Обновляем дату
-        current_stats['last_updated'] = datetime.now().isoformat()
-        
-        # Сохраняем в кэш
-        await save_cached_stats(current_stats)
-        
-        # Пытаемся обновить Google Sheets
+        # 5. Обновляем счет в Google Sheets (основной источник)
         success = False
         try:
             success = await update_game_score(user_id, game_type, score)
+            if success:
+                # После успешного обновления Sheets, перезагружаем статистику
+                try:
+                    updated_sheets_stats = await get_game_stats(user_id)
+                    if updated_sheets_stats:
+                        current_stats = updated_sheets_stats
+                except Exception as e:
+                    logger.warning(f"Не удалось перезагрузить статистику из Sheets после обновления: {e}")
         except Exception as e:
             logger.warning(f"Не удалось обновить Google Sheets для user_id={user_id}: {e}")
             # Продолжаем работу даже если Sheets недоступен
+        
+        # 6. Сохраняем в кэш для резерва (даже если Sheets недоступен)
+        current_stats['last_updated'] = datetime.now().isoformat()
+        await save_cached_stats(current_stats)
         
         # Возвращаем обновленную статистику (без last_updated)
         response_stats = current_stats.copy()
