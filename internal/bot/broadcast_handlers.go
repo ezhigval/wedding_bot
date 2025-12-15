@@ -300,3 +300,16 @@ func handleBroadcastSendConfirm(c telebot.Context) error {
 	return c.Send(message, telebot.ModeHTML)
 }
 
+// handleBroadcastCancel отменяет рассылку и возвращает в админ-меню
+func handleBroadcastCancel(c telebot.Context) error {
+	userID := c.Sender().ID
+
+	// Очищаем состояние рассылки
+	ClearBroadcastState(userID)
+
+	// Возвращаемся в админ-меню
+	message := "🔧 <b>Панель администратора</b>\n\nВыберите раздел:"
+	keyboard := keyboards.GetAdminRootReplyKeyboard()
+	return c.Edit(message, keyboard, telebot.ModeHTML)
+}
+
