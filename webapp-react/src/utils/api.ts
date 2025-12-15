@@ -189,6 +189,20 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
         userId = (tg as any).initDataUnsafe.user.id
         firstName = (tg as any).initDataUnsafe.user.first_name || ''
         lastName = (tg as any).initDataUnsafe.user.last_name || ''
+        // Сохраняем в localStorage
+        if (userId) {
+          localStorage.setItem('telegram_user_id', userId.toString())
+        }
+      }
+      
+      // Способ 4: Прямо из window.Telegram.WebApp (если доступен)
+      if (!userId && (tg as any).initDataUnsafe?.user?.id) {
+        userId = (tg as any).initDataUnsafe.user.id
+        firstName = (tg as any).initDataUnsafe.user.first_name || ''
+        lastName = (tg as any).initDataUnsafe.user.last_name || ''
+        if (userId) {
+          localStorage.setItem('telegram_user_id', userId.toString())
+        }
       }
     }
     

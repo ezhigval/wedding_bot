@@ -11,6 +11,14 @@ declare global {
         ready: () => void
         expand: () => void
         initData?: string
+        initDataUnsafe?: {
+          user?: {
+            id: number
+            first_name?: string
+            last_name?: string
+            username?: string
+          }
+        }
         HapticFeedback?: {
           impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void
           notificationOccurred: (type: 'error' | 'success' | 'warning') => void
@@ -33,6 +41,7 @@ if (tg) {
 } else if (isLocalhost) {
   // Симулируем Telegram WebApp для локальной разработки
   console.log('[LOCAL DEV] Simulating Telegram WebApp')
+  const TEST_USER_ID = 1034074077
   window.Telegram = {
     WebApp: {
       ready: () => console.log('[LOCAL DEV] WebApp ready'),
