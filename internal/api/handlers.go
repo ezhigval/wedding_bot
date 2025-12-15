@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"wedding-bot/internal/google_sheets"
 )
@@ -38,12 +40,14 @@ func parseInitData(w http.ResponseWriter, r *http.Request) {
 
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
+	// Создаем контекст с таймаутом для защиты от зависаний
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	userIDStr := r.URL.Query().Get("userId")
 	firstName := r.URL.Query().Get("firstName")
 	lastName := r.URL.Query().Get("lastName")
 	searchByNameOnly := r.URL.Query().Get("searchByNameOnly") == "true"
-
-	ctx := r.Context()
 
 	if searchByNameOnly {
 		if firstName == "" || lastName == "" {

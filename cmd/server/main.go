@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
+	"gopkg.in/telebot.v3"
 
 	"wedding-bot/internal/api"
 	"wedding-bot/internal/bot"
@@ -20,64 +23,116 @@ import (
 	"wedding-bot/internal/google_sheets"
 )
 
+var (
+	server      *http.Server
+	telegramBot *telebot.Bot
+	wg          sync.WaitGroup
+)
+
 func main() {
+	// Обработка паник
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("🚨 КРИТИЧЕСКАЯ ОШИБКА (panic): %v", r)
+			os.Exit(1)
+		}
+	}()
+
 	log.Println("=" + strings.Repeat("=", 59))
-	log.Println("🚀 ЗАПУСК СВАДЕБНОГО БОТА")
+	log.Println("🚀 ЗАПУСК СВАДЕБНОГО БОТА (GO)")
 	log.Println("=" + strings.Repeat("=", 59))
 	log.Printf("🆔 Process ID: %d", os.Getpid())
 	log.Printf("🕐 Время: %s", time.Now().Format(time.RFC3339))
+	log.Printf("🌍 PORT: %s", os.Getenv("PORT"))
 	log.Println("=" + strings.Repeat("=", 59))
+
+	// Создаем контекст с отменой для graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Загружаем конфигурацию
 	if err := config.LoadConfig(); err != nil {
-		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
+		log.Fatalf("❌ Ошибка загрузки конфигурации: %v", err)
 	}
 
 	log.Println("✅ Переменные окружения проверены")
 	log.Printf("🌐 Порт: %s", os.Getenv("PORT"))
 	log.Println("=" + strings.Repeat("=", 59))
 
-	ctx := context.Background()
-
 	// Инициализируем кэш
 	if err := cache.InitGameStatsCache(); err != nil {
-		log.Printf("⚠️ Ошибка инициализации кэша: %v", err)
+		log.Printf("⚠️ Ошибка инициализации кэша: %v (продолжаем без кэша)", err)
+	} else {
+		log.Println("✅ Кэш игровой статистики инициализирован")
 	}
 
 	// Инициализируем Google Sheets
 	if err := google_sheets.EnsureRequiredSheets(ctx); err != nil {
 		log.Printf("⚠️ Ошибка инициализации Google Sheets: %v", err)
+	} else {
+		log.Println("✅ Google Sheets инициализирован")
 	}
 
 	// Инициализируем API
 	apiRouter, err := api.InitAPI(ctx)
 	if err != nil {
-		log.Fatalf("Ошибка инициализации API: %v", err)
+		log.Fatalf("❌ Ошибка инициализации API: %v", err)
 	}
+	log.Println("✅ API инициализирован")
 
 	// Инициализируем бота
-	telegramBot, err := bot.InitBot(ctx)
-	if err != nil {
-		log.Printf("⚠️ Ошибка инициализации бота: %v", err)
+	var botErr error
+	telegramBot, botErr = bot.InitBot(ctx)
+	if botErr != nil {
+		log.Printf("⚠️ Ошибка инициализации бота: %v", botErr)
 		log.Println("Бот не будет работать, но API продолжит функционировать")
 	} else {
+		log.Println("✅ Telegram бот инициализирован")
 		// Устанавливаем функцию уведомлений
 		api.SetNotifyFunction(func(message string) error {
 			return bot.NotifyAdmins(message)
 		})
 
 		// Запускаем бота в отдельной горутине
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("🚨 Паника в боте: %v", r)
+				}
+			}()
+
 			log.Println("🤖 Запуск Telegram бота...")
-			telegramBot.Start()
+			if telegramBot != nil {
+				telegramBot.Start()
+			}
 		}()
 	}
 
-	// Планируем ежедневный сброс
-	daily_reset.ScheduleDailyReset(ctx)
+	// Планируем ежедневный сброс в отдельной горутине
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("🚨 Паника в daily_reset: %v", r)
+			}
+		}()
+
+		log.Println("⏰ Запуск планировщика ежедневного сброса...")
+		daily_reset.ScheduleDailyReset(ctx)
+	}()
 
 	// Настраиваем веб-сервер
 	router := mux.NewRouter()
+
+	// Health check
+	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ok","time":"%s"}`, time.Now().Format(time.RFC3339))
+	}).Methods("GET")
 
 	// API routes
 	router.PathPrefix("/api").Handler(apiRouter)
@@ -91,7 +146,7 @@ func main() {
 		port = "10000"
 	}
 
-	server := &http.Server{
+	server = &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
@@ -101,32 +156,68 @@ func main() {
 
 	// Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
+	// Запускаем сервер в отдельной горутине
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("🚨 Паника в HTTP сервере: %v", r)
+			}
+		}()
+
 		log.Printf("🌐 Веб-сервер запущен на порту %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Ошибка запуска сервера: %v", err)
+			log.Printf("❌ Ошибка запуска сервера: %v", err)
+			cancel() // Отменяем контекст при ошибке
 		}
 	}()
 
 	// Ожидаем сигнал завершения
-	<-sigChan
-	log.Println("\n🛑 Получен сигнал завершения, останавливаем сервер...")
+	sig := <-sigChan
+	log.Printf("\n🛑 Получен сигнал завершения: %v", sig)
+	log.Println("Начинаем graceful shutdown...")
 
-	// Останавливаем сервер
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	// Отменяем контекст для остановки всех горутин
+	cancel()
 
+	// Останавливаем HTTP сервер
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	log.Println("⏳ Остановка HTTP сервера...")
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Ошибка остановки сервера: %v", err)
+		log.Printf("⚠️ Ошибка остановки сервера: %v", err)
+	} else {
+		log.Println("✅ HTTP сервер остановлен")
 	}
 
+	// Останавливаем бота
 	if telegramBot != nil {
+		log.Println("⏳ Остановка Telegram бота...")
 		telegramBot.Stop()
+		log.Println("✅ Telegram бот остановлен")
 	}
 
-	log.Println("✅ Сервер остановлен")
+	// Ждем завершения всех горутин (с таймаутом)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("✅ Все горутины завершены")
+	case <-time.After(10 * time.Second):
+		log.Println("⚠️ Таймаут ожидания завершения горутин")
+	}
+
+	log.Println("=" + strings.Repeat("=", 59))
+	log.Println("✅ Сервер полностью остановлен")
+	log.Println("=" + strings.Repeat("=", 59))
 }
 
 // serveStaticFiles возвращает handler для статических файлов

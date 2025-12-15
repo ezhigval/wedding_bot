@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"gopkg.in/telebot.v3"
@@ -15,12 +16,29 @@ import (
 
 var (
 	botInstance *telebot.Bot
+	mu          sync.RWMutex
 )
 
 // InitBot инициализирует Telegram бота
 func InitBot(ctx context.Context) (*telebot.Bot, error) {
 	if config.BotToken == "" {
 		return nil, fmt.Errorf("BOT_TOKEN не установлен")
+	}
+
+	// Проверяем, не инициализирован ли уже бот
+	mu.RLock()
+	if botInstance != nil {
+		mu.RUnlock()
+		return botInstance, nil
+	}
+	mu.RUnlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Двойная проверка
+	if botInstance != nil {
+		return botInstance, nil
 	}
 
 	pref := telebot.Settings{
@@ -38,10 +56,24 @@ func InitBot(ctx context.Context) (*telebot.Bot, error) {
 	// Middleware для логирования
 	bot.Use(middleware.Logger())
 
+	// Middleware для обработки паник
+	bot.Use(func(next telebot.HandlerFunc) telebot.HandlerFunc {
+		return func(c telebot.Context) error {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("🚨 Паника в handler бота: %v", r)
+					// Отправляем сообщение об ошибке пользователю
+					c.Send("Произошла ошибка. Попробуйте позже.")
+				}
+			}()
+			return next(c)
+		}
+	})
+
 	// Регистрируем handlers
 	registerHandlers(bot)
 
-	log.Println("Бот инициализирован успешно")
+	log.Println("✅ Бот инициализирован успешно")
 	return bot, nil
 }
 
@@ -203,23 +235,58 @@ func handleCallback(c telebot.Context) error {
 
 // NotifyAdmins отправляет уведомление всем админам
 func NotifyAdmins(message string) error {
-	if botInstance == nil {
+	mu.RLock()
+	bot := botInstance
+	mu.RUnlock()
+
+	if bot == nil {
 		return fmt.Errorf("бот не инициализирован")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	admins, err := google_sheets.GetAdminsList(ctx)
 	if err != nil {
 		return fmt.Errorf("ошибка получения списка админов: %w", err)
 	}
 
+	var wg sync.WaitGroup
+	errorChan := make(chan error, len(admins))
+
 	for _, admin := range admins {
 		if admin.UserID != nil {
-			userID := int64(*admin.UserID)
-			if _, err := botInstance.Send(&telebot.User{ID: userID}, message); err != nil {
-				log.Printf("Ошибка отправки уведомления админу %d: %v", *admin.UserID, err)
-			}
+			wg.Add(1)
+			go func(adminID int) {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("🚨 Паника при отправке уведомления админу %d: %v", adminID, r)
+					}
+				}()
+
+				userID := int64(adminID)
+				if _, err := bot.Send(&telebot.User{ID: userID}, message); err != nil {
+					log.Printf("⚠️ Ошибка отправки уведомления админу %d: %v", adminID, err)
+					errorChan <- err
+				}
+			}(*admin.UserID)
 		}
+	}
+
+	wg.Wait()
+	close(errorChan)
+
+	// Проверяем, были ли ошибки
+	hasErrors := false
+	for err := range errorChan {
+		if err != nil {
+			hasErrors = true
+		}
+	}
+
+	if hasErrors {
+		return fmt.Errorf("некоторые уведомления не были отправлены")
 	}
 
 	return nil

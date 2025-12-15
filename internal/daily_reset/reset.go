@@ -83,24 +83,43 @@ func processCrosswordReset(ctx context.Context, today, yesterday string) error {
 // ScheduleDailyReset планирует ежедневный сброс в 00:00
 func ScheduleDailyReset(ctx context.Context) {
 	go func() {
-		for {
-			now := time.Now()
-			// Вычисляем время до следующей полуночи
-			nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
-			if now.Hour() == 0 && now.Minute() == 0 {
-				// Если уже 00:00, запускаем сразу
-				nextMidnight = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("🚨 Паника в ScheduleDailyReset: %v", r)
 			}
+		}()
 
-			waitDuration := nextMidnight.Sub(now)
-			log.Printf("Следующий ежедневный сброс запланирован на %s (через %v)", nextMidnight, waitDuration)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("⏹️ Планировщик ежедневного сброса остановлен")
+				return
+			default:
+				now := time.Now()
+				// Вычисляем время до следующей полуночи
+				nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+				if now.Hour() == 0 && now.Minute() == 0 {
+					// Если уже 00:00, запускаем сразу
+					nextMidnight = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+				}
 
-			time.Sleep(waitDuration)
+				waitDuration := nextMidnight.Sub(now)
+				log.Printf("⏰ Следующий ежедневный сброс запланирован на %s (через %v)", nextMidnight, waitDuration)
 
-			// Запускаем сброс
-			log.Println("Запуск ежедневного сброса...")
-			if err := ProcessDailyReset(ctx); err != nil {
-				log.Printf("Ошибка ежедневного сброса: %v", err)
+				// Используем таймер с возможностью отмены
+				timer := time.NewTimer(waitDuration)
+				select {
+				case <-timer.C:
+					// Запускаем сброс
+					log.Println("🔄 Запуск ежедневного сброса...")
+					if err := ProcessDailyReset(ctx); err != nil {
+						log.Printf("⚠️ Ошибка ежедневного сброса: %v", err)
+					}
+				case <-ctx.Done():
+					timer.Stop()
+					log.Println("⏹️ Планировщик ежедневного сброса остановлен")
+					return
+				}
 			}
 		}
 	}()

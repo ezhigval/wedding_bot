@@ -34,7 +34,9 @@ func NotifyAdmins(message string) error {
 func InitAPI(ctx context.Context) (*mux.Router, error) {
 	router := mux.NewRouter()
 
-	// CORS middleware
+	// Middleware (порядок важен!)
+	router.Use(recoveryMiddleware)
+	router.Use(loggingMiddleware)
 	router.Use(corsMiddleware)
 
 	// Инициализируем необходимые листы в Google Sheets
@@ -106,6 +108,30 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// recoveryMiddleware обрабатывает паники в handlers
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("🚨 Паника в API handler %s %s: %v", r.Method, r.URL.Path, r)
+				JSONError(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// loggingMiddleware логирует запросы
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+		log.Printf("📡 %s %s - %v", r.Method, r.URL.Path, duration)
 	})
 }
 
