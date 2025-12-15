@@ -321,6 +321,7 @@ export interface CrosswordWord {
 export interface CrosswordData {
   words: CrosswordWord[]
   guessed_words: string[]
+  crossword_index?: number
 }
 
 export async function getCrosswordData(userId: number): Promise<CrosswordData> {
@@ -441,7 +442,8 @@ export async function submitWordleGuess(word: string): Promise<{ success: boolea
 
 export async function saveCrosswordProgress(
   userId: number,
-  guessedWords: string[]
+  guessedWords: string[],
+  crosswordIndex: number = 0
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
@@ -453,6 +455,7 @@ export async function saveCrosswordProgress(
       body: JSON.stringify({
         userId,
         guessedWords,
+        crossword_index: crosswordIndex,
       }),
     })
 

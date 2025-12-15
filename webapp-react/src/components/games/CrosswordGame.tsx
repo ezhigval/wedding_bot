@@ -30,6 +30,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
+  const [crosswordIndex, setCrosswordIndex] = useState<number>(0)
   const [showConfetti, setShowConfetti] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [currentInput, setCurrentInput] = useState('')
@@ -103,6 +104,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           console.warn('Нет слов для кроссворда')
           setLoading(false)
           return
+        }
+
+        // Сохраняем индекс кроссворда
+        if (data.crossword_index !== undefined) {
+          setCrosswordIndex(data.crossword_index)
         }
 
         // Генерируем кроссворд
@@ -397,7 +403,9 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       setShowKeyboard(false) // Скрываем клавиатуру после правильного ответа
 
       // Сохраняем прогресс
-      await saveCrosswordProgress(userId, Array.from(newGuessedWords))
+      if (userId !== null) {
+        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex)
+      }
       
       // Обновляем счет в статистике (1 слово = 1 очко, баланс 5:1)
       const gamePoints = Math.floor(newGuessedWords.size / 5)
