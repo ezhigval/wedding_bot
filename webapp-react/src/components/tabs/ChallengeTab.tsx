@@ -13,15 +13,42 @@ import { loadConfig, getGameStats, updateGameScore, type GameStats } from '../..
 import { hapticFeedback } from '../../utils/telegram'
 import type { Config } from '../../types'
 
+type GameType = 'dragon' | 'flappy' | 'crossword' | 'wordle'
+
+interface Game {
+  id: GameType
+  name: string
+  emoji: string
+}
+
+const ALL_GAMES: Game[] = [
+  { id: 'dragon', name: 'Дракончик', emoji: '🐉' },
+  { id: 'flappy', name: 'ФлэппиБёрд', emoji: '🐦' },
+  { id: 'crossword', name: 'Кроссворд', emoji: '📝' },
+  { id: 'wordle', name: 'ВОРДЛИ', emoji: '🔤' },
+]
+
 export default function ChallengeTab() {
   const { isRegistered, isLoading } = useRegistration()
   const [config, setConfig] = useState<Config | null>(null)
   const [stats, setStats] = useState<GameStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
-  const [activeGame, setActiveGame] = useState<'dragon' | 'flappy' | 'crossword' | 'wordle' | null>(null)
+  const [activeGame, setActiveGame] = useState<GameType | null>(null)
+  const [favoriteGames, setFavoriteGames] = useState<GameType[]>([])
 
   useEffect(() => {
     loadConfig().then(setConfig)
+    
+    // Загружаем избранные игры из localStorage
+    const savedFavorites = localStorage.getItem('challenge_favorite_games')
+    if (savedFavorites) {
+      try {
+        const favorites = JSON.parse(savedFavorites) as GameType[]
+        setFavoriteGames(favorites)
+      } catch (e) {
+        console.error('Error loading favorite games:', e)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -86,18 +113,49 @@ export default function ChallengeTab() {
     }
   }
 
-  const handleGameClick = (gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
+  const handleGameClick = (gameType: GameType) => {
     hapticFeedback('light')
-    if (gameType === 'dragon') {
-      setActiveGame('dragon')
-    } else if (gameType === 'flappy') {
-      setActiveGame('flappy')
-    } else if (gameType === 'crossword') {
-      setActiveGame('crossword')
-    } else if (gameType === 'wordle') {
-      setActiveGame('wordle')
-    }
+    setActiveGame(gameType)
   }
+
+  const handleFavoriteToggle = (gameType: GameType, e: React.MouseEvent) => {
+    e.stopPropagation()
+    hapticFeedback('light')
+    
+    setFavoriteGames(prev => {
+      const isFavorite = prev.includes(gameType)
+      let newFavorites: GameType[]
+      
+      if (isFavorite) {
+        // Убираем из избранного
+        newFavorites = prev.filter(id => id !== gameType)
+      } else {
+        // Добавляем в избранное (максимум 5)
+        if (prev.length >= 5) {
+          hapticFeedback('heavy')
+          alert('Можно добавить максимум 5 игр в избранное')
+          return prev
+        }
+        newFavorites = [...prev, gameType]
+      }
+      
+      // Сохраняем в localStorage
+      localStorage.setItem('challenge_favorite_games', JSON.stringify(newFavorites))
+      return newFavorites
+    })
+  }
+
+  // Сортируем игры: сначала избранные, потом остальные
+  const sortedGames = [...ALL_GAMES].sort((a, b) => {
+    const aIsFavorite = favoriteGames.includes(a.id)
+    const bIsFavorite = favoriteGames.includes(b.id)
+    
+    if (aIsFavorite && !bIsFavorite) return -1
+    if (!aIsFavorite && bIsFavorite) return 1
+    
+    // Если оба избранные или оба не избранные, сохраняем исходный порядок
+    return ALL_GAMES.indexOf(a) - ALL_GAMES.indexOf(b)
+  })
 
   const handleGameScore = async (score: number, gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
     if (!config) return
@@ -257,50 +315,52 @@ export default function ChallengeTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 pb-24">
-      <SectionCard>
-        <SectionTitle>ИСПЫТАНИЕ</SectionTitle>
-        <p className="text-center text-gray-600 mb-6 leading-[1.2] text-[19.2px]">
-          Выберите игру и зарабатывайте очки!
-        </p>
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Прокручиваемая область с играми */}
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: '200px' }}>
+        <SectionCard>
+          <SectionTitle>ИСПЫТАНИЕ</SectionTitle>
+          <p className="text-center text-gray-600 mb-6 leading-[1.2] text-[19.2px]">
+            Выберите игру и зарабатывайте очки!
+          </p>
 
-        <div className="space-y-4">
-          <motion.button
-            onClick={() => handleGameClick('dragon')}
-            whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
-          >
-            🐉 Дракончик
-          </motion.button>
+          <div className="space-y-4">
+            {sortedGames.map((game) => {
+              const isFavorite = favoriteGames.includes(game.id)
+              return (
+                <motion.button
+                  key={game.id}
+                  onClick={() => handleGameClick(game.id)}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all relative pr-12"
+                >
+                  <span>{game.emoji} {game.name}</span>
+                  
+                  {/* Кнопка избранного */}
+                  <button
+                    onClick={(e) => handleFavoriteToggle(game.id, e)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
+                    aria-label={isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+                  >
+                    <svg
+                      className={`w-6 h-6 transition-all ${isFavorite ? 'fill-yellow-400 stroke-yellow-400' : 'fill-none stroke-white'}`}
+                      viewBox="0 0 24 24"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </button>
+                </motion.button>
+              )
+            })}
+          </div>
+        </SectionCard>
+      </div>
 
-          <motion.button
-            onClick={() => handleGameClick('flappy')}
-            whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
-          >
-            🐦 ФлэппиБёрд
-          </motion.button>
-
-          <motion.button
-            onClick={() => handleGameClick('crossword')}
-            whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
-          >
-            📝 Кроссворд
-          </motion.button>
-
-          <motion.button
-            onClick={() => handleGameClick('wordle')}
-            whileTap={{ scale: 0.95 }}
-            className="w-full py-4 bg-primary text-white rounded-lg font-semibold text-lg shadow-md hover:shadow-lg transition-all"
-          >
-            🔤 ВОРДЛИ
-          </motion.button>
-        </div>
-      </SectionCard>
-
-      {/* Статистика игрока - внизу по центру */}
-      <div className="fixed bottom-40 left-1/2 transform -translate-x-1/2 px-4 pb-2 w-full max-w-md">
+      {/* Статистика игрока - фиксированная внизу, опущена на 30% */}
+      <div className="fixed bottom-28 left-1/2 transform -translate-x-1/2 px-4 pb-2 w-full max-w-md z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
