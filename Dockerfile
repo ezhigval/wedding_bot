@@ -1,31 +1,35 @@
-# Dockerfile для деплоя бота на Render.com
-FROM python:3.11-slim
+# Build stage
+FROM golang:1.22-alpine AS builder
 
-# Установка системных зависимостей
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Создание рабочей директории
 WORKDIR /app
 
-# Копирование requirements и установка зависимостей Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Копирование всех файлов проекта
+# Copy source code
 COPY . .
 
-# Создание директорий для данных
-RUN mkdir -p data res webapp
+# Build the application
+RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
 
-# Скрипт запуска
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Runtime stage
+FROM alpine:latest
 
-# Открытие порта
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+# Copy the binary from builder
+COPY --from=builder /app/server .
+
+# Copy static files
+COPY --from=builder /app/webapp ./webapp
+COPY --from=builder /app/webapp-react ./webapp-react
+COPY --from=builder /app/res ./res
+
+# Expose port
 EXPOSE 10000
 
-# Запуск через скрипт
-CMD ["/start.sh"]
-
+# Run the server
+CMD ["./server"]
