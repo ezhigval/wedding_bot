@@ -2951,9 +2951,15 @@ async def process_wordle_word(message: Message, state: FSMContext):
         await message.answer("❌ Слово слишком короткое. Попробуйте еще раз:")
         return
     
-    # Проверяем слово через API
-    from api import validate_word
-    word_valid, validation_error = await validate_word(word)
+    # Проверяем слово через функцию из google_sheets (используем pymorphy3)
+    # Импортируем validate_word из api
+    try:
+        from api import validate_word
+        word_valid, validation_error = await validate_word(word)
+    except ImportError:
+        # Если не удалось импортировать, используем простую проверку
+        word_valid = len(word) >= 2 and word.isalpha()
+        validation_error = "Не удалось проверить слово" if not word_valid else ""
     
     if not word_valid:
         await message.answer(
