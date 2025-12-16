@@ -171,9 +171,6 @@ func GetAdminBotReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
 			tgbotapi.NewKeyboardButton("Добавить админа"),
 		},
 		{
-			tgbotapi.NewKeyboardButton("🆔 Найти user_id"),
-		},
-		{
 			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
 		},
 	}

@@ -68,8 +68,6 @@ func handleAdminText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		handleAdminResetMe(bot, message)
 	case "Добавить админа":
 		handleAdminAddAdmin(bot, message)
-	case "🆔 Найти user_id":
-		handleAdminFindUserID(bot, message)
 	}
 }
 
@@ -773,18 +771,6 @@ func handleAdminAddAdmin(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "👤 <b>Добавление администратора</b>\n\n" +
 		"Пришлите @username человека, которого хотите сделать админом.\n" +
 		"Важно: этот пользователь должен хотя бы раз написать боту /start."
-
-	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-	msg.ParseMode = tgbotapi.ModeHTML
-	bot.Send(msg)
-}
-
-// handleAdminFindUserID запускает поиск user_id по username
-func handleAdminFindUserID(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	// TODO: Реализовать FSM для поиска user_id
-	msgText := "🆔 <b>Найти user_id по username</b>\n\n" +
-		"Пришлите @username или ссылку вида `https://t.me/username`.\n" +
-		"Важно: пользователь должен хотя бы раз написать боту или быть с ботом в одной группе."
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
