@@ -324,20 +324,27 @@ func GetGroupManagementKeyboard() tgbotapi.InlineKeyboardMarkup {
 
 // GetContactsInlineKeyboard возвращает inline клавиатуру для контактов
 func GetContactsInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	var keyboard [][]tgbotapi.InlineKeyboardButton
-	if strings.HasPrefix(config.WebappURL, "https://") {
-		webAppURL := config.WebappURL
-		keyboard = [][]tgbotapi.InlineKeyboardButton{
-			{
-				tgbotapi.NewInlineKeyboardButtonURL("💒 Открыть приглашение", webAppURL),
-			},
-		}
-	} else {
-		keyboard = [][]tgbotapi.InlineKeyboardButton{
-			{
-				tgbotapi.NewInlineKeyboardButtonData("📱 Приглашение", "open_invitation"),
-			},
-		}
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonURL("✉️ Написать Валентину", "https://t.me/"+strings.TrimPrefix(config.GroomTelegram, "@")),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonURL("✉️ Написать Марии", "https://t.me/"+strings.TrimPrefix(config.BrideTelegram, "@")),
+		},
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+}
+
+// GetGroupLinkKeyboard возвращает кнопку перехода в общий чат
+func GetGroupLinkKeyboard() tgbotapi.InlineKeyboardMarkup {
+	link := config.GroupLink
+	if link == "" && strings.TrimSpace(config.GroupID) != "" {
+		link = "https://t.me/" + strings.TrimPrefix(config.GroupID, "@")
+	}
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonURL("💬 Перейти в общий чат", link),
+		},
 	}
 	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }

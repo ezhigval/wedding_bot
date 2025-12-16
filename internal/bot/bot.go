@@ -173,7 +173,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	// Проверяем другие кнопки
 	if text == "💬 Общий чат" {
-		keyboard := keyboards.GetContactsInlineKeyboard()
+		keyboard := keyboards.GetGroupLinkKeyboard()
 		msg := tgbotapi.NewMessage(message.Chat.ID, "Перейдите в общий чат:")
 		msg.ReplyMarkup = keyboard
 		bot.Send(msg)
