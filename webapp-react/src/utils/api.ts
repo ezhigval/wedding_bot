@@ -170,6 +170,7 @@ export interface RegistrationStatus {
 
 export async function checkRegistration(): Promise<RegistrationStatus> {
   const config = await loadConfig()
+  const checkUrl = `${config.apiUrl}/check-registration`
   try {
     // ВРЕМЕННАЯ СИМУЛЯЦИЯ ДЛЯ ТЕСТА - УДАЛИТЬ ПОСЛЕ ПРОВЕРКИ
     // Симулируем user_id = 1034074077 для локального тестирования
@@ -185,8 +186,8 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
         firstName: '',
         lastName: '',
       })
-      const url = `${config.apiUrl}/check?${params}`
-      const response = await fetch(url)
+      const url = `${checkUrl}?${params.toString()}`
+      const response = await fetch(url, { method: 'POST' })
       
       if (response.ok) {
         const data = await response.json()
@@ -282,12 +283,15 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
           lastName,
           searchByNameOnly: 'true',
         })
-        const url = `${config.apiUrl}/check?${params}`
-        const response = await fetch(url)
+        const url = `${checkUrl}?${params.toString()}`
+        const response = await fetch(url, { method: 'POST' })
         
         if (response.ok) {
           const data = await response.json()
           return data
+        } else {
+          const errorText = await response.text()
+          console.error('[Telegram WebApp] /check-registration name-only failed:', response.status, errorText)
         }
       } catch (error) {
         console.error('Error checking by name only:', error)
@@ -309,8 +313,8 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
       firstName,
       lastName,
     })
-    const url = `${config.apiUrl}/check?${params}`
-    const response = await fetch(url)
+    const url = `${checkUrl}?${params.toString()}`
+    const response = await fetch(url, { method: 'POST' })
     
     if (response.ok) {
       const data = await response.json()
@@ -322,11 +326,13 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
       
       return data
     } else {
+      const errorText = await response.text()
+      console.error('[Telegram WebApp] /check-registration failed:', response.status, errorText)
       return { registered: false, error: 'server_error' }
     }
   } catch (error) {
     console.error('Error checking registration:', error)
-        return { registered: false, error: 'network_error' }
+    return { registered: false, error: 'network_error' }
   }
 }
 
@@ -624,4 +630,3 @@ export async function saveCrosswordProgress(
     return { success: false, error: 'Ошибка сети' }
   }
 }
-
