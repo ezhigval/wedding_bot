@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"wedding-bot/internal/config"
@@ -55,6 +56,7 @@ func GetTimeline(ctx context.Context) ([]TimelineItem, error) {
 
 func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 	var timeline []TimelineItem
+	timeRe := regexp.MustCompile(`^\d{1,2}[:.]\d{2}`)
 
 	for i, row := range rows {
 		timeCell := ""
@@ -72,7 +74,7 @@ func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 			}
 		}
 
-		// Пропускаем полностью пустые строки и строки без события
+		// Пропускаем полностью пустые строки
 		if eventCell == "" && timeCell == "" {
 			continue
 		}
@@ -82,9 +84,35 @@ func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 			continue
 		}
 
+		// Определяем порядок столбцов (A:время/B:событие или наоборот)
+		timeVal := timeCell
+		eventVal := eventCell
+
+		// Если событие пустое, пробуем определить, что время в столбце B, а событие в A
+		if eventVal == "" && timeRe.MatchString(eventCell) {
+			timeVal = eventCell
+			eventVal = timeCell
+		}
+
+		// Если событие пустое, но столбец A похож на событие, а B на время
+		if eventVal == "" && timeVal != "" && len(row) > 1 {
+			if timeRe.MatchString(eventCell) {
+				timeVal = eventCell
+				eventVal = timeCell
+			} else if timeRe.MatchString(timeCell) && eventCell != "" {
+				timeVal = timeCell
+				eventVal = eventCell
+			}
+		}
+
+		// Если всё ещё пустое событие, пропускаем
+		if eventVal == "" {
+			continue
+		}
+
 		timeline = append(timeline, TimelineItem{
-			Time:  timeCell,
-			Event: eventCell,
+			Time:  timeVal,
+			Event: eventVal,
 		})
 	}
 
