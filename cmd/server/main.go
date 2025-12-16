@@ -12,8 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gorilla/mux"
-	"gopkg.in/telebot.v3"
+	"github.com/rs/zerolog"
 
 	"wedding-bot/internal/api"
 	"wedding-bot/internal/bot"
@@ -25,11 +26,19 @@ import (
 
 var (
 	server      *http.Server
-	telegramBot *telebot.Bot
+	telegramBot *tgbotapi.BotAPI
 	wg          sync.WaitGroup
 )
 
 func main() {
+	// Инициализируем структурированное логирование
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+
 	// Обработка паник
 	defer func() {
 		if r := recover(); r != nil {
@@ -100,21 +109,8 @@ func main() {
 			return bot.NotifyAdmins(message)
 		})
 
-		// Запускаем бота в отдельной горутине
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("🚨 Паника в боте: %v", r)
-				}
-			}()
-
-			log.Println("🤖 Запуск Telegram бота...")
-			if telegramBot != nil {
-				telegramBot.Start()
-			}
-		}()
+		// Бот уже запущен в InitBot через startUpdateHandler
+		log.Println("🤖 Telegram бот запущен")
 	}
 
 	// Планируем ежедневный сброс в отдельной горутине
@@ -204,7 +200,7 @@ func main() {
 	// Останавливаем бота
 	if telegramBot != nil {
 		log.Println("⏳ Остановка Telegram бота...")
-		telegramBot.Stop()
+		// Bot stops automatically when context is cancelled
 		log.Println("✅ Telegram бот остановлен")
 	}
 
@@ -312,4 +308,3 @@ func getContentType(path string) string {
 	}
 	return "text/html"
 }
-

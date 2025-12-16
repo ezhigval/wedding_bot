@@ -4,19 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
-	"gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
 	"wedding-bot/internal/keyboards"
 )
 
-// handleStart обрабатывает команду /start
-func handleStart(c telebot.Context) error {
-	user := c.Sender()
+// handleStartCommand обрабатывает команду /start
+func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	user := message.From
 
 	// Получаем имя пользователя
 	displayName := getUserDisplayName(user)
@@ -34,8 +33,8 @@ func handleStart(c telebot.Context) error {
 
 	// Обновляем user_id в приглашениях (если есть)
 	username := ""
-	if user.Username != "" {
-		username = user.Username
+	if user.UserName != "" {
+		username = user.UserName
 	}
 	var usernamePtr *string
 	if username != "" {
@@ -47,101 +46,72 @@ func handleStart(c telebot.Context) error {
 	isAdmin := isAdminUser(int(user.ID))
 
 	// Отправляем приветственное сообщение
-	message := fmt.Sprintf("👋 Привет, %s!", displayName)
+	msgText := fmt.Sprintf("👋 Привет, %s!", displayName)
 
 	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, IsPhotoModeEnabled(user.ID))
 
 	// Пытаемся отправить фото
 	if config.PhotoPath != "" {
-		photo := &telebot.Photo{File: telebot.FromDisk(config.PhotoPath)}
-		if err := c.Send(photo, message, keyboard); err != nil {
+		photo := tgbotapi.NewPhoto(message.Chat.ID, tgbotapi.FilePath(config.PhotoPath))
+		photo.Caption = msgText
+		photo.ReplyMarkup = keyboard
+		if _, err := bot.Send(photo); err != nil {
 			log.Printf("⚠️ Не удалось отправить фото: %v", err)
 			// Отправляем только текст
-			return c.Send(message, keyboard)
+			msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+			msg.ReplyMarkup = keyboard
+			bot.Send(msg)
+			return
 		}
-		return nil
+		return
 	}
 
-	return c.Send(message, keyboard)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
-// handleText обрабатывает текстовые сообщения
-func handleText(c telebot.Context) error {
-	text := c.Text()
-	userID := c.Sender().ID
+// handleHelpCommand обрабатывает команду /help
+func handleHelpCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "Помощь по использованию бота:\n\n" +
+		"/start - Начать работу с ботом\n" +
+		"/menu - Открыть меню\n" +
+		"/admin - Админ панель (только для админов)"
 
-	// Проверяем фоторежим
-	if text == "📸 Фоторежим ❌" || text == "📸 Фоторежим ✅" {
-		return handleTogglePhotoMode(c)
-	}
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	bot.Send(msg)
+}
 
-	// Проверяем другие кнопки
-	if text == "💬 Общий чат" {
-		keyboard := keyboards.GetContactsInlineKeyboard()
-		return c.Send("Перейдите в общий чат:", keyboard)
-	}
+// handleMenuCommand обрабатывает команду /menu
+func handleMenuCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	keyboard := keyboards.GetInvitationKeyboard()
 
-	if text == "📞 Связаться с нами" {
-		keyboard := keyboards.GetContactsInlineKeyboard()
-		return c.Send("Свяжитесь с организаторами:", keyboard)
-	}
+	msg := tgbotapi.NewMessage(message.Chat.ID, "Меню бота:")
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
 
-	if text == "🛠 Админ-панель" {
-		if !isAdminUser(int(userID)) {
-			return c.Send("❌ У вас нет прав администратора")
-		}
-		return handleAdminPanel(c)
-	}
-
-	// Проверяем, является ли пользователь админом для обработки admin команд
-	if isAdminUser(int(userID)) {
-		// Проверяем, есть ли активная рассылка
-		state := GetBroadcastState(userID)
-		if state != nil {
-			// Обрабатываем текст/фото/кнопку для рассылки
-			if state.Text == "" {
-				// Ожидаем текст
-				return handleBroadcastText(c, text)
-			} else if state.PhotoID == "" {
-				// Можем обработать фото или пропустить
-				// Продолжаем к обычной обработке
-			} else if state.ButtonText == "" {
-				// Ожидаем выбор кнопки или текст кнопки
-				// Проверяем, не является ли это текстом кнопки
-				if strings.Contains(text, "|") {
-					// Формат: "Текст|URL"
-					parts := strings.SplitN(text, "|", 2)
-					if len(parts) == 2 {
-						state.ButtonText = strings.TrimSpace(parts[0])
-						state.ButtonURL = strings.TrimSpace(parts[1])
-						return showBroadcastPreview(c, state)
-					}
-				}
-			}
-		}
-
-		return handleAdminText(c)
-	}
-
-	return nil
+// handleAdminCommand обрабатывает команду /admin
+func handleAdminCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	handleAdminPanel(bot, message)
 }
 
 // handleTogglePhotoMode обрабатывает переключение фоторежима
-func handleTogglePhotoMode(c telebot.Context) error {
-	userID := c.Sender().ID
-	isAdminUser := isAdminUser(int(userID))
+func handleTogglePhotoMode(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	userID := message.From.ID
+	isAdmin := isAdminUser(int(userID))
 
 	enabled := IsPhotoModeEnabled(userID)
 
 	if enabled {
 		// Выключаем фоторежим
 		SetPhotoModeEnabled(userID, false)
-		keyboard := keyboards.GetMainReplyKeyboard(isAdminUser, false)
-		return c.Send(
-			"📸 Фоторежим <b>выключен</b>.\nФото больше не собираются автоматически.",
-			keyboard,
-			telebot.ModeHTML,
-		)
+		keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Фоторежим <b>выключен</b>.\nФото больше не собираются автоматически.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
 	}
 
 	// Включаем фоторежим - проверяем регистрацию
@@ -155,91 +125,34 @@ func handleTogglePhotoMode(c telebot.Context) error {
 	}
 
 	if !registered {
-		keyboard := keyboards.GetMainReplyKeyboard(isAdminUser, false)
-		return c.Send(
-			"⚠️ Для использования фоторежима необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.",
-			keyboard,
-		)
+		keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для использования фоторежима необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.")
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
 	}
 
 	SetPhotoModeEnabled(userID, true)
-	keyboard := keyboards.GetMainReplyKeyboard(isAdminUser, true)
-	return c.Send(
-		"📸 Фоторежим <b>включен</b>.\nПросто отправляйте фото в этот чат — я всё соберу в свадебный альбом! 🙌",
-		keyboard,
-		telebot.ModeHTML,
-	)
-}
-
-// handlePhoto обрабатывает фото
-func handlePhoto(c telebot.Context) error {
-	photo := c.Message().Photo
-	if photo == nil {
-		return nil
-	}
-
-	userID := c.Sender().ID
-
-	// Проверяем, включен ли фоторежим
-	if !IsPhotoModeEnabled(userID) {
-		// Проверяем, зарегистрирован ли пользователь
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		registered, err := google_sheets.CheckGuestRegistration(ctx, int(userID))
-		if err != nil {
-			log.Printf("Ошибка проверки регистрации: %v", err)
-		}
-
-		if registered {
-			// Пользователь зарегистрирован, но фоторежим не включен
-			isAdmin := isAdminUser(int(userID))
-			keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
-			return c.Send(
-				"📸 Чтобы сохранить фото в свадебный альбом, включите фоторежим.\nНажмите кнопку «📸 Фоторежим ❌» в меню.",
-				keyboard,
-			)
-		} else {
-			// Пользователь не зарегистрирован
-			return c.Send(
-				"📸 Для сохранения фото в свадебный альбом необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.",
-			)
-		}
-	}
-
-	// Сохраняем фото
-	user := c.Sender()
-	displayName := getUserDisplayName(user)
-
-	username := ""
-	if user.Username != "" {
-		username = "@" + user.Username
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	fileID := photo.FileID
-	if err := google_sheets.SavePhotoFromUser(ctx, int(userID), &username, displayName, fileID); err != nil {
-		log.Printf("Ошибка сохранения фото: %v", err)
-		return c.Send("❌ Ошибка сохранения фото")
-	}
-
-	return c.Send("✅ Фото сохранено! 📸")
+	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, true)
+	msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Фоторежим <b>включен</b>.\nПросто отправляйте фото в этот чат — я всё соберу в свадебный альбом! 🙌")
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 // handleAdminPanel показывает админ панель
-func handleAdminPanel(c telebot.Context) error {
-	message := "🛠 <b>Админ панель</b>\n\n" +
-		"Выберите раздел:"
-
+func handleAdminPanel(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "🛠 <b>Админ панель</b>\n\nВыберите раздел:"
 	keyboard := keyboards.GetAdminRootReplyKeyboard()
 
-	return c.Send(message, keyboard, telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 // getUserDisplayName получает имя пользователя
-func getUserDisplayName(user *telebot.User) string {
+func getUserDisplayName(user *tgbotapi.User) string {
 	if user.FirstName != "" {
 		if user.LastName != "" {
 			return fmt.Sprintf("%s %s", user.FirstName, user.LastName)
@@ -268,4 +181,3 @@ func isAdminUser(userID int) bool {
 
 	return false
 }
-

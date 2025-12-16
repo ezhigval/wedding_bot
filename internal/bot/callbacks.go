@@ -8,136 +8,104 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
 	"wedding-bot/internal/keyboards"
 )
 
-// handleCallback обрабатывает callback queries
-func handleCallback(c telebot.Context) error {
-	data := c.Callback().Data
-
-	// Парсим callback data
-	parts := strings.Split(data, ":")
-	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
-	}
-
-	action := parts[0]
-
-	switch action {
-	case "admin":
-		return handleAdminCallback(c, parts[1:])
-	case "invite":
-		return handleInvitationCallback(c, parts[1:])
-	case "game":
-		return handleGameAdminCallback(c, parts[1:])
-	case "group":
-		return handleGroupCallback(c, parts[1:])
-	case "admin_wordle":
-		return handleWordleAdminCallback(c)
-	case "admin_crossword":
-		return handleCrosswordAdminCallback(c)
-	case "admin_back":
-		return handleAdminBackCallback(c)
-	case "swapname":
-		return handleSwapNameCallback(c, parts[1:])
-	case "fixnames_page":
-		return handleFixNamesPageCallback(c, parts[1:])
-	case "delete_guest":
-		return handleDeleteGuestCallback(c, parts[1:])
-	case "broadcast":
-		return handleBroadcastCallback(c, parts[1:])
-	default:
-		return c.Answer(&telebot.QueryResponse{})
-	}
-}
-
 // handleAdminCallback обрабатывает callback от админ панели
-func handleAdminCallback(c telebot.Context, parts []string) error {
+func handleAdminCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	section := parts[0]
 
 	switch section {
 	case "guests":
-		return handleAdminGuestsCallback(c)
+		handleAdminGuestsCallback(bot, callback)
 	case "guests:list":
-		return handleAdminGuestsList(c)
+		handleAdminGuestsList(bot, callback)
 	case "seating":
-		return handleAdminSeating(c)
+		handleAdminSeating(bot, callback)
 	case "send_invite":
-		return handleAdminSendInvite(c)
+		handleAdminSendInvite(bot, callback)
 	case "games":
-		return handleAdminGamesCallback(c)
+		handleAdminGamesCallback(bot, callback)
 	case "stats":
-		return handleAdminStatsCallback(c)
+		handleAdminStatsCallback(bot, callback)
 	case "group":
-		return handleAdminGroupCallback(c)
+		handleAdminGroupCallback(bot, callback)
 	case "back":
-		return handleAdminBackCallback(c)
+		handleAdminBackCallback(bot, callback)
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }
 
 // handleAdminBackCallback возвращает в главное админ меню
-func handleAdminBackCallback(c telebot.Context) error {
+func handleAdminBackCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	message := "🔧 <b>Панель администратора</b>\n\nВыберите раздел:"
-	keyboard := keyboards.GetAdminRootReplyKeyboard()
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	keyboard := keyboards.GetAdminRootInlineKeyboard()
+
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleAdminGuestsCallback показывает управление гостями
-func handleAdminGuestsCallback(c telebot.Context) error {
+func handleAdminGuestsCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	count, err := google_sheets.GetGuestsCountFromSheets(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения количества гостей: %v", err)
-		return c.Send("❌ Ошибка получения данных")
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка получения данных"))
+		return
 	}
 
 	message := fmt.Sprintf("👥 <b>Управление гостями</b>\n\nЗарегистрировано: %d", count)
 
-	keyboard := &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "📋 Список гостей",
-					Data: "admin:guests:list",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "🔙 Назад",
-					Data: "admin:back",
-				},
-			},
-		},
-	}
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📋 Список гостей", "admin:guests:list"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "admin:back"),
+		),
+	)
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
-// handleAdminGuestsList показывает список гостей (из admin_handlers.go)
-func handleAdminGuestsList(c telebot.Context) error {
+// handleAdminGuestsList показывает список гостей
+func handleAdminGuestsList(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	guests, err := google_sheets.GetAllGuestsFromSheets(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Send("❌ Ошибка при получении списка гостей. Попробуйте позже.")
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка при получении списка гостей"))
+		return
 	}
 
 	if len(guests) == 0 {
-		return c.Send("📋 <b>Список гостей</b>\n\nПока никто не подтвердил присутствие.", telebot.ModeHTML)
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "📋 <b>Список гостей</b>\n\nПока никто не подтвердил присутствие.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	var sb strings.Builder
@@ -159,22 +127,30 @@ func handleAdminGuestsList(c telebot.Context) error {
 
 	sb.WriteString(fmt.Sprintf("\n<b>Всего: %d гостей</b>", len(guests)))
 
-	return c.Send(sb.String(), telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, sb.String())
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
-// handleAdminSeating показывает рассадку (из admin_handlers.go)
-func handleAdminSeating(c telebot.Context) error {
+// handleAdminSeating показывает рассадку
+func handleAdminSeating(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	seating, err := google_sheets.GetSeatingFromSheets(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения рассадки: %v", err)
-		return c.Send("❌ Ошибка при получении рассадки. Попробуйте позже.")
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка при получении рассадки"))
+		return
 	}
 
 	if len(seating) == 0 {
-		return c.Send("🍽 <b>Рассадка</b>\n\nПока нет данных по рассадке (лист 'Рассадка' пуст или без гостей).", telebot.ModeHTML)
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "🍽 <b>Рассадка</b>\n\nПока нет данных по рассадке (лист 'Рассадка' пуст или без гостей).")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	var sb strings.Builder
@@ -195,26 +171,30 @@ func handleAdminSeating(c telebot.Context) error {
 		}
 	}
 
-	return c.Send(sb.String(), telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, sb.String())
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
-// handleAdminSendInvite запускает отправку приглашений (из admin_handlers.go)
-func handleAdminSendInvite(c telebot.Context) error {
+// handleAdminSendInvite запускает отправку приглашений
+func handleAdminSendInvite(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	invitations, err := google_sheets.GetInvitationsList(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка приглашений: %v", err)
-		return c.Send("❌ Ошибка получения списка приглашений.")
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка получения списка приглашений"))
+		return
 	}
 
 	if len(invitations) == 0 {
-		return c.Send(
-			"❌ <b>Список приглашений пуст</b>\n\n"+
-				"Проверьте вкладку 'Пригласительные' в Google Sheets.",
-			telebot.ModeHTML,
-		)
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ <b>Список приглашений пуст</b>\n\nПроверьте вкладку 'Пригласительные' в Google Sheets.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	sentCount := 0
@@ -244,46 +224,62 @@ func handleAdminSendInvite(c telebot.Context) error {
 	}
 
 	keyboard := keyboards.GetGuestsSelectionKeyboard(keyboardInvitations)
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleAdminGamesCallback показывает управление играми
-func handleAdminGamesCallback(c telebot.Context) error {
+func handleAdminGamesCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	message := "🎮 <b>Управление играми</b>\n\nВыберите игру:"
-
 	keyboard := keyboards.GetAdminGamesKeyboard()
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleAdminStatsCallback показывает статистику
-func handleAdminStatsCallback(c telebot.Context) error {
+func handleAdminStatsCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	count, err := google_sheets.GetGuestsCountFromSheets(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения статистики: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	message := fmt.Sprintf("📊 <b>Статистика</b>\n\nЗарегистрировано гостей: %d", count)
-	return c.Edit(message, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleAdminGroupCallback показывает управление группой
-func handleAdminGroupCallback(c telebot.Context) error {
+func handleAdminGroupCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	message := "💬 <b>Управление группой</b>\n\nВыберите действие:"
-
 	keyboard := keyboards.GetGroupManagementKeyboard()
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleInvitationCallback обрабатывает callback от приглашений
-func handleInvitationCallback(c telebot.Context, parts []string) error {
+func handleInvitationCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	action := parts[0]
@@ -291,31 +287,46 @@ func handleInvitationCallback(c telebot.Context, parts []string) error {
 	switch action {
 	case "guest":
 		if len(parts) < 2 {
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
 		index, err := strconv.Atoi(parts[1])
 		if err != nil {
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
-		return handleInvitationGuestSelect(c, index)
+		handleInvitationGuestSelect(bot, callback, index)
+	case "mark_sent":
+		if len(parts) < 2 {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		index, err := strconv.Atoi(parts[1])
+		if err != nil {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		handleInvitationMarkSent(bot, callback, index)
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }
 
 // handleInvitationGuestSelect обрабатывает выбор гостя для отправки приглашения
-func handleInvitationGuestSelect(c telebot.Context, index int) error {
+func handleInvitationGuestSelect(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, index int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	invitations, err := google_sheets.GetInvitationsList(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка приглашений: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	if index < 0 || index >= len(invitations) {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	inv := invitations[index]
@@ -341,7 +352,8 @@ func handleInvitationGuestSelect(c telebot.Context, index int) error {
 	// Создаем deep link для открытия диалога
 	telegramID := inv.TelegramID
 	if telegramID == "" {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	// Убираем @ если есть
@@ -351,28 +363,17 @@ func handleInvitationGuestSelect(c telebot.Context, index int) error {
 
 	deepLink := fmt.Sprintf("tg://msg?to=%s&text=%s", telegramID, invitationText)
 
-	keyboard := &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "💬 Открыть диалог с текстом",
-					URL: deepLink,
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "✅ Отметить как отправленное",
-					Data: fmt.Sprintf("invite:mark_sent:%d", index),
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Вернуться к списку",
-					Data: "admin:guests:list",
-				},
-			},
-		},
-	}
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("💬 Открыть диалог с текстом", deepLink),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Отметить как отправленное", fmt.Sprintf("invite:mark_sent:%d", index)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Вернуться к списку", "admin:guests:list"),
+		),
+	)
 
 	message := fmt.Sprintf(
 		"📋 <b>Приглашение для %s</b>\n\n"+
@@ -381,13 +382,48 @@ func handleInvitationGuestSelect(c telebot.Context, index int) error {
 		inv.Name, inv.TelegramID,
 	)
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+}
+
+// handleInvitationMarkSent отмечает приглашение как отправленное
+func handleInvitationMarkSent(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, index int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	invitations, err := google_sheets.GetInvitationsList(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения списка приглашений: %v", err)
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
+		return
+	}
+
+	if index < 0 || index >= len(invitations) {
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Неверный индекс"))
+		return
+	}
+
+	inv := invitations[index]
+	err = google_sheets.MarkInvitationAsSent(ctx, inv.Name)
+	if err != nil {
+		log.Printf("Ошибка отметки приглашения как отправленного: %v", err)
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
+		return
+	}
+
+	bot.Request(tgbotapi.NewCallback(callback.ID, "✅ Приглашение отмечено как отправленное"))
+	// Обновляем список приглашений
+	handleAdminSendInvite(bot, callback)
 }
 
 // handleGameAdminCallback обрабатывает callback от админ панели игр
-func handleGameAdminCallback(c telebot.Context, parts []string) error {
+func handleGameAdminCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	game := parts[0]
@@ -395,189 +431,160 @@ func handleGameAdminCallback(c telebot.Context, parts []string) error {
 	switch game {
 	case "wordle":
 		if len(parts) > 1 {
-			return handleWordleAdminCallbackWithAction(c, parts[1:])
+			handleWordleAdminCallbackWithAction(bot, callback, parts[1:])
+		} else {
+			handleWordleAdminCallback(bot, callback)
 		}
-		return handleWordleAdminCallback(c)
 	case "crossword":
 		if len(parts) > 1 {
-			return handleCrosswordAdminCallbackWithAction(c, parts[1:])
+			handleCrosswordAdminCallbackWithAction(bot, callback, parts[1:])
+		} else {
+			handleCrosswordAdminCallback(bot, callback)
 		}
-		return handleCrosswordAdminCallback(c)
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }
 
 // handleWordleAdminCallback показывает управление Wordle
-func handleWordleAdminCallback(c telebot.Context) error {
+func handleWordleAdminCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	message := "🔤 <b>Управление Wordle</b>\n\nВыберите действие:"
-
 	keyboard := keyboards.GetAdminWordleKeyboard()
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleWordleAdminCallbackWithAction обрабатывает действия Wordle
-func handleWordleAdminCallbackWithAction(c telebot.Context, parts []string) error {
+func handleWordleAdminCallbackWithAction(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return handleWordleAdminCallback(c)
+		handleWordleAdminCallback(bot, callback)
+		return
 	}
 
 	action := parts[0]
 
 	switch action {
 	case "switch":
-		return handleWordleSwitch(c)
+		handleWordleSwitch(bot, callback)
 	case "add":
-		return handleWordleAdd(c)
+		handleWordleAdd(bot, callback)
 	default:
-		return handleWordleAdminCallback(c)
+		handleWordleAdminCallback(bot, callback)
 	}
 }
 
 // handleWordleSwitch переключает слово Wordle для всех
-func handleWordleSwitch(c telebot.Context) error {
+func handleWordleSwitch(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	err := google_sheets.SwitchWordleWordForAll(ctx)
 	if err != nil {
 		log.Printf("Ошибка переключения слова Wordle: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
-	_ = c.Send("✅ Слово Wordle переключено для всех пользователей")
-	return c.Answer(&telebot.QueryResponse{})
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "✅ Слово Wordle переключено для всех пользователей")
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleWordleAdd запускает добавление слова в Wordle
-func handleWordleAdd(c telebot.Context) error {
+func handleWordleAdd(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	// TODO: Реализовать FSM для ввода слова
-	_ = c.Send("Функция добавления слова в разработке")
-	return c.Answer(&telebot.QueryResponse{})
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция добавления слова в разработке")
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleCrosswordAdminCallback показывает управление Crossword
-func handleCrosswordAdminCallback(c telebot.Context) error {
+func handleCrosswordAdminCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	message := "📝 <b>Управление Кроссвордом</b>\n\nВыберите действие:"
-
 	keyboard := keyboards.GetAdminCrosswordKeyboard()
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleCrosswordAdminCallbackWithAction обрабатывает действия Crossword
-func handleCrosswordAdminCallbackWithAction(c telebot.Context, parts []string) error {
+func handleCrosswordAdminCallbackWithAction(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return handleCrosswordAdminCallback(c)
+		handleCrosswordAdminCallback(bot, callback)
+		return
 	}
 
 	action := parts[0]
 
 	switch action {
 	case "update":
-		return handleCrosswordUpdate(c)
+		handleCrosswordUpdate(bot, callback)
 	case "add":
-		return handleCrosswordAdd(c)
+		handleCrosswordAdd(bot, callback)
 	default:
-		return handleCrosswordAdminCallback(c)
+		handleCrosswordAdminCallback(bot, callback)
 	}
 }
 
 // handleCrosswordUpdate обновляет кроссворд
-func handleCrosswordUpdate(c telebot.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
+func handleCrosswordUpdate(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	// TODO: Реализовать обновление кроссворда
-	_ = ctx
-	_ = c.Send("Функция обновления кроссворда в разработке")
-	return c.Answer(&telebot.QueryResponse{})
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция обновления кроссворда в разработке")
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleCrosswordAdd запускает добавление кроссворда
-func handleCrosswordAdd(c telebot.Context) error {
+func handleCrosswordAdd(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	// TODO: Реализовать FSM для ввода слов кроссворда
-	_ = c.Send("Функция добавления кроссворда в разработке")
-	return c.Answer(&telebot.QueryResponse{})
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция добавления кроссворда в разработке")
+	bot.Send(msg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleGroupCallback обрабатывает callback от управления группой
-func handleGroupCallback(c telebot.Context, parts []string) error {
+func handleGroupCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	action := parts[0]
 
 	switch action {
-	case "send_message":
-		return handleGroupSendMessage(c)
-	case "add_member":
-		return handleGroupAddMember(c)
-	case "remove_member":
-		return handleGroupRemoveMember(c)
 	case "list_members":
-		return handleGroupListMembers(c)
+		handleGroupListMembers(bot, callback)
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
-}
-
-// handleGroupSendMessage запускает отправку сообщения в группу
-func handleGroupSendMessage(c telebot.Context) error {
-	if config.GroupID == "" {
-		return c.Answer(&telebot.QueryResponse{})
-	}
-
-	// TODO: Реализовать FSM для ввода сообщения
-	_ = c.Send("Функция отправки сообщения в группу в разработке")
-	return c.Answer(&telebot.QueryResponse{})
-}
-
-// handleGroupAddMember запускает добавление участника в группу
-func handleGroupAddMember(c telebot.Context) error {
-	if config.GroupID == "" {
-		return c.Answer(&telebot.QueryResponse{})
-	}
-
-	// TODO: Реализовать FSM для ввода username
-	_ = c.Send("Функция добавления участника в разработке")
-	return c.Answer(&telebot.QueryResponse{})
-}
-
-// handleGroupRemoveMember запускает удаление участника из группы
-func handleGroupRemoveMember(c telebot.Context) error {
-	if config.GroupID == "" {
-		return c.Answer(&telebot.QueryResponse{})
-	}
-
-	// TODO: Реализовать FSM для ввода username
-	_ = c.Send("Функция удаления участника в разработке")
-	return c.Answer(&telebot.QueryResponse{})
 }
 
 // handleGroupListMembers показывает список участников группы
-func handleGroupListMembers(c telebot.Context) error {
-	if config.GroupID == "" {
-		return c.Answer(&telebot.QueryResponse{})
-	}
-
-	// TODO: Реализовать получение списка участников
-	_ = c.Send("Функция просмотра участников в разработке")
-	return c.Answer(&telebot.QueryResponse{})
+func handleGroupListMembers(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	// Реализовано в admin_handlers.go
+	handleAdminGroupListMembers(bot, callback.Message)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleSwapNameCallback обрабатывает смену имени/фамилии
-func handleSwapNameCallback(c telebot.Context, parts []string) error {
+func handleSwapNameCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	rowStr := parts[0]
 	row, err := strconv.Atoi(rowStr)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -586,14 +593,16 @@ func handleSwapNameCallback(c telebot.Context, parts []string) error {
 	err = google_sheets.SwapGuestNameOrder(ctx, row)
 	if err != nil {
 		log.Printf("Ошибка смены имени/фамилии: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, "❌ Ошибка"))
+		return
 	}
 
 	// Обновляем список гостей и показываем обновленную страницу
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, "✅ Имя и фамилия поменяны местами"))
+		return
 	}
 
 	// Определяем текущую страницу (просто показываем первую)
@@ -605,18 +614,24 @@ func handleSwapNameCallback(c telebot.Context, parts []string) error {
 		len(guests),
 	)
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleFixNamesPageCallback обрабатывает переключение страницы в исправлении имен
-func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
+func handleFixNamesPageCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	page, err := strconv.Atoi(parts[0])
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -625,7 +640,8 @@ func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	keyboard := keyboards.GetGuestsSwapKeyboard(guests, page)
@@ -636,13 +652,18 @@ func handleFixNamesPageCallback(c telebot.Context, parts []string) error {
 		len(guests),
 	)
 
-	return c.Edit(message, keyboard, telebot.ModeHTML)
+	editMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, message)
+	editMsg.ParseMode = tgbotapi.ModeHTML
+	editMsg.ReplyMarkup = &keyboard
+	bot.Send(editMsg)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleDeleteGuestCallback обрабатывает удаление гостя
-func handleDeleteGuestCallback(c telebot.Context, parts []string) error {
+func handleDeleteGuestCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) < 2 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	action := parts[0]
@@ -650,7 +671,8 @@ func handleDeleteGuestCallback(c telebot.Context, parts []string) error {
 
 	userID, err := strconv.Atoi(userIDStr)
 	if err != nil {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -663,55 +685,63 @@ func handleDeleteGuestCallback(c telebot.Context, parts []string) error {
 		err = google_sheets.DeleteGuestFromSheets(ctx, userID)
 		if err != nil {
 			log.Printf("Ошибка удаления гостя: %v", err)
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
-		_ = c.Send("✅ Гость удален из группы и списка")
-		return c.Answer(&telebot.QueryResponse{})
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "✅ Гость удален из группы и списка")
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "confirm_only":
 		// Удалить только из списка
 		err = google_sheets.DeleteGuestFromSheets(ctx, userID)
 		if err != nil {
 			log.Printf("Ошибка удаления гостя: %v", err)
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
-		_ = c.Send("✅ Гость удален из списка")
-		return c.Answer(&telebot.QueryResponse{})
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "✅ Гость удален из списка")
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }
 
 // handleBroadcastCallback обрабатывает callback от рассылки
-func handleBroadcastCallback(c telebot.Context, parts []string) error {
+func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
 	if len(parts) == 0 {
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
 	}
 
 	action := parts[0]
 
 	switch action {
 	case "no_photo":
-		userID := c.Sender().ID
+		userID := callback.From.ID
 		state := GetBroadcastState(userID)
 		if state == nil {
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
 		// Пропускаем фото, переходим к кнопке
-		return handleBroadcastButton(c, "none")
+		handleBroadcastButton(bot, callback, "none")
 	case "btn":
 		if len(parts) < 2 {
-			return c.Answer(&telebot.QueryResponse{})
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
 		buttonType := parts[1]
-		return handleBroadcastButton(c, buttonType)
+		handleBroadcastButton(bot, callback, buttonType)
 	case "send":
 		if len(parts) > 1 && parts[1] == "confirm" {
-			return handleBroadcastSendConfirm(c)
+			handleBroadcastSendConfirm(bot, callback)
+		} else {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 		}
-		return c.Answer(&telebot.QueryResponse{})
 	case "cancel":
-		return handleBroadcastCancel(c)
+		handleBroadcastCancel(bot, callback)
 	default:
-		return c.Answer(&telebot.QueryResponse{})
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }

@@ -32,11 +32,17 @@ func NotifyAdmins(message string) error {
 
 // InitAPI инициализирует API роутер
 func InitAPI(ctx context.Context) (*mux.Router, error) {
+	// Инициализируем структурированное логирование
+	initLogger()
+
 	router := mux.NewRouter()
 
 	// Middleware (порядок важен!)
 	router.Use(recoveryMiddleware)
-	router.Use(loggingMiddleware)
+	router.Use(requestIDMiddleware)
+	router.Use(structuredLoggingMiddleware)
+	router.Use(securityMiddleware)
+	router.Use(rateLimitMiddleware)
 	router.Use(corsMiddleware)
 
 	// Инициализируем необходимые листы в Google Sheets
@@ -125,7 +131,7 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// loggingMiddleware логирует запросы
+// loggingMiddleware логирует запросы (legacy, используется structuredLoggingMiddleware)
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -161,15 +167,14 @@ func JSONError(w http.ResponseWriter, status int, message string) {
 // getConfig возвращает конфигурацию для фронтенда
 func getConfig(w http.ResponseWriter, r *http.Request) {
 	config := map[string]interface{}{
-		"wedding_date":      config.WeddingDate.Format("2006-01-02"),
-		"groom_name":        config.GroomName,
-		"bride_name":        config.BrideName,
-		"wedding_address":   config.WeddingAddress,
-		"groom_telegram":    config.GroomTelegram,
-		"bride_telegram":    config.BrideTelegram,
-		"group_link":        config.GroupLink,
+		"wedding_date":    config.WeddingDate.Format("2006-01-02"),
+		"groom_name":      config.GroomName,
+		"bride_name":      config.BrideName,
+		"wedding_address": config.WeddingAddress,
+		"groom_telegram":  config.GroomTelegram,
+		"bride_telegram":  config.BrideTelegram,
+		"group_link":      config.GroupLink,
 	}
 
 	JSONResponse(w, http.StatusOK, config)
 }
-

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/google_sheets"
 )
@@ -68,18 +68,15 @@ func GetBroadcastRecipients(ctx context.Context) ([]int64, error) {
 }
 
 // SendBroadcast отправляет рассылку всем получателям
-func SendBroadcast(bot *telebot.Bot, state *BroadcastState, recipients []int64) (sent, failed int) {
+func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int64) (sent, failed int) {
 	for _, userID := range recipients {
 		// Создаем клавиатуру если есть кнопка
-		var keyboard *telebot.ReplyMarkup
+		var keyboard *tgbotapi.InlineKeyboardMarkup
 		if state.ButtonText != "" && state.ButtonURL != "" {
-			keyboard = &telebot.ReplyMarkup{
-				InlineKeyboard: [][]telebot.InlineButton{
+			keyboard = &tgbotapi.InlineKeyboardMarkup{
+				InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
 					{
-						telebot.InlineButton{
-							Text: state.ButtonText,
-							URL:  state.ButtonURL,
-						},
+						tgbotapi.NewInlineKeyboardButtonURL(state.ButtonText, state.ButtonURL),
 					},
 				},
 			}
@@ -88,15 +85,20 @@ func SendBroadcast(bot *telebot.Bot, state *BroadcastState, recipients []int64) 
 		// Отправляем сообщение
 		var err error
 		if state.PhotoID != "" {
-			photo := &telebot.Photo{File: telebot.File{FileID: state.PhotoID}}
+			photo := tgbotapi.NewPhoto(userID, tgbotapi.FileID(state.PhotoID))
 			if state.Text != "" {
-				// Отправляем фото с подписью
-				_, err = bot.Send(&telebot.User{ID: userID}, photo, state.Text, keyboard)
-			} else {
-				_, err = bot.Send(&telebot.User{ID: userID}, photo, keyboard)
+				photo.Caption = state.Text
 			}
+			if keyboard != nil {
+				photo.ReplyMarkup = keyboard
+			}
+			_, err = bot.Send(photo)
 		} else {
-			_, err = bot.Send(&telebot.User{ID: userID}, state.Text, keyboard)
+			msg := tgbotapi.NewMessage(userID, state.Text)
+			if keyboard != nil {
+				msg.ReplyMarkup = keyboard
+			}
+			_, err = bot.Send(msg)
 		}
 
 		if err != nil {
@@ -112,4 +114,3 @@ func SendBroadcast(bot *telebot.Bot, state *BroadcastState, recipients []int64) 
 
 	return sent, failed
 }
-

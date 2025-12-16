@@ -4,267 +4,192 @@ import (
 	"fmt"
 	"strings"
 
-	"gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/config"
 )
 
 // GetInvitationKeyboard возвращает клавиатуру для приглашения с Mini App
-func GetInvitationKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
+func GetInvitationKeyboard() tgbotapi.InlineKeyboardMarkup {
+	var keyboard [][]tgbotapi.InlineKeyboardButton
+	if strings.HasPrefix(config.WebappURL, "https://") {
+		keyboard = [][]tgbotapi.InlineKeyboardButton{
 			{
-				telebot.InlineButton{
-					Text: "💒 Открыть приглашение",
-					WebApp: &telebot.WebApp{
-						URL: config.WebappURL,
-					},
-				},
+				tgbotapi.NewInlineKeyboardButtonURL("💒 Открыть приглашение", config.WebappURL),
 			},
-		},
+		}
+	} else {
+		keyboard = [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonURL("📱 Приглашение", config.WebappURL),
+			},
+		}
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetMainReplyKeyboard возвращает основную пользовательскую клавиатуру
-func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) *telebot.ReplyMarkup {
+func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) tgbotapi.ReplyKeyboardMarkup {
 	photoLabel := "📸 Фоторежим ❌"
 	if photoModeEnabled {
 		photoLabel = "📸 Фоторежим ✅"
 	}
 
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
-	}
+	var keyboard [][]tgbotapi.KeyboardButton
 
-	var webAppButton telebot.Btn
-	if strings.HasPrefix(config.WebappURL, "https://") {
-		webAppButton = telebot.Btn{
-			Text: "💒 Открыть приглашение",
-			WebApp: &telebot.WebApp{
-				URL: config.WebappURL,
-			},
-		}
-	} else {
-		// Если URL не HTTPS, используем обычную кнопку
-		webAppButton = telebot.Btn{
-			Text: "📱 Приглашение (локально)",
-		}
-	}
+	// Первая строка
+	var row1 []tgbotapi.KeyboardButton
+	// Используем обычную кнопку (WebApp кнопки в reply keyboard работают через обычные кнопки)
+	row1 = append(row1, tgbotapi.NewKeyboardButton("💒 Открыть приглашение"))
+	row1 = append(row1, tgbotapi.NewKeyboardButton(photoLabel))
+	keyboard = append(keyboard, row1)
 
-	row1 := markup.Row(
-		webAppButton,
-		telebot.Btn{Text: photoLabel},
-	)
-
+	// Вторая строка для админов
 	if isAdmin {
-		row2 := markup.Row(
-			telebot.Btn{Text: "⚙️ Админ-панель"},
-		)
-		markup.Reply(row1, row2)
-	} else {
-		markup.Reply(row1)
+		row2 := []tgbotapi.KeyboardButton{
+			tgbotapi.NewKeyboardButton("⚙️ Админ-панель"),
+		}
+		keyboard = append(keyboard, row2)
 	}
 
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminRootReplyKeyboard возвращает корневое меню администратора
-func GetAdminRootReplyKeyboard() *telebot.ReplyMarkup {
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
+func GetAdminRootReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	keyboard := [][]tgbotapi.KeyboardButton{
+		{
+			tgbotapi.NewKeyboardButton("👥 Гости"),
+			tgbotapi.NewKeyboardButton("🪑 Столы"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("💬 Группа"),
+			tgbotapi.NewKeyboardButton("🤖 Бот"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
+		},
 	}
-
-	row1 := markup.Row(
-		telebot.Btn{Text: "👥 Гости"},
-		telebot.Btn{Text: "🪑 Столы"},
-	)
-
-	row2 := markup.Row(
-		telebot.Btn{Text: "💬 Группа"},
-		telebot.Btn{Text: "🤖 Бот"},
-	)
-
-	row3 := markup.Row(
-		telebot.Btn{Text: "⬅️ Вернуться"},
-	)
-
-	markup.Reply(row1, row2, row3)
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminGuestsReplyKeyboard возвращает подменю администратора: гости
-func GetAdminGuestsReplyKeyboard() *telebot.ReplyMarkup {
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
+func GetAdminGuestsReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	keyboard := [][]tgbotapi.KeyboardButton{
+		{
+			tgbotapi.NewKeyboardButton("📋 Список гостей"),
+			tgbotapi.NewKeyboardButton("📤 Отправить приглашение"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("🔁 Исправление Имя/Фамилия"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
+		},
 	}
-
-	row1 := markup.Row(
-		telebot.Btn{Text: "📋 Список гостей"},
-		telebot.Btn{Text: "📤 Отправить приглашение"},
-	)
-
-	row2 := markup.Row(
-		telebot.Btn{Text: "🔁 Исправление Имя/Фамилия"},
-	)
-
-	row3 := markup.Row(
-		telebot.Btn{Text: "⬅️ Вернуться"},
-	)
-
-	markup.Reply(row1, row2, row3)
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminTableReplyKeyboard возвращает подменю администратора: таблица
-func GetAdminTableReplyKeyboard() *telebot.ReplyMarkup {
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
+func GetAdminTableReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	keyboard := [][]tgbotapi.KeyboardButton{
+		{
+			tgbotapi.NewKeyboardButton("📊 Посмотреть рассадку"),
+			tgbotapi.NewKeyboardButton("🔄 Обновить рассадку"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
+		},
 	}
-
-	row1 := markup.Row(
-		telebot.Btn{Text: "📊 Посмотреть рассадку"},
-		telebot.Btn{Text: "🔄 Обновить рассадку"},
-	)
-
-	row2 := markup.Row(
-		telebot.Btn{Text: "⬅️ Вернуться"},
-	)
-
-	markup.Reply(row1, row2)
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminGroupReplyKeyboard возвращает подменю администратора: группа
-func GetAdminGroupReplyKeyboard() *telebot.ReplyMarkup {
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
+func GetAdminGroupReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	keyboard := [][]tgbotapi.KeyboardButton{
+		{
+			tgbotapi.NewKeyboardButton("Написать сообщение"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("Посмотреть участников"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("Добавить/Удалить"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
+		},
 	}
-
-	row1 := markup.Row(
-		telebot.Btn{Text: "Написать сообщение"},
-	)
-
-	row2 := markup.Row(
-		telebot.Btn{Text: "Посмотреть участников"},
-	)
-
-	row3 := markup.Row(
-		telebot.Btn{Text: "Добавить/Удалить"},
-	)
-
-	row4 := markup.Row(
-		telebot.Btn{Text: "⬅️ Вернуться"},
-	)
-
-	markup.Reply(row1, row2, row3, row4)
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminBotReplyKeyboard возвращает подменю администратора: бот
-func GetAdminBotReplyKeyboard() *telebot.ReplyMarkup {
-	markup := &telebot.ReplyMarkup{
-		ResizeKeyboard: true,
+func GetAdminBotReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	keyboard := [][]tgbotapi.KeyboardButton{
+		{
+			tgbotapi.NewKeyboardButton("📊 Статус бота"),
+			tgbotapi.NewKeyboardButton("🎮 Игры"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("Начать с нуля"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("Добавить админа"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("🆔 Найти user_id"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
+		},
 	}
-
-	row1 := markup.Row(
-		telebot.Btn{Text: "📊 Статус бота"},
-		telebot.Btn{Text: "🎮 Игры"},
-	)
-
-	row2 := markup.Row(
-		telebot.Btn{Text: "Начать с нуля"},
-	)
-
-	row3 := markup.Row(
-		telebot.Btn{Text: "Добавить админа"},
-	)
-
-	row4 := markup.Row(
-		telebot.Btn{Text: "🆔 Найти user_id"},
-	)
-
-	row5 := markup.Row(
-		telebot.Btn{Text: "⬅️ Вернуться"},
-	)
-
-	markup.Reply(row1, row2, row3, row4, row5)
-	return markup
+	return tgbotapi.NewReplyKeyboard(keyboard...)
 }
 
 // GetAdminGamesKeyboard возвращает клавиатуру для управления играми
-func GetAdminGamesKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "🔤 Wordle",
-					Data: "admin:games:wordle",
-				},
-				telebot.InlineButton{
-					Text: "📝 Кроссворд",
-					Data: "admin:games:crossword",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Назад",
-					Data: "admin:back",
-				},
-			},
+func GetAdminGamesKeyboard() tgbotapi.InlineKeyboardMarkup {
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🔤 Wordle", "admin:games:wordle"),
+			tgbotapi.NewInlineKeyboardButtonData("📝 Кроссворд", "admin:games:crossword"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", "admin:back"),
 		},
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetAdminWordleKeyboard возвращает клавиатуру для управления Wordle
-func GetAdminWordleKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "🔄 Переключить слово для всех",
-					Data: "admin:games:wordle:switch",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "➕ Добавить слово",
-					Data: "admin:games:wordle:add",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Назад",
-					Data: "admin:games",
-				},
-			},
+func GetAdminWordleKeyboard() tgbotapi.InlineKeyboardMarkup {
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Переключить слово для всех", "admin:games:wordle:switch"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить слово", "admin:games:wordle:add"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", "admin:games"),
 		},
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetAdminCrosswordKeyboard возвращает клавиатуру для управления кроссвордом
-func GetAdminCrosswordKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "🔄 Обновить кроссворд",
-					Data: "admin:games:crossword:update",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "➕ Добавить кроссворд",
-					Data: "admin:games:crossword:add",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Назад",
-					Data: "admin:games",
-				},
-			},
+func GetAdminCrosswordKeyboard() tgbotapi.InlineKeyboardMarkup {
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Обновить кроссворд", "admin:games:crossword:update"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить кроссворд", "admin:games:crossword:add"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", "admin:games"),
 		},
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // InvitationInfoForKeyboard структура для передачи информации о приглашении в клавиатуру
@@ -274,20 +199,17 @@ type InvitationInfoForKeyboard struct {
 }
 
 // GetGuestsSelectionKeyboard создает клавиатуру с кнопками для выбора гостя
-func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebot.ReplyMarkup {
-	var keyboard [][]telebot.InlineButton
+func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) tgbotapi.InlineKeyboardMarkup {
+	var keyboard [][]tgbotapi.InlineKeyboardButton
 	for i := 0; i < len(invitations); i += 2 {
-		var row []telebot.InlineButton
+		var row []tgbotapi.InlineKeyboardButton
 		// Первая кнопка в ряду
 		inv1 := invitations[i]
 		buttonText1 := fmt.Sprintf("👤 %s", inv1.Name)
 		if inv1.IsSent {
 			buttonText1 = fmt.Sprintf("✅ %s", inv1.Name)
 		}
-		row = append(row, telebot.InlineButton{
-			Text: buttonText1,
-			Data: fmt.Sprintf("admin:invite_guest:%d", i),
-		})
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData(buttonText1, fmt.Sprintf("admin:invite_guest:%d", i)))
 
 		// Вторая кнопка в ряду (если есть)
 		if i+1 < len(invitations) {
@@ -296,27 +218,21 @@ func GetGuestsSelectionKeyboard(invitations []InvitationInfoForKeyboard) *telebo
 			if inv2.IsSent {
 				buttonText2 = fmt.Sprintf("✅ %s", inv2.Name)
 			}
-			row = append(row, telebot.InlineButton{
-				Text: buttonText2,
-				Data: fmt.Sprintf("admin:invite_guest:%d", i+1),
-			})
+			row = append(row, tgbotapi.NewInlineKeyboardButtonData(buttonText2, fmt.Sprintf("admin:invite_guest:%d", i+1)))
 		}
 		keyboard = append(keyboard, row)
 	}
 
 	// Кнопка возврата
-	keyboard = append(keyboard, []telebot.InlineButton{
-		{
-			Text: "⬅️ Вернуться",
-			Data: "admin:back",
-		},
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Вернуться", "admin:back"),
 	})
 
-	return &telebot.ReplyMarkup{InlineKeyboard: keyboard}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetGuestsSwapKeyboard создает клавиатуру с кнопками для выбора гостя для обмена имени/фамилии
-func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.ReplyMarkup {
+func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) tgbotapi.InlineKeyboardMarkup {
 	const itemsPerPage = 10
 	start := page * itemsPerPage
 	end := start + itemsPerPage
@@ -324,7 +240,7 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		end = len(guests)
 	}
 
-	var keyboard [][]telebot.InlineButton
+	var keyboard [][]tgbotapi.InlineKeyboardButton
 	for i := start; i < end; i++ {
 		guest := guests[i]
 		rowNum, _ := guest["row"].(int)
@@ -334,82 +250,61 @@ func GetGuestsSwapKeyboard(guests []map[string]interface{}, page int) *telebot.R
 		}
 
 		buttonText := fmt.Sprintf("👤 %s", fullName)
-		keyboard = append(keyboard, []telebot.InlineButton{
-			{
-				Text: buttonText,
-				Data: fmt.Sprintf("swapname:%d:%d", rowNum, page),
-			},
+		keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData(buttonText, fmt.Sprintf("swapname:%d:%d", rowNum, page)),
 		})
 	}
 
 	// Навигация по страницам
-	var navRow []telebot.InlineButton
+	var navRow []tgbotapi.InlineKeyboardButton
 	if page > 0 {
-		navRow = append(navRow, telebot.InlineButton{
-			Text: "⬅️ Назад",
-			Data: fmt.Sprintf("fixnames_page:%d", page-1),
-		})
+		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("⬅️ Назад", fmt.Sprintf("fixnames_page:%d", page-1)))
 	}
 	if end < len(guests) {
-		navRow = append(navRow, telebot.InlineButton{
-			Text: "Вперед ➡️",
-			Data: fmt.Sprintf("fixnames_page:%d", page+1),
-		})
+		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("Вперед ➡️", fmt.Sprintf("fixnames_page:%d", page+1)))
 	}
 	if len(navRow) > 0 {
 		keyboard = append(keyboard, navRow)
 	}
 
 	// Кнопка возврата
-	keyboard = append(keyboard, []telebot.InlineButton{
-		{
-			Text: "⬅️ Вернуться",
-			Data: "admin:back",
-		},
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Вернуться", "admin:back"),
 	})
 
-	return &telebot.ReplyMarkup{InlineKeyboard: keyboard}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetGroupManagementKeyboard возвращает inline клавиатуру для управления группой
-func GetGroupManagementKeyboard() *telebot.ReplyMarkup {
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "👥 Посмотреть участников",
-					Data: "admin:group:list_members",
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "⬅️ Вернуться",
-					Data: "admin:back",
-				},
-			},
+func GetGroupManagementKeyboard() tgbotapi.InlineKeyboardMarkup {
+	keyboard := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("👥 Посмотреть участников", "admin:group:list_members"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Вернуться", "admin:back"),
 		},
 	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
 // GetContactsInlineKeyboard возвращает inline клавиатуру для контактов
-func GetContactsInlineKeyboard() *telebot.ReplyMarkup {
-	var webAppButton telebot.InlineButton
+func GetContactsInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
+	var keyboard [][]tgbotapi.InlineKeyboardButton
 	if strings.HasPrefix(config.WebappURL, "https://") {
-		webAppButton = telebot.InlineButton{
-			Text: "💒 Открыть приглашение",
-			WebApp: &telebot.WebApp{
-				URL: config.WebappURL,
+		webAppURL := config.WebappURL
+		// WebApp кнопка через URL (временно, пока не найдем правильный способ)
+		keyboard = [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonURL("💒 Открыть приглашение", webAppURL),
 			},
 		}
 	} else {
-		webAppButton = telebot.InlineButton{
-			Text: "📱 Приглашение",
-			Data: "open_invitation",
+		keyboard = [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonData("📱 Приглашение", "open_invitation"),
+			},
 		}
 	}
-	return &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{webAppButton},
-		},
-	}
+	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }

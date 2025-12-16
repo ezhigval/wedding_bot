@@ -4,23 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
-	"gopkg.in/telebot.v3"
-	"gopkg.in/telebot.v3/middleware"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
+	"wedding-bot/internal/keyboards"
 )
 
 var (
-	botInstance *telebot.Bot
+	botInstance *tgbotapi.BotAPI
 	mu          sync.RWMutex
 )
 
 // InitBot инициализирует Telegram бота
-func InitBot(ctx context.Context) (*telebot.Bot, error) {
+func InitBot(ctx context.Context) (*tgbotapi.BotAPI, error) {
 	if config.BotToken == "" {
 		return nil, fmt.Errorf("BOT_TOKEN не установлен")
 	}
@@ -41,102 +42,290 @@ func InitBot(ctx context.Context) (*telebot.Bot, error) {
 		return botInstance, nil
 	}
 
-	pref := telebot.Settings{
-		Token:  config.BotToken,
-		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
-	}
-
-	bot, err := telebot.NewBot(pref)
+	bot, err := tgbotapi.NewBotAPI(config.BotToken)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания бота: %w", err)
 	}
 
 	botInstance = bot
 
-	// Middleware для логирования
-	bot.Use(middleware.Logger())
+	// Настраиваем бота
+	bot.Debug = false
 
-	// Middleware для обработки паник
-	bot.Use(func(next telebot.HandlerFunc) telebot.HandlerFunc {
-		return func(c telebot.Context) error {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("🚨 Паника в handler бота: %v", r)
-					// Отправляем сообщение об ошибке пользователю
-					c.Send("Произошла ошибка. Попробуйте позже.")
-				}
-			}()
-			return next(c)
-		}
-	})
+	log.Printf("✅ Бот инициализирован: @%s", bot.Self.UserName)
 
-	// Регистрируем handlers
-	registerHandlers(bot)
+	// Запускаем обработку обновлений в отдельной горутине
+	go startUpdateHandler(ctx, bot)
 
 	log.Println("✅ Бот инициализирован успешно")
 	return bot, nil
 }
 
-// registerHandlers регистрирует все handlers бота
-func registerHandlers(bot *telebot.Bot) {
-	// Команды
-	bot.Handle("/start", handleStart)
-	bot.Handle("/help", handleHelp)
-	bot.Handle("/menu", handleMenu)
+// startUpdateHandler обрабатывает обновления от Telegram
+func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
 
-	// Админ команды
-	bot.Handle("/admin", handleAdmin)
+	updates := bot.GetUpdatesChan(u)
 
-	// Обработчики событий (должны быть после команд)
-	bot.Handle(telebot.OnText, handleText)
-	bot.Handle(telebot.OnPhoto, handlePhoto)
-	bot.Handle(telebot.OnCallback, handleCallback)
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("🛑 Остановка обработки обновлений бота")
+			bot.StopReceivingUpdates()
+			return
+		case update := <-updates:
+			// Обрабатываем обновление в отдельной горутине для параллелизма
+			go handleUpdate(bot, update)
+		}
+	}
 }
 
-// handleHelp обрабатывает команду /help
-func handleHelp(c telebot.Context) error {
-	message := "Помощь по использованию бота:\n\n" +
-		"/start - Начать работу с ботом\n" +
-		"/menu - Открыть меню\n" +
-		"/admin - Админ панель (только для админов)"
+// handleUpdate обрабатывает одно обновление
+func handleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("🚨 Паника в handler бота: %v", r)
+		}
+	}()
 
-	return c.Send(message)
-}
-
-// handleMenu обрабатывает команду /menu
-func handleMenu(c telebot.Context) error {
-	keyboard := &telebot.ReplyMarkup{
-		InlineKeyboard: [][]telebot.InlineButton{
-			{
-				telebot.InlineButton{
-					Text: "Открыть Mini App",
-					WebApp: &telebot.WebApp{
-						URL: config.WebappURL,
-					},
-				},
-			},
-			{
-				telebot.InlineButton{
-					Text: "Ссылка на группу",
-					URL:   config.GroupLink,
-				},
-			},
-		},
+	// Обработка команд
+	if update.Message != nil && update.Message.IsCommand() {
+		handleCommand(bot, update.Message)
+		return
 	}
 
-	message := "Меню бота:"
-	return c.Send(message, keyboard)
-}
-
-// handleAdmin обрабатывает команду /admin
-func handleAdmin(c telebot.Context) error {
-	userID := c.Sender().ID
-
-	if !isAdminUser(int(userID)) {
-		return c.Send("❌ У вас нет прав администратора")
+	// Обработка текстовых сообщений
+	if update.Message != nil && update.Message.Text != "" {
+		handleMessage(bot, update.Message)
+		return
 	}
 
-	return handleAdminPanel(c)
+	// Обработка фото
+	if update.Message != nil && update.Message.Photo != nil && len(update.Message.Photo) > 0 {
+		handlePhotoMessage(bot, update.Message)
+		return
+	}
+
+	// Обработка callback queries
+	if update.CallbackQuery != nil {
+		handleCallbackQuery(bot, update.CallbackQuery)
+		return
+	}
+}
+
+// handleCommand обрабатывает команды
+func handleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	command := message.Command()
+	userID := message.From.ID
+
+	switch command {
+	case "start":
+		handleStartCommand(bot, message)
+	case "help":
+		handleHelpCommand(bot, message)
+	case "menu":
+		handleMenuCommand(bot, message)
+	case "admin":
+		if isAdminUser(int(userID)) {
+			handleAdminCommand(bot, message)
+		} else {
+			msg := tgbotapi.NewMessage(message.Chat.ID, "❌ У вас нет прав администратора")
+			bot.Send(msg)
+		}
+	}
+}
+
+// handleMessage обрабатывает текстовые сообщения
+func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	text := message.Text
+	userID := message.From.ID
+
+	// Проверяем фоторежим
+	if text == "📸 Фоторежим ❌" || text == "📸 Фоторежим ✅" {
+		handleTogglePhotoMode(bot, message)
+		return
+	}
+
+	// Проверяем другие кнопки
+	if text == "💬 Общий чат" {
+		keyboard := keyboards.GetContactsInlineKeyboard()
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Перейдите в общий чат:")
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
+	}
+
+	if text == "📞 Связаться с нами" {
+		keyboard := keyboards.GetContactsInlineKeyboard()
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Свяжитесь с организаторами:")
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
+	}
+
+	if text == "⚙️ Админ-панель" {
+		if !isAdminUser(int(userID)) {
+			msg := tgbotapi.NewMessage(message.Chat.ID, "❌ У вас нет прав администратора")
+			bot.Send(msg)
+			return
+		}
+		handleAdminPanel(bot, message)
+		return
+	}
+
+	// Проверяем, является ли пользователь админом для обработки admin команд
+	if isAdminUser(int(userID)) {
+		// Проверяем, есть ли активная рассылка
+		state := GetBroadcastState(userID)
+		if state != nil {
+			// Обрабатываем текст/фото/кнопку для рассылки
+			if state.Text == "" {
+				// Ожидаем текст
+				handleBroadcastText(bot, message, text)
+				return
+			} else if state.PhotoID == "" && len(message.Photo) > 0 {
+				// Обрабатываем фото
+				photoID := message.Photo[len(message.Photo)-1].FileID
+				handleBroadcastPhoto(bot, message, photoID)
+				return
+			} else if state.PhotoID == "" {
+				// Можем обработать фото или пропустить
+				// Продолжаем к обычной обработке
+			} else if state.ButtonText == "" {
+				// Ожидаем выбор кнопки или текст кнопки
+				// Проверяем, не является ли это текстом кнопки
+				if strings.Contains(text, "|") {
+					// Формат: "Текст|URL"
+					parts := strings.SplitN(text, "|", 2)
+					if len(parts) == 2 {
+						state.ButtonText = strings.TrimSpace(parts[0])
+						state.ButtonURL = strings.TrimSpace(parts[1])
+						// Отправляем сообщение о добавлении кнопки
+						msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кнопка добавлена. Нажмите 'Без картинки' или отправьте фото для завершения настройки.")
+						bot.Send(msg)
+						return
+					}
+				}
+			}
+		}
+
+		handleAdminText(bot, message)
+		return
+	}
+}
+
+// handlePhotoMessage обрабатывает фото
+func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	if len(message.Photo) == 0 {
+		return
+	}
+
+	userID := message.From.ID
+
+	// Проверяем, есть ли активная рассылка
+	if isAdminUser(int(userID)) {
+		state := GetBroadcastState(userID)
+		if state != nil && state.Text != "" && state.PhotoID == "" {
+			// Обрабатываем фото для рассылки
+			photoID := message.Photo[len(message.Photo)-1].FileID
+			handleBroadcastPhoto(bot, message, photoID)
+			return
+		}
+	}
+
+	// Проверяем, включен ли фоторежим
+	if !IsPhotoModeEnabled(userID) {
+		// Проверяем, зарегистрирован ли пользователь
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		registered, err := google_sheets.CheckGuestRegistration(ctx, int(userID))
+		if err != nil {
+			log.Printf("Ошибка проверки регистрации: %v", err)
+		}
+
+		if registered {
+			// Пользователь зарегистрирован, но фоторежим не включен
+			isAdmin := isAdminUser(int(userID))
+			keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
+			msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Чтобы сохранить фото в свадебный альбом, включите фоторежим.\nНажмите кнопку «📸 Фоторежим ❌» в меню.")
+			msg.ReplyMarkup = keyboard
+			bot.Send(msg)
+			return
+		} else {
+			// Пользователь не зарегистрирован
+			msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Для сохранения фото в свадебный альбом необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.")
+			bot.Send(msg)
+			return
+		}
+	}
+
+	// Сохраняем фото
+	displayName := getUserDisplayName(message.From)
+
+	username := ""
+	if message.From.UserName != "" {
+		username = "@" + message.From.UserName
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Берем самое большое фото
+	photo := message.Photo[len(message.Photo)-1]
+	fileID := photo.FileID
+
+	if err := google_sheets.SavePhotoFromUser(ctx, int(userID), &username, displayName, fileID); err != nil {
+		log.Printf("Ошибка сохранения фото: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка сохранения фото")
+		bot.Send(msg)
+		return
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Фото сохранено! 📸")
+	bot.Send(msg)
+}
+
+// handleCallbackQuery обрабатывает callback queries
+func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	data := callback.Data
+
+	// Парсим callback data
+	parts := strings.Split(data, ":")
+	if len(parts) == 0 {
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	action := parts[0]
+
+	switch action {
+	case "admin":
+		handleAdminCallback(bot, callback, parts[1:])
+	case "invite":
+		handleInvitationCallback(bot, callback, parts[1:])
+	case "game":
+		handleGameAdminCallback(bot, callback, parts[1:])
+	case "group":
+		handleGroupCallback(bot, callback, parts[1:])
+	case "admin_wordle":
+		handleWordleAdminCallback(bot, callback)
+	case "admin_crossword":
+		handleCrosswordAdminCallback(bot, callback)
+	case "admin_back":
+		handleAdminBackCallback(bot, callback)
+	case "swapname":
+		handleSwapNameCallback(bot, callback, parts[1:])
+	case "fixnames_page":
+		handleFixNamesPageCallback(bot, callback, parts[1:])
+	case "delete_guest":
+		handleDeleteGuestCallback(bot, callback, parts[1:])
+	case "broadcast":
+		handleBroadcastCallback(bot, callback, parts[1:])
+	default:
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	}
 }
 
 // NotifyAdmins отправляет уведомление всем админам
@@ -171,8 +360,9 @@ func NotifyAdmins(message string) error {
 					}
 				}()
 
-				userID := int64(adminID)
-				if _, err := bot.Send(&telebot.User{ID: userID}, message); err != nil {
+				msg := tgbotapi.NewMessage(int64(adminID), message)
+				msg.ParseMode = tgbotapi.ModeHTML
+				if _, err := bot.Send(msg); err != nil {
 					log.Printf("⚠️ Ошибка отправки уведомления админу %d: %v", adminID, err)
 					errorChan <- err
 				}
@@ -197,4 +387,3 @@ func NotifyAdmins(message string) error {
 
 	return nil
 }
-

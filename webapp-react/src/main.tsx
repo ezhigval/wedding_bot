@@ -1,7 +1,19 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import './index.css'
+
+// Создаем QueryClient для React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 5 * 60 * 1000, // 5 минут
+    },
+  },
+})
 
 // Инициализация Telegram Web App
 declare global {
@@ -41,7 +53,6 @@ if (tg) {
 } else if (isLocalhost) {
   // Симулируем Telegram WebApp для локальной разработки
   console.log('[LOCAL DEV] Simulating Telegram WebApp')
-  const TEST_USER_ID = 1034074077
   window.Telegram = {
     WebApp: {
       ready: () => console.log('[LOCAL DEV] WebApp ready'),
@@ -58,7 +69,9 @@ if (tg) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </React.StrictMode>,
 )
 

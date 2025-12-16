@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
-	"gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
@@ -14,149 +16,336 @@ import (
 )
 
 // handleAdminText обрабатывает текстовые сообщения в админ-меню
-func handleAdminText(c telebot.Context) error {
-	text := c.Text()
-	userID := c.Sender().ID
+func handleAdminText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	text := message.Text
+	userID := message.From.ID
 
 	if !isAdminUser(int(userID)) {
-		return nil
+		return
 	}
 
 	// Обработка кнопок админ-меню
 	switch text {
-	case "Гости":
-		return handleAdminGuestsMenu(c)
-	case "Таблица":
-		return handleAdminTableMenu(c)
-	case "Группа":
-		return handleAdminGroupMenu(c)
-	case "Бот":
-		return handleAdminBotMenu(c)
+	case "👥 Гости":
+		handleAdminGuestsMenu(bot, message)
+	case "🪑 Столы":
+		handleAdminTableMenu(bot, message)
+	case "💬 Группа":
+		handleAdminGroupMenu(bot, message)
+	case "🤖 Бот":
+		handleAdminBotMenu(bot, message)
 	case "⬅️ Вернуться":
-		return handleAdminBack(c)
-	case "Список гостей":
-		return handleAdminGuestsList(c)
-	case "Рассадка":
-		return handleAdminSeating(c)
-	case "Отправить приглашение":
-		return handleAdminSendInvite(c)
-	case "Исправить имя/фамилию":
-		return handleAdminFixNames(c)
+		handleAdminBack(bot, message)
+	case "📋 Список гостей":
+		handleAdminGuestsListFromText(bot, message)
+	case "📊 Посмотреть рассадку":
+		handleAdminSeatingFromText(bot, message)
+	case "🔄 Обновить рассадку":
+		handleAdminRefreshSeating(bot, message)
+	case "📤 Отправить приглашение":
+		handleAdminSendInviteFromText(bot, message)
+	case "🔁 Исправление Имя/Фамилия":
+		handleAdminFixNames(bot, message)
 	case "Рассылка в ЛС":
-		return handleAdminBroadcastDM(c)
+		handleAdminBroadcastDM(bot, message)
 	case "Открыть таблицу":
-		return handleAdminOpenTable(c)
+		handleAdminOpenTable(bot, message)
 	case "Проверить связь":
-		return handleAdminPing(c)
+		handleAdminPing(bot, message)
 	case "Закрепить рассадку":
-		return handleAdminLockSeating(c)
+		handleAdminLockSeating(bot, message)
 	case "Написать сообщение":
-		return handleAdminGroupSendMessage(c)
+		handleAdminGroupSendMessage(bot, message)
 	case "Посмотреть участников":
-		return handleAdminGroupListMembers(c)
+		handleAdminGroupListMembers(bot, message)
 	case "Добавить/Удалить":
-		return handleAdminGroupAddRemove(c)
-	case "Статус бота":
-		return handleAdminBotStatus(c)
+		handleAdminGroupAddRemove(bot, message)
+	case "📊 Статус бота":
+		handleAdminBotStatus(bot, message)
+	case "🎮 Игры":
+		handleAdminGamesMenu(bot, message)
 	case "🔐 Авторизовать клиент":
-		return handleAdminAuthClient(c)
+		handleAdminAuthClient(bot, message)
 	case "Начать с нуля":
-		return handleAdminResetMe(c)
+		handleAdminResetMe(bot, message)
 	case "Добавить админа":
-		return handleAdminAddAdmin(c)
+		handleAdminAddAdmin(bot, message)
 	case "🆔 Найти user_id":
-		return handleAdminFindUserID(c)
+		handleAdminFindUserID(bot, message)
 	}
-
-	return nil
 }
 
 // handleAdminGuestsMenu показывает подменю "Гости"
-func handleAdminGuestsMenu(c telebot.Context) error {
-	message := "📂 <b>Админ → Гости</b>\n\nВыберите действие:"
+func handleAdminGuestsMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "📂 <b>Админ → Гости</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminGuestsReplyKeyboard()
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 // handleAdminTableMenu показывает подменю "Таблица"
-func handleAdminTableMenu(c telebot.Context) error {
-	message := "📊 <b>Админ → Таблица</b>\n\nВыберите действие:"
+func handleAdminTableMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "📊 <b>Админ → Таблица</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminTableReplyKeyboard()
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 // handleAdminGroupMenu показывает подменю "Группа"
-func handleAdminGroupMenu(c telebot.Context) error {
-	message := "💬 <b>Админ → Группа</b>\n\nВыберите действие:"
+func handleAdminGroupMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "💬 <b>Админ → Группа</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminGroupReplyKeyboard()
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 // handleAdminBotMenu показывает подменю "Бот"
-func handleAdminBotMenu(c telebot.Context) error {
-	message := "🤖 <b>Админ → Бот</b>\n\nВыберите действие:"
+func handleAdminBotMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "🤖 <b>Админ → Бот</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminBotReplyKeyboard()
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+// handleAdminGamesMenu показывает меню игр
+func handleAdminGamesMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "🎮 <b>Управление играми</b>\n\nВыберите игру:"
+	keyboard := keyboards.GetAdminGamesKeyboard()
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
 }
 
 // handleAdminBack возвращает в главное меню бота из корневого меню админки
-func handleAdminBack(c telebot.Context) error {
-	userID := c.Sender().ID
+func handleAdminBack(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	userID := message.From.ID
 	isAdmin := isAdminUser(int(userID))
 	photoModeEnabled := IsPhotoModeEnabled(userID)
-	
-	message := "Главное меню:"
+
+	msgText := "Главное меню:"
 	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, photoModeEnabled)
-	return c.Send(message, keyboard, telebot.ModeHTML)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
-// handleAdminGuestsList, handleAdminSeating, handleAdminSendInvite - реализованы в callbacks.go
+// handleAdminGuestsListFromText показывает список гостей (из текстового сообщения)
+func handleAdminGuestsListFromText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	guests, err := google_sheets.GetAllGuestsFromSheets(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения списка гостей: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка при получении списка гостей. Попробуйте позже.")
+		bot.Send(msg)
+		return
+	}
+
+	if len(guests) == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "📋 <b>Список гостей</b>\n\nПока никто не подтвердил присутствие.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("📋 <b>Список всех гостей:</b>\n\n")
+
+	for i, guest := range guests {
+		sb.WriteString(fmt.Sprintf("%d. <b>%s %s</b>", i+1, guest.FirstName, guest.LastName))
+		if guest.Category != "" {
+			sb.WriteString(fmt.Sprintf(" (%s)", guest.Category))
+		}
+		if guest.Side != "" {
+			sb.WriteString(fmt.Sprintf(" - %s", guest.Side))
+		}
+		if guest.UserID != "" {
+			sb.WriteString(fmt.Sprintf(" [ID: %s]", guest.UserID))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(fmt.Sprintf("\n<b>Всего: %d гостей</b>", len(guests)))
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, sb.String())
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}
+
+// handleAdminSeatingFromText показывает рассадку (из текстового сообщения)
+func handleAdminSeatingFromText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	seating, err := google_sheets.GetSeatingFromSheets(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка при получении рассадки. Попробуйте позже.")
+		bot.Send(msg)
+		return
+	}
+
+	if len(seating) == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "🍽 <b>Рассадка</b>\n\nПока нет данных по рассадке (лист 'Рассадка' пуст или без гостей).")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("🍽 <b>Рассадка по столам</b>\n")
+
+	for _, table := range seating {
+		tableName := table.Table
+		if tableName == "" {
+			tableName = "Без названия"
+		}
+		sb.WriteString(fmt.Sprintf("\n<b>%s</b>", tableName))
+		if len(table.Guests) == 0 {
+			sb.WriteString("\n  (пока пусто)")
+		} else {
+			for i, name := range table.Guests {
+				sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, name))
+			}
+		}
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, sb.String())
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}
+
+// handleAdminRefreshSeating обновляет рассадку
+func handleAdminRefreshSeating(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	// TODO: Реализовать обновление рассадки
+	msg := tgbotapi.NewMessage(message.Chat.ID, "🔄 Функция обновления рассадки в разработке")
+	bot.Send(msg)
+}
+
+// handleAdminSendInviteFromText запускает отправку приглашений (из текстового сообщения)
+func handleAdminSendInviteFromText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	invitations, err := google_sheets.GetInvitationsList(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения списка приглашений: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка получения списка приглашений.")
+		bot.Send(msg)
+		return
+	}
+
+	if len(invitations) == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ <b>Список приглашений пуст</b>\n\nПроверьте вкладку 'Пригласительные' в Google Sheets.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		return
+	}
+
+	sentCount := 0
+	for _, inv := range invitations {
+		if inv.IsSent {
+			sentCount++
+		}
+	}
+
+	msgText := fmt.Sprintf(
+		"📋 <b>Выберите гостя для отправки приглашения:</b>\n\n"+
+			"Всего гостей: <b>%d</b>\n"+
+			"✅ Отправлено: <b>%d</b>\n"+
+			"⏳ Осталось: <b>%d</b>\n\n"+
+			"Нажмите на кнопку с именем гостя, чтобы открыть диалог с заготовленным текстом приглашения.\n\n"+
+			"💡 <i>Гости с галочкой ✅ уже получили приглашение</i>",
+		len(invitations), sentCount, len(invitations)-sentCount,
+	)
+
+	// Преобразуем invitations в формат для клавиатуры
+	keyboardInvitations := make([]keyboards.InvitationInfoForKeyboard, len(invitations))
+	for i, inv := range invitations {
+		keyboardInvitations[i] = keyboards.InvitationInfoForKeyboard{
+			Name:   inv.Name,
+			IsSent: inv.IsSent,
+		}
+	}
+
+	keyboard := keyboards.GetGuestsSelectionKeyboard(keyboardInvitations)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
+}
 
 // handleAdminFixNames запускает исправление имени/фамилии
-func handleAdminFixNames(c telebot.Context) error {
+func handleAdminFixNames(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	guests, err := google_sheets.ListConfirmedGuests(ctx)
 	if err != nil {
 		log.Printf("Ошибка получения списка гостей: %v", err)
-		return c.Send("❌ Ошибка получения списка гостей.", telebot.ModeHTML)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка получения списка гостей.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		return
 	}
 
 	if len(guests) == 0 {
-		return c.Send("📋 Нет подтвержденных гостей для исправления.", telebot.ModeHTML)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "📋 Нет подтвержденных гостей для исправления.")
+		msg.ParseMode = tgbotapi.ModeHTML
+		bot.Send(msg)
+		return
 	}
 
 	// Создаем клавиатуру с кнопками для каждого гостя
 	keyboard := keyboards.GetGuestsSwapKeyboard(guests, 0)
 
-	message := fmt.Sprintf(
+	msgText := fmt.Sprintf(
 		"🔁 <b>Исправление Имя/Фамилия</b>\n\n"+
 			"Нажмите на гостя, чтобы поменять местами Имя и Фамилию в Google Sheets.\n\n"+
 			"Всего гостей: <b>%d</b>",
 		len(guests),
 	)
 
-	return c.Send(message, keyboard, telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
 }
 
-// handleAdminBroadcastDM запускает рассылку в ЛС - реализация в broadcast_handlers.go
-
 // handleAdminOpenTable открывает Google Sheets
-func handleAdminOpenTable(c telebot.Context) error {
+func handleAdminOpenTable(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	sheetsURL := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/edit", config.GoogleSheetsID)
-	return c.Send(
-		fmt.Sprintf("📂 <b>Таблица гостей и настроек</b>\n\nОткроется в браузере по ссылке ниже:\n%s", sheetsURL),
-		telebot.ModeHTML,
-	)
+	msgText := fmt.Sprintf("📂 <b>Таблица гостей и настроек</b>\n\nОткроется в браузере по ссылке ниже:\n%s", sheetsURL)
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminPing проверяет связь с Google Sheets
-func handleAdminPing(c telebot.Context) error {
+func handleAdminPing(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_ = c.Send("📶 Выполняю проверку связи с Google Sheets...")
+	msg := tgbotapi.NewMessage(message.Chat.ID, "📶 Выполняю проверку связи с Google Sheets...")
+	bot.Send(msg)
 
 	// Простая проверка - пытаемся прочитать админ лист
 	start := time.Now()
@@ -170,7 +359,7 @@ func handleAdminPing(c telebot.Context) error {
 		log.Printf("Ошибка проверки связи: %v", err)
 	}
 
-	message := fmt.Sprintf(
+	msgText := fmt.Sprintf(
 		"📶 <b>Проверка связи: бот → сервер → Google Sheets</b>\n\n"+
 			"⏰ Время: <code>%s</code>\n"+
 			"📄 Лист: <code>Админ бота</code>\n"+
@@ -181,101 +370,116 @@ func handleAdminPing(c telebot.Context) error {
 		time.Now().Format("2006-01-02 15:04:05"), latency, status,
 	)
 
-	return c.Send(message, telebot.ModeHTML)
+	msg = tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminLockSeating закрепляет рассадку
-func handleAdminLockSeating(c telebot.Context) error {
+func handleAdminLockSeating(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	status, err := google_sheets.LockSeating(ctx)
 	if err != nil {
 		log.Printf("Ошибка закрепления рассадки: %v", err)
-		return c.Send("❌ Ошибка закрепления рассадки.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка закрепления рассадки.")
+		bot.Send(msg)
+		return
 	}
 
 	if status != nil && status.Locked {
-		return c.Send(fmt.Sprintf("✅ Рассадка закреплена!\nВремя: %s", status.LockedAt))
+		msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Рассадка закреплена!\nВремя: %s", status.LockedAt))
+		bot.Send(msg)
+		return
 	}
 
-	return c.Send("✅ Рассадка закреплена!")
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка закреплена!")
+	bot.Send(msg)
 }
 
 // handleAdminGroupSendMessage запускает отправку сообщения в группу
-func handleAdminGroupSendMessage(c telebot.Context) error {
+func handleAdminGroupSendMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if config.GroupID == "" {
-		return c.Send("❌ GROUP_ID не настроен в конфигурации.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ GROUP_ID не настроен в конфигурации.")
+		bot.Send(msg)
+		return
 	}
 
 	// TODO: Реализовать FSM для ввода сообщения
-	return c.Send("📢 <b>Отправка сообщения в группу</b>\n\nФункция в разработке.", telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, "📢 <b>Отправка сообщения в группу</b>\n\nФункция в разработке.")
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminGroupListMembers показывает участников группы
-func handleAdminGroupListMembers(c telebot.Context) error {
+func handleAdminGroupListMembers(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if config.GroupID == "" {
-		return c.Send("❌ GROUP_ID не настроен в конфигурации.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ GROUP_ID не настроен в конфигурации.")
+		bot.Send(msg)
+		return
 	}
 
-	// Получаем бота
 	mu.RLock()
-	bot := botInstance
+	botInstance := botInstance
 	mu.RUnlock()
 
-	if bot == nil {
-		return c.Send("❌ Бот не инициализирован")
+	if botInstance == nil {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Бот не инициализирован")
+		bot.Send(msg)
+		return
 	}
 
 	// Парсим GroupID (может быть строкой или числом)
-	var chatID int64
-	if _, err := fmt.Sscanf(config.GroupID, "%d", &chatID); err != nil {
-		// Если не число, пытаемся использовать как username
-		chat, err := bot.ChatByUsername(config.GroupID)
-		if err != nil {
-			log.Printf("Ошибка получения информации о группе: %v", err)
-			return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
-		}
-		chatID = chat.ID
+	var chatConfig tgbotapi.ChatInfoConfig
+	if chatID, err := strconv.ParseInt(config.GroupID, 10, 64); err == nil {
+		// Если это число, используем ChatID
+		chatConfig = tgbotapi.ChatInfoConfig{ChatConfig: tgbotapi.ChatConfig{ChatID: chatID}}
 	} else {
-		// Если это число, используем напрямую
-		chat, err := bot.ChatByID(chatID)
-		if err != nil {
-			log.Printf("Ошибка получения информации о группе: %v", err)
-			return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
-		}
-		chatID = chat.ID
+		// Если не число, используем как username
+		chatConfig = tgbotapi.ChatInfoConfig{ChatConfig: tgbotapi.ChatConfig{SuperGroupUsername: config.GroupID}}
 	}
 
 	// Получаем информацию о чате
-	chat, err := bot.ChatByID(chatID)
+	chat, err := botInstance.GetChat(chatConfig)
 	if err != nil {
 		log.Printf("Ошибка получения информации о группе: %v", err)
-		return c.Send("❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось получить информацию о группе. Проверьте, что бот добавлен в группу и GROUP_ID указан правильно.")
+		bot.Send(msg)
+		return
+	}
+
+	// Получаем количество участников
+	membersCount := 0
+	countConfig := tgbotapi.ChatMemberCountConfig{ChatConfig: chatConfig.ChatConfig}
+	if count, err := botInstance.GetChatMembersCount(countConfig); err == nil {
+		membersCount = count
 	}
 
 	// Получаем список администраторов
-	admins, err := bot.AdminsOf(chat)
+	adminsConfig := tgbotapi.ChatAdministratorsConfig{ChatConfig: chatConfig.ChatConfig}
+	admins, err := botInstance.GetChatAdministrators(adminsConfig)
 	if err != nil {
 		log.Printf("Ошибка получения списка администраторов: %v", err)
-		admins = []telebot.ChatMember{}
+		admins = []tgbotapi.ChatMember{}
 	}
 
 	// Формируем сообщение
-	message := fmt.Sprintf(
+	msgText := fmt.Sprintf(
 		"👥 <b>Информация о группе</b>\n\n"+
 			"📝 Название: <b>%s</b>\n"+
 			"🆔 ID: <code>%s</code>\n"+
+			"👥 Участников: <b>%d</b>\n"+
 			"👑 Администраторов: <b>%d</b>\n",
-		chat.Title, config.GroupID, len(admins),
+		chat.Title, config.GroupID, membersCount, len(admins),
 	)
 
 	// Добавляем список администраторов
 	if len(admins) > 0 {
-		message += "\n<b>👑 Администраторы:</b>\n"
+		msgText += "\n<b>👑 Администраторы:</b>\n"
 		for i, admin := range admins {
 			if i >= 20 { // Ограничиваем 20 администраторами
-				message += fmt.Sprintf("\n... и еще %d администраторов", len(admins)-20)
+				msgText += fmt.Sprintf("\n... и еще %d администраторов", len(admins)-20)
 				break
 			}
 			user := admin.User
@@ -283,39 +487,43 @@ func handleAdminGroupListMembers(c telebot.Context) error {
 			if user.LastName != "" {
 				name += " " + user.LastName
 			}
-			if user.Username != "" {
-				name += fmt.Sprintf(" (@%s)", user.Username)
+			if user.UserName != "" {
+				name += fmt.Sprintf(" (@%s)", user.UserName)
 			}
-			// Определяем статус по правам
 			status := "👤 Участник"
-			if admin.Rights.CanDeleteMessages || admin.Rights.CanRestrictMembers || admin.Rights.CanPromoteMembers {
+			if admin.CanDeleteMessages || admin.CanRestrictMembers || admin.CanPromoteMembers {
 				status = "👑 Админ"
 			}
-			// Первый администратор обычно создатель
-			if i == 0 {
+			if admin.Status == "creator" {
 				status = "👑 Создатель"
+			} else if admin.Status == "administrator" {
+				status = "👑 Админ"
 			}
-			message += fmt.Sprintf("%d. %s - %s\n", i+1, name, status)
+			msgText += fmt.Sprintf("%d. %s - %s\n", i+1, name, status)
 		}
 	} else {
-		message += "\n⚠️ Не удалось получить список администраторов."
+		msgText += "\n⚠️ Не удалось получить список администраторов."
 	}
 
 	// Добавляем ссылку на группу
 	if config.GroupLink != "" {
-		message += fmt.Sprintf("\n🔗 <a href=\"%s\">Открыть группу</a>", config.GroupLink)
+		msgText += fmt.Sprintf("\n🔗 <a href=\"%s\">Открыть группу</a>", config.GroupLink)
 	}
 
-	return c.Send(message, telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminGroupAddRemove показывает управление участниками группы
-func handleAdminGroupAddRemove(c telebot.Context) error {
+func handleAdminGroupAddRemove(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if config.GroupID == "" {
-		return c.Send("❌ GROUP_ID не настроен в конфигурации.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ GROUP_ID не настроен в конфигурации.")
+		bot.Send(msg)
+		return
 	}
 
-	message := fmt.Sprintf(
+	msgText := fmt.Sprintf(
 		"💬 <b>Управление группой</b>\n\n"+
 			"🔗 Ссылка: %s\n"+
 			"🆔 ID группы: <code>%s</code>\n\n"+
@@ -324,12 +532,15 @@ func handleAdminGroupAddRemove(c telebot.Context) error {
 	)
 
 	keyboard := keyboards.GetGroupManagementKeyboard()
-	return c.Send(message, keyboard, telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
 }
 
 // handleAdminBotStatus показывает статус бота
-func handleAdminBotStatus(c telebot.Context) error {
-	message := "🤖 <b>Статус бота</b>\n\n" +
+func handleAdminBotStatus(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	msgText := "🤖 <b>Статус бота</b>\n\n" +
 		"✅ Бот работает\n" +
 		"✅ API доступен\n" +
 		"✅ Google Sheets подключен\n\n" +
@@ -337,53 +548,61 @@ func handleAdminBotStatus(c telebot.Context) error {
 		"• Бот написан на <b>Go</b> (Golang)\n" +
 		"• Веб-приложение написано на <b>React.js</b>"
 
-	return c.Send(message, telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminAuthClient запускает авторизацию Telegram Client
-func handleAdminAuthClient(c telebot.Context) error {
+func handleAdminAuthClient(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// TODO: Реализовать авторизацию Telegram Client
-	return c.Send("🔐 <b>Авторизация Telegram Client</b>\n\nФункция в разработке.", telebot.ModeHTML)
+	msg := tgbotapi.NewMessage(message.Chat.ID, "🔐 <b>Авторизация Telegram Client</b>\n\nФункция в разработке.")
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminResetMe сбрасывает регистрацию админа
-func handleAdminResetMe(c telebot.Context) error {
+func handleAdminResetMe(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err := google_sheets.CancelGuestRegistrationByUserID(ctx, int(c.Sender().ID))
+	err := google_sheets.CancelGuestRegistrationByUserID(ctx, int(message.From.ID))
 	if err != nil {
 		log.Printf("Ошибка сброса регистрации: %v", err)
-		return c.Send("❌ Ошибка сброса регистрации.")
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка сброса регистрации.")
+		bot.Send(msg)
+		return
 	}
 
-	return c.Send(
-		"✅ <b>Данные сброшены!</b>\n\n"+
-			"Ваша регистрация удалена из базы данных.\n"+
-			"Теперь вы можете пройти весь путь заново, нажав /start",
-		telebot.ModeHTML,
-	)
+	msgText := "✅ <b>Данные сброшены!</b>\n\n" +
+		"Ваша регистрация удалена из базы данных.\n" +
+		"Теперь вы можете пройти весь путь заново, нажав /start"
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminAddAdmin запускает добавление админа
-func handleAdminAddAdmin(c telebot.Context) error {
+func handleAdminAddAdmin(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// TODO: Реализовать FSM для добавления админа
-	return c.Send(
-		"👤 <b>Добавление администратора</b>\n\n"+
-			"Пришлите @username человека, которого хотите сделать админом.\n"+
-			"Важно: этот пользователь должен хотя бы раз написать боту /start.",
-		telebot.ModeHTML,
-	)
+	msgText := "👤 <b>Добавление администратора</b>\n\n" +
+		"Пришлите @username человека, которого хотите сделать админом.\n" +
+		"Важно: этот пользователь должен хотя бы раз написать боту /start."
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
 }
 
 // handleAdminFindUserID запускает поиск user_id по username
-func handleAdminFindUserID(c telebot.Context) error {
+func handleAdminFindUserID(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// TODO: Реализовать FSM для поиска user_id
-	return c.Send(
-		"🆔 <b>Найти user_id по username</b>\n\n"+
-			"Пришлите @username или ссылку вида `https://t.me/username`.\n"+
-			"Важно: пользователь должен хотя бы раз написать боту или быть с ботом в одной группе.",
-		telebot.ModeHTML,
-	)
-}
+	msgText := "🆔 <b>Найти user_id по username</b>\n\n" +
+		"Пришлите @username или ссылку вида `https://t.me/username`.\n" +
+		"Важно: пользователь должен хотя бы раз написать боту или быть с ботом в одной группе."
 
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}

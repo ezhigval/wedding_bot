@@ -99,7 +99,9 @@ export async function submitRSVP(formData: {
             userId = parsed.userId
             console.log('[submitRSVP] Got user_id from parse-init-data:', userId)
             // Сохраняем в localStorage
-            localStorage.setItem('telegram_user_id', userId.toString())
+            if (userId !== null) {
+              localStorage.setItem('telegram_user_id', userId.toString())
+            }
           }
         }
       } catch (error) {
@@ -235,7 +237,9 @@ export async function checkRegistration(): Promise<RegistrationStatus> {
               lastName = parsed.lastName || ''
               console.log('[Telegram WebApp] Got user_id from parse-init-data:', userId)
               // Сохраняем в localStorage
-              localStorage.setItem('telegram_user_id', userId.toString())
+              if (userId !== null) {
+                localStorage.setItem('telegram_user_id', userId.toString())
+              }
             }
           } else {
             const errorText = await response.text()
