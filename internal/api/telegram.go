@@ -5,15 +5,76 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
 
 	"wedding-bot/internal/config"
 )
+
+// buildDataCheckString формирует строку для проверки подписи согласно требованиям Telegram
+func buildDataCheckString(params map[string]string) string {
+	// Ключи сортируются лексикографически, hash исключаем
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		if k == "hash" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(params[k])
+	}
+
+	return b.String()
+}
+
+// verifyTelegramSignature валидирует initData согласно документации Telegram WebApp
+func verifyTelegramSignature(params map[string]string) error {
+	if config.BotToken == "" {
+		// В dev среде допускаем отсутствие токена, но явно сигнализируем
+		if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+			log.Printf("⚠️ BOT_TOKEN не задан, пропускаем проверку подписи initData (DEBUG)")
+			return nil
+		}
+		return errors.New("bot token not configured")
+	}
+
+	hash := params["hash"]
+	if hash == "" {
+		return errors.New("hash not found")
+	}
+
+	dataCheckString := buildDataCheckString(params)
+
+	// secret key = HMAC_SHA256("WebAppData", bot_token)
+	secret := hmac.New(sha256.New, []byte("WebAppData"))
+	secret.Write([]byte(config.BotToken))
+
+	h := hmac.New(sha256.New, secret.Sum(nil))
+	h.Write([]byte(dataCheckString))
+
+	calculated := hex.EncodeToString(h.Sum(nil))
+	if calculated != hash {
+		return fmt.Errorf("invalid hash")
+	}
+
+	return nil
+}
 
 // ParseInitData парсит initData от Telegram для извлечения user_id
 func ParseInitData(initData string) (map[string]interface{}, error) {
@@ -40,13 +101,9 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	}
 
 	// Проверяем подпись
-	hash := params["hash"]
-	if hash == "" {
-		return nil, fmt.Errorf("hash not found")
+	if err := verifyTelegramSignature(params); err != nil {
+		return nil, fmt.Errorf("invalid initData signature: %w", err)
 	}
-
-	// Проверяем подпись (упрощенная версия, для полной проверки нужен BOT_TOKEN)
-	// Здесь мы просто извлекаем данные
 
 	// Извлекаем user из user JSON
 	userJSON := params["user"]
@@ -129,47 +186,16 @@ func extractUserIDFromJSON(jsonStr string) string {
 
 // VerifyTelegramWebappData проверяет подпись Telegram WebApp данных
 func VerifyTelegramWebappData(initData string) bool {
-	if config.BotToken == "" {
-		return false
-	}
-
-	// Парсим query string
+	params := make(map[string]string)
 	pairs := strings.Split(initData, "&")
-	var dataCheckString strings.Builder
-	hash := ""
-
 	for _, pair := range pairs {
 		parts := strings.SplitN(pair, "=", 2)
 		if len(parts) == 2 {
-			key := parts[0]
-			value := parts[1]
-			if key == "hash" {
-				hash = value
-			} else {
-				if dataCheckString.Len() > 0 {
-					dataCheckString.WriteString("\n")
-				}
-				dataCheckString.WriteString(key)
-				dataCheckString.WriteString("=")
-				dataCheckString.WriteString(value)
-			}
+			params[parts[0]] = parts[1]
 		}
 	}
 
-	if hash == "" {
-		return false
-	}
-
-	// Создаем секретный ключ
-	secretKey := hmac.New(sha256.New, []byte("WebAppData"))
-	secretKey.Write([]byte(config.BotToken))
-
-	// Вычисляем HMAC
-	h := hmac.New(sha256.New, secretKey.Sum(nil))
-	h.Write([]byte(dataCheckString.String()))
-	calculatedHash := hex.EncodeToString(h.Sum(nil))
-
-	return calculatedHash == hash
+	return verifyTelegramSignature(params) == nil
 }
 
 // IsUserInGroupChat проверяет, состоит ли пользователь в общем чате гостей
@@ -218,4 +244,3 @@ func IsUserInGroupChat(userID int) (bool, error) {
 	// статусы: creator, administrator, member, restricted, left, kicked
 	return status == "creator" || status == "administrator" || status == "member", nil
 }
-

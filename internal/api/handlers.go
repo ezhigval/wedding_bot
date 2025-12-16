@@ -71,9 +71,9 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 			}
 
 			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"registered":      false,
+				"registered":         false,
 				"needs_confirmation": true,
-				"guest_name":      fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
+				"guest_name":         fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
 			})
 			return
 		}
@@ -102,9 +102,9 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 				}
 
 				JSONResponse(w, http.StatusOK, map[string]interface{}{
-					"registered":      false,
+					"registered":         false,
 					"needs_confirmation": true,
-					"guest_name":      fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
+					"guest_name":         fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
 				})
 				return
 			}
@@ -131,7 +131,7 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	if registered {
 		inGroupChat, _ := IsUserInGroupChat(userID)
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"registered":   true,
+			"registered":    true,
 			"in_group_chat": inGroupChat,
 		})
 		return
@@ -146,7 +146,7 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 			// Найден по имени - считаем зарегистрированным
 			inGroupChat, _ := IsUserInGroupChat(userID)
 			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"registered":   true,
+				"registered":    true,
 				"in_group_chat": inGroupChat,
 			})
 			return
@@ -155,7 +155,7 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 
 	inGroupChat, _ := IsUserInGroupChat(userID)
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"registered":   false,
+		"registered":    false,
 		"in_group_chat": inGroupChat,
 	})
 }
@@ -205,6 +205,15 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	// Таймаут для регистрации (может быть долгой операцией)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+
+	// Идемпотентность: если уже зарегистрирован, возвращаем успех
+	if registered, err := google_sheets.CheckGuestRegistration(ctx, userID); err == nil && registered {
+		JSONResponse(w, http.StatusOK, map[string]interface{}{
+			"success":            true,
+			"already_registered": true,
+		})
+		return
+	}
 
 	var age *int
 	if req.Age != nil {
@@ -437,4 +446,3 @@ func getSeatingInfo(w http.ResponseWriter, r *http.Request) {
 		"full_name": info.FullName,
 	})
 }
-

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/didip/tollbooth/v7"
@@ -27,13 +28,27 @@ func initLogger() {
 // securityMiddleware добавляет security headers
 func securityMiddleware(next http.Handler) http.Handler {
 	isDev := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
+
+	cspParts := []string{
+		"default-src 'self'",
+		"script-src 'self' https://telegram.org https://*.telegram.org",
+		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+		"img-src 'self' data: blob: https://*.telegram.org",
+		"font-src 'self' data: https://fonts.gstatic.com",
+		"connect-src 'self'",
+		"frame-ancestors 'self'",
+	}
+	if isDev {
+		cspParts = append(cspParts, "connect-src 'self' http://localhost:5173 http://127.0.0.1:5173")
+	}
+
 	secureMiddleware := secure.New(secure.Options{
 		FrameDeny:             true,
 		ContentTypeNosniff:    true,
 		BrowserXssFilter:      true,
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
 		PermissionsPolicy:     "geolocation=(), microphone=(), camera=()",
-		ContentSecurityPolicy: "default-src 'self'",
+		ContentSecurityPolicy: strings.Join(cspParts, "; "),
 		IsDevelopment:         isDev,
 	})
 

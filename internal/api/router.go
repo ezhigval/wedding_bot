@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 
 	"wedding-bot/internal/config"
-	"wedding-bot/internal/google_sheets"
 )
 
 var (
@@ -44,11 +46,6 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 	router.Use(securityMiddleware)
 	router.Use(rateLimitMiddleware)
 	router.Use(corsMiddleware)
-
-	// Инициализируем необходимые листы в Google Sheets
-	if err := google_sheets.EnsureRequiredSheets(ctx); err != nil {
-		log.Printf("Ошибка инициализации Google Sheets: %v", err)
-	}
 
 	// API endpoints
 	api := router.PathPrefix("/api").Subrouter()
@@ -103,10 +100,21 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 
 // corsMiddleware добавляет CORS заголовки
 func corsMiddleware(next http.Handler) http.Handler {
+	allowedOrigins := buildAllowedOrigins()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+
+		if origin != "" && isOriginAllowed(origin, allowedOrigins) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		} else if origin == "" {
+			// Запросы без Origin (например, внутри Telegram или с того же домена)
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -162,6 +170,55 @@ func JSONError(w http.ResponseWriter, status int, message string) {
 	JSONResponse(w, status, map[string]string{
 		"error": message,
 	})
+}
+
+func buildAllowedOrigins() []string {
+	origins := []string{}
+
+	if config.WebappURL != "" {
+		if normalized := normalizeOrigin(config.WebappURL); normalized != "" {
+			origins = append(origins, normalized)
+		}
+	}
+
+	// Локальная разработка
+	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+		origins = append(origins,
+			"http://localhost:5173",
+			"http://127.0.0.1:5173",
+			"http://localhost:3000",
+			"http://127.0.0.1:3000",
+		)
+	}
+
+	return origins
+}
+
+func isOriginAllowed(origin string, allowed []string) bool {
+	normalized := normalizeOrigin(origin)
+	for _, o := range allowed {
+		if o == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeOrigin(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	if u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host)
 }
 
 // getConfig возвращает конфигурацию для фронтенда
