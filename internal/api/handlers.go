@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"wedding-bot/internal/cache"
 	"wedding-bot/internal/google_sheets"
 )
 
@@ -121,12 +122,27 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверяем регистрацию
+	cacheKey := fmt.Sprintf("registration:%d", userID)
+	if cached, ok := cache.GetMemoryCacheValue(cacheKey); ok {
+		if val, ok := cached.(bool); ok {
+			inGroupChat, _ := IsUserInGroupChat(userID)
+			JSONResponse(w, http.StatusOK, map[string]interface{}{
+				"registered":    val,
+				"in_group_chat": inGroupChat,
+				"cached":        true,
+			})
+			return
+		}
+	}
+
 	registered, err := google_sheets.CheckGuestRegistration(ctx, userID)
 	if err != nil {
 		log.Printf("Error checking registration: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")
 		return
 	}
+	cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
+	cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
 
 	if registered {
 		inGroupChat, _ := IsUserInGroupChat(userID)

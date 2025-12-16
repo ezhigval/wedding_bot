@@ -69,6 +69,7 @@ func main() {
 	log.Println("=" + strings.Repeat("=", 59))
 
 	// Инициализируем кэш
+	cache.InitMemoryCache()
 	if err := cache.InitGameStatsCache(); err != nil {
 		log.Printf("⚠️ Ошибка инициализации кэша: %v (продолжаем без кэша)", err)
 	} else {

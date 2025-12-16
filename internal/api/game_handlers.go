@@ -2,11 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"wedding-bot/internal/cache"
 	"wedding-bot/internal/google_sheets"
 )
 
@@ -26,6 +29,14 @@ func getGameStatsEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
+	cacheKey := fmt.Sprintf("game_stats:%d", userID)
+	if cached, ok := cache.GetMemoryCacheValue(cacheKey); ok {
+		if s, ok := cached.(*google_sheets.GameStats); ok {
+			respondGameStats(w, userID, s)
+			return
+		}
+	}
+
 	stats, err := google_sheets.GetGameStats(ctx, userID)
 	if err != nil {
 		log.Printf("Error getting game stats: %v", err)
@@ -33,8 +44,15 @@ func getGameStatsEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if stats != nil {
+		cache.SetMemoryCache(cacheKey, stats, 30*time.Second)
+	}
+
+	respondGameStats(w, userID, stats)
+}
+
+func respondGameStats(w http.ResponseWriter, userID int, stats *google_sheets.GameStats) {
 	if stats == nil {
-		// Возвращаем дефолтные значения
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
 			"user_id":         userID,
 			"first_name":      "",

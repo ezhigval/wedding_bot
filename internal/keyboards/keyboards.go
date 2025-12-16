@@ -28,37 +28,63 @@ func GetInvitationKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 }
 
-// GetMainReplyKeyboard возвращает основную пользовательскую клавиатуру
-func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) tgbotapi.ReplyKeyboardMarkup {
+// WebAppInfo описывает web_app кнопку
+type WebAppInfo struct {
+	URL string `json:"url"`
+}
+
+// KeyboardButtonWebApp добавляет поддержку web_app для ReplyKeyboard
+type KeyboardButtonWebApp struct {
+	Text   string      `json:"text"`
+	WebApp *WebAppInfo `json:"web_app,omitempty"`
+}
+
+// ReplyKeyboardMarkupWebApp — упрощённая маркап с web_app кнопками
+type ReplyKeyboardMarkupWebApp struct {
+	Keyboard        [][]KeyboardButtonWebApp `json:"keyboard"`
+	ResizeKeyboard  bool                     `json:"resize_keyboard,omitempty"`
+	OneTimeKeyboard bool                     `json:"one_time_keyboard,omitempty"`
+}
+
+// GetMainReplyKeyboard возвращает основную пользовательскую клавиатуру (reply)
+func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) interface{} {
 	photoLabel := "📸 Фоторежим ❌"
 	if photoModeEnabled {
 		photoLabel = "📸 Фоторежим ✅"
 	}
 
-	var keyboard [][]tgbotapi.KeyboardButton
+	var keyboard [][]KeyboardButtonWebApp
 
 	// Первая строка
-	var row1 []tgbotapi.KeyboardButton
-	row1 = append(row1, tgbotapi.NewKeyboardButton("💒 Открыть приглашение"))
-	row1 = append(row1, tgbotapi.NewKeyboardButton(photoLabel))
+	row1 := []KeyboardButtonWebApp{
+		{Text: "💒 Открыть приглашение"},
+		{Text: photoLabel},
+	}
+	// Добавляем web_app на первую кнопку, если указан URL
+	if config.WebappURL != "" {
+		row1[0].WebApp = &WebAppInfo{URL: config.WebappURL}
+	}
 	keyboard = append(keyboard, row1)
 
 	// Вторая строка: контакты и общий чат
-	row2 := []tgbotapi.KeyboardButton{
-		tgbotapi.NewKeyboardButton("💬 Общий чат"),
-		tgbotapi.NewKeyboardButton("📞 Связаться с нами"),
+	row2 := []KeyboardButtonWebApp{
+		{Text: "💬 Общий чат"},
+		{Text: "📞 Связаться с нами"},
 	}
 	keyboard = append(keyboard, row2)
 
 	// Вторая строка для админов
 	if isAdmin {
-		row3 := []tgbotapi.KeyboardButton{
-			tgbotapi.NewKeyboardButton("⚙️ Админ-панель"),
+		row3 := []KeyboardButtonWebApp{
+			{Text: "⚙️ Админ-панель"},
 		}
 		keyboard = append(keyboard, row3)
 	}
 
-	return tgbotapi.NewReplyKeyboard(keyboard...)
+	return ReplyKeyboardMarkupWebApp{
+		Keyboard:       keyboard,
+		ResizeKeyboard: true,
+	}
 }
 
 // GetAdminRootReplyKeyboard возвращает корневое меню администратора
