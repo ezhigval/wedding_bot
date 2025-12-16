@@ -23,24 +23,40 @@ func GetTimeline(ctx context.Context) ([]TimelineItem, error) {
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := config.GoogleSheetsTimelineSheetName
+	// Порядок приоритетов: настроенное имя, затем дефолты на всякий случай
+	sheetNames := []string{config.GoogleSheetsTimelineSheetName, "Публичная План-сетка", "Публичная план-сетка", "Публичная план сетка"}
 
-	// Проверяем существование листа
-	if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
-		log.Printf("Вкладка '%s' не найдена", sheetName)
-		return []TimelineItem{}, nil
+	for _, sheetName := range sheetNames {
+		if sheetName == "" {
+			continue
+		}
+
+		// Проверяем существование листа
+		if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
+			continue
+		}
+
+		// Получаем данные из первых двух столбцов (A: время, B: событие)
+		readRange := fmt.Sprintf("%s!A:B", sheetName)
+		resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+		if err != nil {
+			log.Printf("Ошибка чтения план-сетки с листа %s: %v", sheetName, err)
+			continue
+		}
+
+		timeline := parseTimelineRows(resp.Values)
+		if len(timeline) > 0 {
+			return timeline, nil
+		}
 	}
 
-	// Получаем данные ТОЛЬКО из первых двух столбцов (A: время, B: событие)
-	readRange := fmt.Sprintf("%s!A:B", sheetName)
-	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
-	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения значений: %w", err)
-	}
+	return []TimelineItem{}, nil
+}
 
+func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 	var timeline []TimelineItem
-	for _, row := range resp.Values {
-		// Гарантируем, что у нас всегда есть как минимум 2 ячейки
+
+	for i, row := range rows {
 		timeCell := ""
 		eventCell := ""
 
@@ -57,7 +73,12 @@ func GetTimeline(ctx context.Context) ([]TimelineItem, error) {
 		}
 
 		// Пропускаем полностью пустые строки и строки без события
-		if eventCell == "" {
+		if eventCell == "" && timeCell == "" {
+			continue
+		}
+
+		// Пропускаем заголовок
+		if i == 0 && (strings.Contains(strings.ToLower(eventCell), "событие") || strings.Contains(strings.ToLower(timeCell), "время")) {
 			continue
 		}
 
@@ -67,6 +88,5 @@ func GetTimeline(ctx context.Context) ([]TimelineItem, error) {
 		})
 	}
 
-	return timeline, nil
+	return timeline
 }
-
