@@ -145,6 +145,8 @@ func handleAdminPanel(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "🛠 <b>Админ панель</b>\n\nВыберите раздел:"
 	keyboard := keyboards.GetAdminRootReplyKeyboard()
 
+	SetAdminNav(message.From.ID, AdminNavRoot)
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = keyboard

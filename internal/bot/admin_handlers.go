@@ -212,6 +212,8 @@ func handleAdminGuestsMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "📂 <b>Админ → Гости</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminGuestsReplyKeyboard()
 
+	SetAdminNav(message.From.ID, AdminNavSub)
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = keyboard
@@ -222,6 +224,8 @@ func handleAdminGuestsMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 func handleAdminTableMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "📊 <b>Админ → Таблица</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminTableReplyKeyboard()
+
+	SetAdminNav(message.From.ID, AdminNavSub)
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
@@ -234,6 +238,8 @@ func handleAdminGroupMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "💬 <b>Админ → Группа</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminGroupReplyKeyboard()
 
+	SetAdminNav(message.From.ID, AdminNavSub)
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = keyboard
@@ -245,6 +251,8 @@ func handleAdminBotMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "🤖 <b>Админ → Бот</b>\n\nВыберите действие:"
 	keyboard := keyboards.GetAdminBotReplyKeyboard()
 
+	SetAdminNav(message.From.ID, AdminNavSub)
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = keyboard
@@ -255,6 +263,8 @@ func handleAdminBotMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 func handleAdminGamesMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msgText := "🎮 <b>Управление играми</b>\n\nВыберите игру:"
 	keyboard := keyboards.GetAdminGamesKeyboard()
+
+	SetAdminNav(message.From.ID, AdminNavSub)
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
@@ -268,9 +278,23 @@ func handleAdminBack(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	isAdmin := isAdminUser(int(userID))
 	photoModeEnabled := IsPhotoModeEnabled(userID)
 
+	nav := GetAdminNav(userID)
+	if nav == AdminNavSub {
+		// Возвращаем в корневое меню админа
+		SetAdminNav(userID, AdminNavRoot)
+		msgText := "🛠 <b>Админ панель</b>\n\nВыберите раздел:"
+		keyboard := keyboards.GetAdminRootReplyKeyboard()
+		msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+		msg.ParseMode = tgbotapi.ModeHTML
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
+	}
+
+	// Иначе возвращаемся в основное меню
+	ClearAdminNav(userID)
 	msgText := "Главное меню:"
 	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, photoModeEnabled)
-
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)

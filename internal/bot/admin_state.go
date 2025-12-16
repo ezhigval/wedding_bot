@@ -21,9 +21,20 @@ type GroupBroadcastState struct {
 	Buttons []tgbotapi.InlineKeyboardButton
 }
 
+type AdminNav string
+
+const (
+	AdminNavNone AdminNav = ""
+	AdminNavRoot AdminNav = "root"
+	AdminNavSub  AdminNav = "sub"
+)
+
 var (
 	adminInputModesMu sync.RWMutex
 	adminInputModes   = make(map[int64]AdminInputMode)
+
+	adminNavMu sync.RWMutex
+	adminNav   = make(map[int64]AdminNav)
 
 	groupBroadcastMu     sync.RWMutex
 	groupBroadcastStates = make(map[int64]*GroupBroadcastState)
@@ -45,6 +56,24 @@ func ClearAdminInputMode(userID int64) {
 	adminInputModesMu.Lock()
 	defer adminInputModesMu.Unlock()
 	delete(adminInputModes, userID)
+}
+
+func SetAdminNav(userID int64, nav AdminNav) {
+	adminNavMu.Lock()
+	defer adminNavMu.Unlock()
+	adminNav[userID] = nav
+}
+
+func GetAdminNav(userID int64) AdminNav {
+	adminNavMu.RLock()
+	defer adminNavMu.RUnlock()
+	return adminNav[userID]
+}
+
+func ClearAdminNav(userID int64) {
+	adminNavMu.Lock()
+	defer adminNavMu.Unlock()
+	delete(adminNav, userID)
 }
 
 func InitGroupBroadcastState(userID int64) {
