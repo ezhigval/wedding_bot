@@ -63,15 +63,11 @@ func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 		eventCell := ""
 
 		if len(row) > 0 {
-			if val, ok := row[0].(string); ok {
-				timeCell = strings.TrimSpace(val)
-			}
+			timeCell = normalizeCell(row[0])
 		}
 
 		if len(row) > 1 {
-			if val, ok := row[1].(string); ok {
-				eventCell = strings.TrimSpace(val)
-			}
+			eventCell = normalizeCell(row[1])
 		}
 
 		// Пропускаем полностью пустые строки
@@ -117,4 +113,15 @@ func parseTimelineRows(rows [][]interface{}) []TimelineItem {
 	}
 
 	return timeline
+}
+
+func normalizeCell(val interface{}) string {
+	switch v := val.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return strings.TrimSpace(fmt.Sprintf("%.2f", v))
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
 }
