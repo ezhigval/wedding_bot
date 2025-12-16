@@ -39,17 +39,23 @@ func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) tgbotapi.ReplyKey
 
 	// Первая строка
 	var row1 []tgbotapi.KeyboardButton
-	// Используем обычную кнопку (WebApp кнопки в reply keyboard работают через обычные кнопки)
 	row1 = append(row1, tgbotapi.NewKeyboardButton("💒 Открыть приглашение"))
 	row1 = append(row1, tgbotapi.NewKeyboardButton(photoLabel))
 	keyboard = append(keyboard, row1)
 
+	// Вторая строка: контакты и общий чат
+	row2 := []tgbotapi.KeyboardButton{
+		tgbotapi.NewKeyboardButton("💬 Общий чат"),
+		tgbotapi.NewKeyboardButton("📞 Связаться с нами"),
+	}
+	keyboard = append(keyboard, row2)
+
 	// Вторая строка для админов
 	if isAdmin {
-		row2 := []tgbotapi.KeyboardButton{
+		row3 := []tgbotapi.KeyboardButton{
 			tgbotapi.NewKeyboardButton("⚙️ Админ-панель"),
 		}
-		keyboard = append(keyboard, row2)
+		keyboard = append(keyboard, row3)
 	}
 
 	return tgbotapi.NewReplyKeyboard(keyboard...)
@@ -65,6 +71,9 @@ func GetAdminRootReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
 		{
 			tgbotapi.NewKeyboardButton("💬 Группа"),
 			tgbotapi.NewKeyboardButton("🤖 Бот"),
+		},
+		{
+			tgbotapi.NewKeyboardButton("🎮 Игры"),
 		},
 		{
 			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),
@@ -128,7 +137,6 @@ func GetAdminBotReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
 	keyboard := [][]tgbotapi.KeyboardButton{
 		{
 			tgbotapi.NewKeyboardButton("📊 Статус бота"),
-			tgbotapi.NewKeyboardButton("🎮 Игры"),
 		},
 		{
 			tgbotapi.NewKeyboardButton("Начать с нуля"),
@@ -293,7 +301,6 @@ func GetContactsInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
 	var keyboard [][]tgbotapi.InlineKeyboardButton
 	if strings.HasPrefix(config.WebappURL, "https://") {
 		webAppURL := config.WebappURL
-		// WebApp кнопка через URL (временно, пока не найдем правильный способ)
 		keyboard = [][]tgbotapi.InlineKeyboardButton{
 			{
 				tgbotapi.NewInlineKeyboardButtonURL("💒 Открыть приглашение", webAppURL),

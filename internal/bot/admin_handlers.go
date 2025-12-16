@@ -64,8 +64,6 @@ func handleAdminText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		handleAdminBotStatus(bot, message)
 	case "🎮 Игры":
 		handleAdminGamesMenu(bot, message)
-	case "🔐 Авторизовать клиент":
-		handleAdminAuthClient(bot, message)
 	case "Начать с нуля":
 		handleAdminResetMe(bot, message)
 	case "Добавить админа":
@@ -73,6 +71,142 @@ func handleAdminText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	case "🆔 Найти user_id":
 		handleAdminFindUserID(bot, message)
 	}
+}
+
+func handleWordleAddInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	word := strings.TrimSpace(strings.ToUpper(message.Text))
+	if word == "" {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Отправьте слово для Wordle (одно слово).")
+		bot.Send(msg)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := google_sheets.AddWordleWord(ctx, word); err != nil {
+		log.Printf("Ошибка добавления Wordle слова: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось добавить слово, проверьте логи.")
+		bot.Send(msg)
+		return
+	}
+
+	ClearAdminInputMode(message.From.ID)
+	msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Слово <b>%s</b> добавлено в очередь Wordle", word))
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}
+
+func handleCrosswordAddInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	lines := strings.Split(message.Text, "\n")
+	var words []google_sheets.CrosswordWord
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.FieldsFunc(line, func(r rune) bool { return r == ';' || r == '-' })
+		if len(parts) < 2 {
+			continue
+		}
+		word := strings.TrimSpace(strings.ToUpper(parts[0]))
+		desc := strings.TrimSpace(strings.Join(parts[1:], " "))
+		if word == "" || desc == "" {
+			continue
+		}
+		words = append(words, google_sheets.CrosswordWord{Word: word, Description: desc})
+	}
+
+	if len(words) == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Отправьте список строк формата \"слово; описание\" (каждое с новой строки).")
+		bot.Send(msg)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	index, err := google_sheets.AddCrossword(ctx, words)
+	if err != nil {
+		log.Printf("Ошибка добавления кроссворда: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось добавить кроссворд, проверьте логи.")
+		bot.Send(msg)
+		return
+	}
+
+	ClearAdminInputMode(message.From.ID)
+	msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Новый кроссворд добавлен под индексом %d (%d слов)", index, len(words)))
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}
+
+func handleGroupBroadcastInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	state := GetGroupBroadcastState(message.From.ID)
+	if state == nil {
+		InitGroupBroadcastState(message.From.ID)
+		state = GetGroupBroadcastState(message.From.ID)
+	}
+
+	// Фото
+	if len(message.Photo) > 0 {
+		photo := message.Photo[len(message.Photo)-1]
+		state.PhotoID = photo.FileID
+		if message.Caption != "" {
+			state.Text = message.Caption
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, "📷 Фото сохранено. Добавьте текст или команды, затем отправьте «готово».")
+		bot.Send(msg)
+		return
+	}
+
+	text := strings.TrimSpace(strings.ToLower(message.Text))
+
+	switch text {
+	case "отмена":
+		ClearGroupBroadcastState(message.From.ID)
+		ClearAdminInputMode(message.From.ID)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "🚫 Отправка в группу отменена.")
+		bot.Send(msg)
+		return
+	case "кнопка приложение":
+		if config.WebappURL != "" {
+			state.Buttons = append(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL("💒 Открыть приглашение", config.WebappURL))
+			msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кнопка «Открыть приглашение» добавлена.")
+			bot.Send(msg)
+			return
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ WEBAPP_URL не настроен.")
+		bot.Send(msg)
+		return
+	case "кнопка валентин":
+		if config.GroomTelegram != "" {
+			url := "https://t.me/" + strings.TrimPrefix(config.GroomTelegram, "@")
+			state.Buttons = append(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL("✉️ Написать Валентину", url))
+			msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кнопка «Написать Валентину» добавлена.")
+			bot.Send(msg)
+			return
+		}
+	case "кнопка мария":
+		if config.BrideTelegram != "" {
+			url := "https://t.me/" + strings.TrimPrefix(config.BrideTelegram, "@")
+			state.Buttons = append(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL("✉️ Написать Марии", url))
+			msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кнопка «Написать Марии» добавлена.")
+			bot.Send(msg)
+			return
+		}
+	case "готово":
+		if err := sendGroupBroadcast(bot, message.Chat.ID, message.From.ID); err != nil {
+			log.Printf("Ошибка отправки в группу: %v", err)
+			msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось отправить в группу, проверьте логи.")
+			bot.Send(msg)
+		}
+		return
+	}
+
+	// Любой другой текст считаем основным
+	state.Text = message.Text
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✏️ Текст сохранён. Добавьте кнопки или отправьте «готово».")
+	bot.Send(msg)
 }
 
 // handleAdminGuestsMenu показывает подменю "Гости"
@@ -233,8 +367,57 @@ func handleAdminSeatingFromText(bot *tgbotapi.BotAPI, message *tgbotapi.Message)
 
 // handleAdminRefreshSeating обновляет рассадку
 func handleAdminRefreshSeating(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	// TODO: Реализовать обновление рассадки
-	msg := tgbotapi.NewMessage(message.Chat.ID, "🔄 Функция обновления рассадки в разработке")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	status, err := google_sheets.LockSeating(ctx)
+	if err != nil {
+		log.Printf("Ошибка обновления/фиксации рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось зафиксировать рассадку. Проверьте доступ к Google Sheets.")
+		bot.Send(msg)
+		return
+	}
+
+	seating, err := google_sheets.GetSeatingFromSheets(ctx)
+	if err != nil {
+		log.Printf("Ошибка получения рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка зафиксирована, но не удалось вывести список (ошибка чтения).")
+		bot.Send(msg)
+		return
+	}
+
+	if len(seating) == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка зафиксирована, но лист пуст.")
+		bot.Send(msg)
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("🍽 <b>Рассадка зафиксирована</b>\n")
+	if status != nil && status.LockedAt != "" {
+		sb.WriteString(fmt.Sprintf("⏱ Зафиксировано: <b>%s</b>\n\n", status.LockedAt))
+	} else {
+		sb.WriteString("\n")
+	}
+
+	for _, table := range seating {
+		name := table.Table
+		if name == "" {
+			name = "Без названия"
+		}
+		sb.WriteString(fmt.Sprintf("<b>%s</b>\n", name))
+		if len(table.Guests) == 0 {
+			sb.WriteString("  (пусто)\n")
+		} else {
+			for i, g := range table.Guests {
+				sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, g))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, sb.String())
+	msg.ParseMode = tgbotapi.ModeHTML
 	bot.Send(msg)
 }
 
@@ -406,8 +589,17 @@ func handleAdminGroupSendMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message
 		return
 	}
 
-	// TODO: Реализовать FSM для ввода сообщения
-	msg := tgbotapi.NewMessage(message.Chat.ID, "📢 <b>Отправка сообщения в группу</b>\n\nФункция в разработке.")
+	SetAdminInputMode(message.From.ID, AdminInputModeGroupBroadcast)
+	InitGroupBroadcastState(message.From.ID)
+
+	msgText := "📢 <b>Отправка сообщения в группу</b>\n\n" +
+		"Пришлите текст (и при необходимости фото). Команды:\n" +
+		"• <b>кнопка приложение</b> — кнопка открытия мини-эппа\n" +
+		"• <b>кнопка валентин</b> / <b>кнопка мария</b> — написать организаторам\n" +
+		"• <b>готово</b> — отправить\n" +
+		"• <b>отмена</b> — отменить"
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	bot.Send(msg)
 }
@@ -553,14 +745,6 @@ func handleAdminBotStatus(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	bot.Send(msg)
 }
 
-// handleAdminAuthClient запускает авторизацию Telegram Client
-func handleAdminAuthClient(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	// TODO: Реализовать авторизацию Telegram Client
-	msg := tgbotapi.NewMessage(message.Chat.ID, "🔐 <b>Авторизация Telegram Client</b>\n\nФункция в разработке.")
-	msg.ParseMode = tgbotapi.ModeHTML
-	bot.Send(msg)
-}
-
 // handleAdminResetMe сбрасывает регистрацию админа
 func handleAdminResetMe(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -605,4 +789,77 @@ func handleAdminFindUserID(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	bot.Send(msg)
+}
+
+func sendGroupBroadcast(bot *tgbotapi.BotAPI, adminChatID int64, userID int64) error {
+	state := GetGroupBroadcastState(userID)
+	if state == nil {
+		return fmt.Errorf("state not found")
+	}
+
+	if state.Text == "" && state.PhotoID == "" {
+		msg := tgbotapi.NewMessage(adminChatID, "⚠️ Добавьте текст или фото перед отправкой.")
+		bot.Send(msg)
+		return fmt.Errorf("no content")
+	}
+
+	chatID, channelUsername := parseGroupID(config.GroupID)
+	var replyMarkup *tgbotapi.InlineKeyboardMarkup
+	if len(state.Buttons) > 0 {
+		replyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{state.Buttons}}
+	}
+
+	if state.PhotoID != "" {
+		var msgCfg tgbotapi.Chattable
+		if channelUsername != "" {
+			photo := tgbotapi.NewPhotoToChannel(channelUsername, tgbotapi.FileID(state.PhotoID))
+			photo.Caption = state.Text
+			if replyMarkup != nil {
+				photo.ReplyMarkup = replyMarkup
+			}
+			msgCfg = photo
+		} else {
+			photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileID(state.PhotoID))
+			photo.Caption = state.Text
+			if replyMarkup != nil {
+				photo.ReplyMarkup = replyMarkup
+			}
+			msgCfg = photo
+		}
+		if _, err := bot.Send(msgCfg); err != nil {
+			return err
+		}
+	} else {
+		var msgCfg tgbotapi.MessageConfig
+		if channelUsername != "" {
+			msgCfg = tgbotapi.NewMessageToChannel(channelUsername, state.Text)
+		} else {
+			msgCfg = tgbotapi.NewMessage(chatID, state.Text)
+		}
+		if replyMarkup != nil {
+			msgCfg.ReplyMarkup = replyMarkup
+		}
+		if _, err := bot.Send(msgCfg); err != nil {
+			return err
+		}
+	}
+
+	ClearGroupBroadcastState(userID)
+	ClearAdminInputMode(userID)
+
+	confirm := tgbotapi.NewMessage(adminChatID, "✅ Сообщение отправлено в группу.")
+	bot.Send(confirm)
+	return nil
+}
+
+func parseGroupID(raw string) (int64, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, ""
+	}
+	if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return id, ""
+	}
+	raw = strings.TrimPrefix(raw, "@")
+	return 0, raw
 }

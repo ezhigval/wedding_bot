@@ -36,22 +36,22 @@ func getGameStatsEndpoint(w http.ResponseWriter, r *http.Request) {
 	if stats == nil {
 		// Возвращаем дефолтные значения
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"user_id":        userID,
-			"first_name":     "",
-			"last_name":      "",
-			"total_score":    0,
-			"dragon_score":   0,
-			"flappy_score":   0,
+			"user_id":         userID,
+			"first_name":      "",
+			"last_name":       "",
+			"total_score":     0,
+			"dragon_score":    0,
+			"flappy_score":    0,
 			"crossword_score": 0,
-			"wordle_score":   0,
-			"rank":           "Незнакомец",
-			"last_updated":   "",
+			"wordle_score":    0,
+			"rank":            "Незнакомец",
+			"last_updated":    "",
 		})
 		return
 	}
 
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"user_id":        stats.UserID,
+		"user_id":         stats.UserID,
 		"first_name":      stats.FirstName,
 		"last_name":       stats.LastName,
 		"total_score":     stats.TotalScore,
@@ -265,8 +265,8 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	for _, gw := range guessedWords {
 		if gw == word {
 			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"success":       false,
-				"message":       "Это слово уже было отгадано",
+				"success":         false,
+				"message":         "Это слово уже было отгадано",
 				"already_guessed": true,
 			})
 			return
@@ -353,12 +353,12 @@ func getWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 // saveWordleStateEndpoint сохраняет состояние игры Wordle
 func saveWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID       int                      `json:"userId"`
-		CurrentWord  string                   `json:"current_word"`
+		UserID       int                        `json:"userId"`
+		CurrentWord  string                     `json:"current_word"`
 		Attempts     [][]map[string]interface{} `json:"attempts"`
-		CurrentGuess string                   `json:"current_guess"`
-		LastWordDate string                   `json:"last_word_date"`
-		InitData     string                   `json:"initData"`
+		CurrentGuess string                     `json:"current_guess"`
+		LastWordDate string                     `json:"last_word_date"`
+		InitData     string                     `json:"initData"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -410,6 +410,8 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 	crosswordIndex := 0
 	if crosswordIndexStr != "" {
 		crosswordIndex, _ = strconv.Atoi(crosswordIndexStr)
+	} else {
+		crosswordIndex = google_sheets.GetCurrentCrosswordIndex(ctx)
 	}
 
 	// Получаем слова
@@ -438,11 +440,11 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"words":            wordsData,
-		"crossword_index":  crosswordIndex,
-		"guessed_words":    progress.GuessedWords,
-		"cell_letters":     progress.CellLetters,
-		"wrong_attempts":    progress.WrongAttempts,
+		"words":                wordsData,
+		"crossword_index":      crosswordIndex,
+		"guessed_words":        progress.GuessedWords,
+		"cell_letters":         progress.CellLetters,
+		"wrong_attempts":       progress.WrongAttempts,
 		"crossword_start_date": progress.StartDate,
 	}
 
@@ -452,13 +454,13 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 // saveCrosswordProgressEndpoint сохраняет прогресс кроссворда
 func saveCrosswordProgressEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID            int               `json:"userId"`
-		GuessedWords      []string          `json:"guessed_words"`
-		CrosswordIndex    int               `json:"crossword_index"`
-		CellLetters       map[string]string `json:"cell_letters"`
-		WrongAttempts     []string          `json:"wrong_attempts"`
-		CrosswordStartDate string           `json:"crossword_start_date"`
-		InitData          string            `json:"initData"`
+		UserID             int               `json:"userId"`
+		GuessedWords       []string          `json:"guessed_words"`
+		CrosswordIndex     int               `json:"crossword_index"`
+		CellLetters        map[string]string `json:"cell_letters"`
+		WrongAttempts      []string          `json:"wrong_attempts"`
+		CrosswordStartDate string            `json:"crossword_start_date"`
+		InitData           string            `json:"initData"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -551,4 +553,3 @@ func setCrosswordIndexEndpoint(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 	})
 }
-

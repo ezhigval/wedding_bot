@@ -496,8 +496,8 @@ func handleWordleSwitch(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) 
 
 // handleWordleAdd запускает добавление слова в Wordle
 func handleWordleAdd(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
-	// TODO: Реализовать FSM для ввода слова
-	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция добавления слова в разработке")
+	SetAdminInputMode(callback.From.ID, AdminInputModeWordleAdd)
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "🔤 Пришлите новое слово для Wordle (одно слово).")
 	bot.Send(msg)
 	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
@@ -535,16 +535,27 @@ func handleCrosswordAdminCallbackWithAction(bot *tgbotapi.BotAPI, callback *tgbo
 
 // handleCrosswordUpdate обновляет кроссворд
 func handleCrosswordUpdate(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
-	// TODO: Реализовать обновление кроссворда
-	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция обновления кроссворда в разработке")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	nextIndex, err := google_sheets.SwitchCrosswordForAll(ctx)
+	if err != nil {
+		log.Printf("Ошибка переключения кроссворда: %v", err)
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Не удалось переключить кроссворд, проверьте логи.")
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("✅ Кроссворд переключён на индекс %d. Прогресс гостей сброшен.", nextIndex))
 	bot.Send(msg)
 	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // handleCrosswordAdd запускает добавление кроссворда
 func handleCrosswordAdd(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
-	// TODO: Реализовать FSM для ввода слов кроссворда
-	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "Функция добавления кроссворда в разработке")
+	SetAdminInputMode(callback.From.ID, AdminInputModeCrosswordAdd)
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "➕ Пришлите строки формата \"слово; описание\" (каждая с новой строки) для нового кроссворда.")
 	bot.Send(msg)
 	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }

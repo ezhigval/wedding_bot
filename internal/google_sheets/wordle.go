@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -392,8 +393,13 @@ func GetWordleWordForUser(ctx context.Context, userID int) (string, error) {
 	}
 
 	if state == nil || state.CurrentWord == "" || state.LastWordDate == "" {
-		// Первый раз или нет сохраненного состояния - берем первое слово
+		// Первый раз или нет сохраненного состояния - берем слово по глобальному индексу
 		currentWord := words[0]
+		if idx, err := getConfigValue(ctx, "WORDLE_INDEX"); err == nil && idx != "" {
+			if parsed, err := strconv.Atoi(idx); err == nil && parsed >= 0 {
+				currentWord = words[parsed%len(words)]
+			}
+		}
 		today := time.Now().Format("2006-01-02")
 		if err := SaveWordleState(ctx, userID, currentWord, [][]map[string]interface{}{}, today, ""); err != nil {
 			return "", err
@@ -467,4 +473,3 @@ func getAllWordleWords(ctx context.Context) ([]string, error) {
 
 	return words, nil
 }
-

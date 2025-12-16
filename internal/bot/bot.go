@@ -141,9 +141,33 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	text := message.Text
 	userID := message.From.ID
 
+	// Обработка режимов ввода администратора (Wordle/Crossword/группа)
+	if isAdminUser(int(userID)) {
+		switch GetAdminInputMode(userID) {
+		case AdminInputModeWordleAdd:
+			handleWordleAddInput(bot, message)
+			return
+		case AdminInputModeCrosswordAdd:
+			handleCrosswordAddInput(bot, message)
+			return
+		case AdminInputModeGroupBroadcast:
+			handleGroupBroadcastInput(bot, message)
+			return
+		}
+	}
+
 	// Проверяем фоторежим
 	if text == "📸 Фоторежим ❌" || text == "📸 Фоторежим ✅" {
 		handleTogglePhotoMode(bot, message)
+		return
+	}
+
+	// Открыть приглашение (fallback для кнопки в reply keyboard)
+	if text == "💒 Открыть приглашение" {
+		keyboard := keyboards.GetInvitationKeyboard()
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Открыть приглашение:")
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
 		return
 	}
 
@@ -159,6 +183,14 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if text == "📞 Связаться с нами" {
 		keyboard := keyboards.GetContactsInlineKeyboard()
 		msg := tgbotapi.NewMessage(message.Chat.ID, "Свяжитесь с организаторами:")
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
+	}
+
+	if text == "💒 Открыть приглашение" {
+		keyboard := keyboards.GetInvitationKeyboard()
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Открыть приглашение:")
 		msg.ReplyMarkup = keyboard
 		bot.Send(msg)
 		return
