@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -17,6 +19,8 @@ import (
 
 var (
 	notifyAdminsFunc func(message string) error
+	notifyMu         sync.Mutex
+	lastNotify       = make(map[string]time.Time)
 )
 
 // SetNotifyFunction устанавливает функцию уведомлений из bot.go
@@ -30,6 +34,21 @@ func NotifyAdmins(message string) error {
 		return notifyAdminsFunc(message)
 	}
 	return nil
+}
+
+func notifyAdminsThrottled(key, message string, cooldown time.Duration) {
+	now := time.Now()
+	notifyMu.Lock()
+	defer notifyMu.Unlock()
+
+	if last, ok := lastNotify[key]; ok && now.Sub(last) < cooldown {
+		return
+	}
+	lastNotify[key] = now
+
+	if err := NotifyAdmins(message); err != nil {
+		log.Printf("notifyAdminsThrottled: %v", err)
+	}
 }
 
 // InitAPI инициализирует API роутер
@@ -174,6 +193,12 @@ func JSONError(w http.ResponseWriter, status int, code string) {
 		"message": humanizeError(code),
 	}
 	json.NewEncoder(w).Encode(resp)
+
+	// Уведомляем админа только по критичным случаям (5xx или явный server_error) с троттлингом
+	if status >= http.StatusInternalServerError || code == "server_error" {
+		msg := fmt.Sprintf("🚨 API ошибка %d: %s (%s)", status, code, resp["message"])
+		notifyAdminsThrottled("api_error:"+code, msg, 5*time.Minute)
+	}
 }
 
 func humanizeError(code string) string {

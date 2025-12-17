@@ -229,23 +229,27 @@ func IsUserInGroupChat(userID int) (bool, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("is_user_in_group_chat: error %v", err)
-		return false, nil
+		notifyAdminsThrottled("group_check_error", fmt.Sprintf("⚠️ Ошибка проверки чата для user %d: %v", userID, err), 10*time.Minute)
+		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		log.Printf("is_user_in_group_chat: getChatMember HTTP %d", resp.StatusCode)
-		return false, nil
+		notifyAdminsThrottled("group_check_status", fmt.Sprintf("⚠️ Telegram getChatMember HTTP %d для user %d", resp.StatusCode, userID), 10*time.Minute)
+		return false, fmt.Errorf("getChatMember status %d", resp.StatusCode)
 	}
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		notifyAdminsThrottled("group_check_decode", fmt.Sprintf("⚠️ Ошибка парсинга ответа getChatMember для user %d: %v", userID, err), 10*time.Minute)
 		return false, err
 	}
 
 	ok, _ := data["ok"].(bool)
 	if !ok {
-		return false, nil
+		notifyAdminsThrottled("group_check_not_ok", fmt.Sprintf("⚠️ Telegram вернул ok=false в getChatMember для user %d", userID), 10*time.Minute)
+		return false, fmt.Errorf("telegram ok=false")
 	}
 
 	result, _ := data["result"].(map[string]interface{})

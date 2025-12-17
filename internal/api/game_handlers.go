@@ -306,7 +306,7 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Начисляем очки
-	if err := google_sheets.UpdateGameScore(ctx, userID, "wordle", 1); err != nil {
+	if err := google_sheets.UpdateGameScore(ctx, userID, "wordle", 5); err != nil {
 		log.Printf("Error updating score: %v", err)
 	}
 
