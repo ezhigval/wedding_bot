@@ -228,27 +228,30 @@ func IsUserInGroupChat(userID int) (bool, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		// Сетевые ошибки считаем временными: логируем, но не тревожим админов
 		log.Printf("is_user_in_group_chat: error %v", err)
-		notifyAdminsThrottled("group_check_error", fmt.Sprintf("⚠️ Ошибка проверки чата для user %d: %v", userID, err), 10*time.Minute)
 		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		log.Printf("is_user_in_group_chat: getChatMember HTTP %d", resp.StatusCode)
-		notifyAdminsThrottled("group_check_status", fmt.Sprintf("⚠️ Telegram getChatMember HTTP %d для user %d", resp.StatusCode, userID), 10*time.Minute)
+		// Уведомляем только если проблема требует вмешательства (например, неверный токен/группа или Telegram недоступен)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode >= 500 {
+			notifyAdminsThrottled("group_check_status", fmt.Sprintf("🚨 getChatMember HTTP %d для user %d (проверьте BOT_TOKEN/GROUP_ID)", resp.StatusCode, userID), 15*time.Minute)
+		}
 		return false, fmt.Errorf("getChatMember status %d", resp.StatusCode)
 	}
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		notifyAdminsThrottled("group_check_decode", fmt.Sprintf("⚠️ Ошибка парсинга ответа getChatMember для user %d: %v", userID, err), 10*time.Minute)
+		notifyAdminsThrottled("group_check_decode", fmt.Sprintf("🚨 Ошибка парсинга ответа getChatMember для user %d: %v", userID, err), 15*time.Minute)
 		return false, err
 	}
 
 	ok, _ := data["ok"].(bool)
 	if !ok {
-		notifyAdminsThrottled("group_check_not_ok", fmt.Sprintf("⚠️ Telegram вернул ok=false в getChatMember для user %d", userID), 10*time.Minute)
+		notifyAdminsThrottled("group_check_not_ok", fmt.Sprintf("🚨 Telegram вернул ok=false в getChatMember для user %d (проверьте права бота в группе)", userID), 15*time.Minute)
 		return false, fmt.Errorf("telegram ok=false")
 	}
 

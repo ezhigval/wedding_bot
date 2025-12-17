@@ -194,10 +194,23 @@ func JSONError(w http.ResponseWriter, status int, code string) {
 	}
 	json.NewEncoder(w).Encode(resp)
 
-	// Уведомляем админа только по критичным случаям (5xx или явный server_error) с троттлингом
-	if status >= http.StatusInternalServerError || code == "server_error" {
+	// Уведомляем админа только по критичным случаям (реально требует вмешательства)
+	if isCriticalError(status, code) {
 		msg := fmt.Sprintf("🚨 API ошибка %d: %s (%s)", status, code, resp["message"])
 		notifyAdminsThrottled("api_error:"+code, msg, 5*time.Minute)
+	}
+}
+
+func isCriticalError(status int, code string) bool {
+	if status >= http.StatusInternalServerError {
+		return true
+	}
+
+	switch code {
+	case "server_error", "failed to save", "failed_to_save", "database_error", "google_sheets_error":
+		return true
+	default:
+		return false
 	}
 }
 
