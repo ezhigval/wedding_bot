@@ -19,6 +19,56 @@ import (
 	"wedding-bot/internal/config"
 )
 
+func parseInitDataParams(initData string) (map[string]string, map[string]string) {
+	decoded := make(map[string]string)
+	raw := make(map[string]string)
+
+	pairs := strings.Split(initData, "&")
+	for _, pair := range pairs {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		keyRaw := parts[0]
+		valRaw := parts[1]
+		raw[keyRaw] = valRaw
+
+		key, err1 := url.QueryUnescape(keyRaw)
+		if err1 != nil {
+			key = keyRaw
+		}
+		value, err2 := url.QueryUnescape(valRaw)
+		if err2 != nil {
+			value = valRaw
+		}
+		decoded[key] = value
+	}
+
+	return decoded, raw
+}
+
+func verifyInitDataSignature(decodedParams, rawParams map[string]string, isDebug bool) error {
+	if err := verifyTelegramSignature(decodedParams); err != nil {
+		// В редких случаях данные могут прийти уже закодированными — пробуем сырые значения
+		if errRaw := verifyTelegramSignature(rawParams); errRaw == nil {
+			if isDebug {
+				log.Printf("⚠️ Подпись initData прошла только с сырыми значениями, проверьте экранирование")
+			}
+			return nil
+		}
+
+		if isDebug {
+			log.Printf("⚠️ Ошибка подписи initData: %v", err)
+			return err
+		}
+
+		return err
+	}
+
+	return nil
+}
+
 // buildDataCheckString формирует строку для проверки подписи согласно требованиям Telegram
 func buildDataCheckString(params map[string]string) string {
 	// Ключи сортируются лексикографически, hash исключаем
@@ -84,31 +134,12 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	}
 
 	// Парсим query string: собираем сырые пары для подписи и декодированные для данных
-	params := make(map[string]string)
-	rawParams := make(map[string]string)
-	pairs := strings.Split(initData, "&")
-	for _, pair := range pairs {
-		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) == 2 {
-			keyRaw := parts[0]
-			valRaw := parts[1]
-			rawParams[keyRaw] = valRaw
-
-			key, err1 := url.QueryUnescape(keyRaw)
-			value, err2 := url.QueryUnescape(valRaw)
-			if err1 != nil {
-				key = keyRaw
-			}
-			if err2 != nil {
-				value = valRaw
-			}
-			params[key] = value
-		}
-	}
+	params, rawParams := parseInitDataParams(initData)
+	isDebug := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
 
 	// Проверяем подпись
-	if err := verifyTelegramSignature(rawParams); err != nil {
-		if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+	if err := verifyInitDataSignature(params, rawParams, isDebug); err != nil {
+		if isDebug {
 			log.Printf("⚠️ Ошибка подписи initData, продолжаем в DEBUG: %v", err)
 		} else {
 			return nil, fmt.Errorf("invalid initData signature: %w", err)
@@ -196,16 +227,13 @@ func extractUserIDFromJSON(jsonStr string) string {
 
 // VerifyTelegramWebappData проверяет подпись Telegram WebApp данных
 func VerifyTelegramWebappData(initData string) bool {
-	params := make(map[string]string)
-	pairs := strings.Split(initData, "&")
-	for _, pair := range pairs {
-		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) == 2 {
-			params[parts[0]] = parts[1]
-		}
+	params, rawParams := parseInitDataParams(initData)
+
+	if verifyTelegramSignature(params) == nil {
+		return true
 	}
 
-	return verifyTelegramSignature(params) == nil
+	return verifyTelegramSignature(rawParams) == nil
 }
 
 // IsUserInGroupChat проверяет, состоит ли пользователь в общем чате гостей
