@@ -438,6 +438,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           setAlreadyGuessed(true)
           setGuessedWords(prev => [...prev, currentGuess])
           setShowConfetti(true) // Запускаем салют
+          setCurrentGuess('') // Очищаем строку ввода, чтобы не дублировать
           hapticFeedback('heavy')
           // Запускаем таймер, если не запущен
           const today = new Date().toISOString().split('T')[0]

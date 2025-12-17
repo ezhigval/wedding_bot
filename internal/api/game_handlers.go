@@ -240,12 +240,6 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusBadRequest, "word required")
 		return
 	}
-	// Проверяем валидность слова по словарю
-	if !google_sheets.IsWordAllowed(r.Context(), word) {
-		JSONError(w, http.StatusBadRequest, "invalid_word")
-		return
-	}
-
 	ctx := r.Context()
 
 	userID := req.UserID
@@ -267,6 +261,12 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	currentWord, err := google_sheets.GetWordleWordForUser(ctx, userID)
 	if err != nil || currentWord == "" {
 		JSONError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	// Проверяем валидность слова по словарю ИЛИ если слово совпадает с текущим (чтобы не блокировать реальное слово)
+	if word != currentWord && !google_sheets.IsWordAllowed(ctx, word) {
+		JSONError(w, http.StatusBadRequest, "invalid_word")
 		return
 	}
 

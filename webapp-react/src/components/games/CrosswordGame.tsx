@@ -44,6 +44,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const lastTapRef = useRef<number>(0)
   const keyboardStartY = useRef(0)
   const keyboardCurrentY = useRef(0)
+  const isSolved = crossword ? crossword.words.every(word => guessedWords.has(word.word.toUpperCase())) : false
 
   // Русская раскладка ЙЦУКЕН для виртуальной клавиатуры
   // Первый ряд: Й Ц У К Е Н Г Ш Щ З Х Ъ
@@ -138,6 +139,12 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         } else {
           const today = new Date().toISOString().split('T')[0]
           startCountdownTimer(today)
+        }
+
+        // Если уже решен, скрываем клавиатуру
+        if (generated.words.every(w => guessedSet.has(w.word.toUpperCase()))) {
+          setShowKeyboard(false)
+          setSelectedWord(null)
         }
 
         // Инициализируем клетки
@@ -330,7 +337,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [showKeyboard, keyboardDragY])
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedWord || !selectedCell) return
+    if (!selectedWord || !selectedCell || isSolved) return
 
     const value = e.target.value.toUpperCase().replace(/[^А-ЯЁ]/g, '').slice(0, selectedWord.word.length)
     setCurrentInput(value)
@@ -343,7 +350,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }
 
   const handleKeyPress = (letter: string) => {
-    if (!selectedWord || !selectedCell) return
+    if (!selectedWord || !selectedCell || isSolved) return
 
     const newValue = (currentInput + letter).toUpperCase().slice(0, selectedWord.word.length)
     setCurrentInput(newValue)
@@ -356,7 +363,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }
 
   const handleBackspace = () => {
-    if (!selectedWord || !selectedCell) return
+    if (!selectedWord || !selectedCell || isSolved) return
 
     const newValue = currentInput.slice(0, -1)
     setCurrentInput(newValue)
@@ -496,7 +503,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [])
 
   const checkWord = async (word: CrosswordWord, userInput: string) => {
-    if (!userId || !crossword) return
+    if (!userId || !crossword || isSolved) return
 
     const isCorrect = userInput.toUpperCase() === word.word.toUpperCase()
     
@@ -528,7 +535,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       }
       setCells(newCells)
       setCurrentInput('') // Очищаем ввод после правильного ответа
-      setShowKeyboard(false) // Скрываем клавиатуру после правильного ответа
+      // Скрываем клавиатуру после правильного ответа
+      setShowKeyboard(false)
+      if (newGuessedWords.size === crossword.words.length) {
+        setSelectedWord(null)
+      }
 
       // Сохраняем прогресс
       if (userId !== null) {
@@ -964,4 +975,3 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     </div>
   )
 }
-
