@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"wedding-bot/internal/config"
 )
@@ -224,7 +225,7 @@ func IsUserInGroupChat(userID int) (bool, error) {
 	q.Add("user_id", strconv.Itoa(userID))
 	req.URL.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 5}
+	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("is_user_in_group_chat: error %v", err)

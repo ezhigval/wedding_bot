@@ -263,6 +263,7 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusNotFound, "word not found")
 		return
 	}
+	currentWord = strings.TrimSpace(strings.ToUpper(currentWord))
 
 	// Проверяем валидность слова по словарю ИЛИ если слово совпадает с текущим (чтобы не блокировать реальное слово)
 	if word != currentWord && !google_sheets.IsWordAllowed(ctx, word) {

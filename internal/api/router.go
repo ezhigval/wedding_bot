@@ -165,11 +165,30 @@ func JSONResponse(w http.ResponseWriter, status int, data interface{}) {
 	json.NewEncoder(w).Encode(data)
 }
 
-// JSONError отправляет JSON ошибку
-func JSONError(w http.ResponseWriter, status int, message string) {
-	JSONResponse(w, status, map[string]string{
-		"error": message,
-	})
+// JSONError отправляет JSON ошибку в едином формате {error, message}
+func JSONError(w http.ResponseWriter, status int, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	resp := map[string]string{
+		"error":   code,
+		"message": humanizeError(code),
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+func humanizeError(code string) string {
+	switch code {
+	case "invalid request":
+		return "Некорректный запрос"
+	case "invalid_user_id":
+		return "Неверный user_id"
+	case "user_id required":
+		return "Требуется user_id"
+	case "server_error":
+		return "Внутренняя ошибка сервера"
+	default:
+		return code
+	}
 }
 
 func buildAllowedOrigins() []string {

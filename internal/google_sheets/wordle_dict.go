@@ -16,6 +16,12 @@ var (
 	allowedWordsMu sync.RWMutex
 	allowedWords   map[string]struct{}
 	allowedLoaded  time.Time
+
+	// fallbackWords держит минимальный набор валидных слов, если словарь/таблица недоступны
+	fallbackWords = []string{
+		"ГОСТИ", "ТАНЕЦ", "БУКЕТ", "ЖЕНИХ", "ВИДЕО",
+		"СЕМЬЯ", "ВЕНЕЦ", "БРАК", "СОЮЗ", "ПАРА",
+	}
 )
 
 // IsWordAllowed проверяет, допустимо ли слово для Wordle
@@ -50,6 +56,14 @@ func ensureAllowedWords(ctx context.Context) {
 	// Очистим и перезагрузим
 	for k := range allowedWords {
 		delete(allowedWords, k)
+	}
+
+	// Добавляем базовые fallback-слова, чтобы не блокировать корректные ответы
+	for _, w := range fallbackWords {
+		w = strings.ToUpper(strings.TrimSpace(w))
+		if w != "" {
+			allowedWords[w] = struct{}{}
+		}
 	}
 
 	loadLocalDictionary(config.WordleDictionaryPath)

@@ -526,7 +526,13 @@ export async function getWordleProgress(): Promise<string[]> {
       return []
     }
     
-    const response = await fetch(`${config.apiUrl}/wordle/progress?initData=${encodeURIComponent(initData)}`)
+    let response = await fetch(`${config.apiUrl}/wordle/progress?initData=${encodeURIComponent(initData)}`)
+    if (!response.ok) {
+      const savedUserId = localStorage.getItem('telegram_user_id')
+      if (savedUserId) {
+        response = await fetch(`${config.apiUrl}/wordle/progress?userId=${savedUserId}`)
+      }
+    }
     if (response.ok) {
       const data = await response.json()
       return data.guessed_words || []
@@ -573,11 +579,11 @@ export async function submitWordleGuess(word: string): Promise<{ success: boolea
       return { success: false, message: 'Не удалось получить данные пользователя' }
     }
     
-    // Отправляем запрос с userId
+    // Отправляем запрос с userId и initData (для бэка хватает userId, но initData пригодится для кросс-проверки)
     const response = await fetch(`${config.apiUrl}/wordle/guess`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word, userId }),
+      body: JSON.stringify({ word, userId, initData }),
     })
     
     if (response.ok) {
