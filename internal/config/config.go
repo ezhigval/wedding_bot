@@ -61,9 +61,9 @@ var (
 	AdminsList []string
 
 	// Google Sheets настройки
-	GoogleSheetsID          string
-	GoogleSheetsCredentials string
-	GoogleSheetsSheetName   string
+	GoogleSheetsID                   string
+	GoogleSheetsCredentials          string
+	GoogleSheetsSheetName            string
 	GoogleSheetsInvitationsSheetName string
 	GoogleSheetsAdminsSheetName      string
 	GoogleSheetsTimelineSheetName    string
@@ -71,6 +71,9 @@ var (
 
 	// SeatingAPIToken - токен для защищённых вызовов рассадки
 	SeatingAPIToken string
+
+	// WordleDictionaryPath - путь к локальному словарю для проверки слов
+	WordleDictionaryPath string
 )
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -220,6 +223,11 @@ func LoadConfig() error {
 	SeatingAPIToken = strings.TrimSpace(os.Getenv("SEATING_API_TOKEN"))
 	SeatingAPIToken = strings.Trim(SeatingAPIToken, `"'`)
 
+	// Словарь для Wordle
+	WordleDictionaryPath = os.Getenv("WORDLE_DICTIONARY_PATH")
+	if WordleDictionaryPath == "" {
+		WordleDictionaryPath = "res/wordle_dictionary.txt"
+	}
+
 	return nil
 }
-

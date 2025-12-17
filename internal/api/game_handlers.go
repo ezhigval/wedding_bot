@@ -240,6 +240,11 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusBadRequest, "word required")
 		return
 	}
+	// Проверяем валидность слова по словарю
+	if !google_sheets.IsWordAllowed(r.Context(), word) {
+		JSONError(w, http.StatusBadRequest, "invalid_word")
+		return
+	}
 
 	ctx := r.Context()
 
