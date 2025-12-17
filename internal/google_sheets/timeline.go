@@ -12,8 +12,8 @@ import (
 
 // TimelineItem представляет элемент тайминга
 type TimelineItem struct {
-	Time  string
-	Event string
+	Time  string `json:"time"`
+	Event string `json:"event"`
 }
 
 // GetTimeline получает тайминг мероприятия из Google Sheets
