@@ -157,6 +157,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           // Проверяем, не отгадано ли уже это слово
           if (progress.map(w => w.toUpperCase()).includes(word)) {
             setAlreadyGuessed(true)
+            setGameOver('win') // Фиксируем победу, чтобы не стиралось поле
           }
           
           // Запускаем таймер обратного отсчета
@@ -438,6 +439,9 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           setGuessedWords(prev => [...prev, currentGuess])
           setShowConfetti(true) // Запускаем салют
           hapticFeedback('heavy')
+          // Запускаем таймер, если не запущен
+          const today = new Date().toISOString().split('T')[0]
+          startCountdownTimer(lastWordDate || today)
           if (onScore) {
             onScore(5) // Передаем 5 очков
           }
@@ -814,4 +818,3 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     </div>
   )
 }
-
