@@ -277,15 +277,51 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем отгаданные слова
-	guessedWords, err := google_sheets.GetWordleGuessedWords(ctx, userID)
+	// Проверяем состояние игры - если слово уже отгадано сегодня, нельзя отгадать снова
+	state, err := google_sheets.GetWordleState(ctx, userID)
 	if err != nil {
-		log.Printf("Error getting guessed words: %v", err)
+		log.Printf("Error getting wordle state: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")
 		return
 	}
 
-	// Проверяем, не отгадано ли уже
+	// Проверяем, что текущее слово совпадает с отгаданным
+	if state != nil && state.CurrentWord == currentWord {
+		// Проверяем, не отгадано ли уже это слово (по попыткам)
+		if state.Attempts != nil && len(state.Attempts) > 0 {
+			// Проверяем, есть ли выигрышная попытка (все буквы правильные)
+			for _, attempt := range state.Attempts {
+				if len(attempt) == 5 { // WORD_LENGTH = 5
+					allCorrect := true
+					for _, cell := range attempt {
+						if cellState, ok := cell["state"].(string); !ok || cellState != "correct" {
+							allCorrect = false
+							break
+						}
+					}
+					if allCorrect {
+						// Слово уже отгадано
+						JSONResponse(w, http.StatusOK, map[string]interface{}{
+							"success":         false,
+							"message":         "Это слово уже было отгадано сегодня",
+							"already_guessed": true,
+						})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// Получаем отгаданные слова для сохранения прогресса
+	guessedWords, err := google_sheets.GetWordleGuessedWords(ctx, userID)
+	if err != nil {
+		log.Printf("Error getting guessed words: %v", err)
+		// Не критично, продолжаем
+		guessedWords = []string{}
+	}
+
+	// Проверяем, не отгадано ли уже это слово в общем списке (на всякий случай)
 	for _, gw := range guessedWords {
 		if gw == word {
 			JSONResponse(w, http.StatusOK, map[string]interface{}{

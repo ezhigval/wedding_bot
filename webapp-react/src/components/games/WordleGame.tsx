@@ -469,50 +469,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     }
   }
 
-  const handleRestart = async () => {
-    setLoading(true)
-    try {
-      const word = await getWordleWord()
-      const progress = await getWordleProgress()
-      
-      if (word) {
-        setTargetWord(word.toUpperCase())
-        setGuessedWords(progress.map(w => w.toUpperCase()))
-        if (progress.map(w => w.toUpperCase()).includes(word.toUpperCase())) {
-          setAlreadyGuessed(true)
-        } else {
-          setAlreadyGuessed(false)
-        }
-      } else {
-        const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
-        setTargetWord(randomWord)
-        setAlreadyGuessed(false)
-      }
-      
-      setCurrentGuess('')
-      setGameOver(null)
-      setScore(0)
-      setUsedLetters(new Map())
-      setGuesses(Array(MAX_ATTEMPTS).fill(null).map(() => 
-        Array(WORD_LENGTH).fill(null).map(() => ({ letter: '', state: 'empty' }))
-      ))
-    } catch (error) {
-      console.error('Error reloading word:', error)
-      const randomWord = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)].toUpperCase()
-      setTargetWord(randomWord)
-      setCurrentGuess('')
-      setGameOver(null)
-      setScore(0)
-      setUsedLetters(new Map())
-      setGuessedWords([])
-      setAlreadyGuessed(false)
-    } finally {
-      setLoading(false)
-      if (inputRef.current) {
-        inputRef.current.focus()
-      }
-    }
-  }
+  // Функция handleRestart удалена - игроки могут отгадать только одно слово в день
+  // При повторном входе показывается та же выигранная игра до сброса в 00:00
 
 
   const getCellColor = (state: LetterState) => {
@@ -789,6 +747,11 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
                     <h3 className="text-2xl font-bold text-[#5A7C52] mb-2">Поздравляем!</h3>
                     <p className="text-gray-600 mb-4">Вы угадали слово: <strong>{targetWord}</strong></p>
                     <p className="text-lg font-semibold text-[#5A7C52] mb-4">Очки: {score}</p>
+                    {timeUntilNextWord && (
+                      <p className="text-sm text-gray-500 mb-4">
+                        Следующее слово через: {timeUntilNextWord.hours}ч {timeUntilNextWord.minutes}м {timeUntilNextWord.seconds}с
+                      </p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -799,14 +762,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
                 )}
                 <div className="flex gap-3 justify-center">
                   <button
-                    onClick={handleRestart}
-                    className="px-6 py-2 bg-[#5A7C52] text-white rounded-lg font-semibold hover:bg-[#4A6B42] transition-colors"
-                  >
-                    Играть снова
-                  </button>
-                  <button
                     onClick={onClose}
-                    className="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg font-semibold hover:bg-gray-400 transition-colors"
+                    className="px-6 py-2 bg-[#5A7C52] text-white rounded-lg font-semibold hover:bg-[#4A6B42] transition-colors"
                   >
                     Выйти
                   </button>
