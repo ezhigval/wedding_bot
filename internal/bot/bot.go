@@ -77,11 +77,12 @@ func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
 	// Задержка перед началом polling, чтобы старый процесс успел завершиться
 	// Это особенно важно при деплое на Render, где старый контейнер может еще работать
 	// Telegram API может держать соединение открытым до 60 секунд (timeout)
-	log.Println("⏳ Ожидание 15 секунд перед началом polling (для завершения старого процесса)...")
+	// Увеличиваем до 20 секунд для большей надежности
+	log.Println("⏳ Ожидание 20 секунд перед началом polling (для завершения старого процесса)...")
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(15 * time.Second):
+	case <-time.After(20 * time.Second):
 	}
 	log.Println("✅ Начинаем polling обновлений...")
 	
