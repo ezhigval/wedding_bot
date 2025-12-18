@@ -259,21 +259,35 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем текущее слово
 	currentWord, err := google_sheets.GetWordleWordForUser(ctx, userID)
-	if err != nil || currentWord == "" {
+	if err != nil {
+		log.Printf("Error getting Wordle word for user %d: %v", userID, err)
+		JSONError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+	if currentWord == "" {
+		log.Printf("Word not found for user %d", userID)
 		JSONError(w, http.StatusNotFound, "word not found")
 		return
 	}
 	currentWord = strings.TrimSpace(strings.ToUpper(currentWord))
 
-	// Проверяем валидность слова по словарю ИЛИ если слово совпадает с текущим (чтобы не блокировать реальное слово)
-	if word != currentWord && !google_sheets.IsWordAllowed(ctx, word) {
-		JSONError(w, http.StatusBadRequest, "invalid_word")
-		return
-	}
-
-	// Проверяем совпадение
+	// Проверяем совпадение с текущим словом
 	if word != currentWord {
-		JSONError(w, http.StatusBadRequest, "incorrect word")
+		// Если слово не совпадает, проверяем валидность по словарю
+		if !google_sheets.IsWordAllowed(ctx, word) {
+			JSONResponse(w, http.StatusOK, map[string]interface{}{
+				"success": false,
+				"message": "Слово не найдено в словаре",
+				"invalid_word": true,
+			})
+			return
+		}
+		// Слово валидно, но не совпадает с текущим
+		JSONResponse(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Неверное слово",
+			"incorrect": true,
+		})
 		return
 	}
 

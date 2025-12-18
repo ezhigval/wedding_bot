@@ -369,6 +369,40 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       return
     }
 
+    // Если слово не совпадает с целевым, проверяем его по словарю перед отправкой
+    if (currentGuess !== targetWord) {
+      // Проверяем слово по словарю через API перед показом результата
+      try {
+        const config = await loadConfig()
+        const tg = window.Telegram?.WebApp
+        const initData = (tg as any)?.initData || ''
+        
+        const checkResponse = await fetch(`${config.apiUrl}/wordle/guess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            word: currentGuess, 
+            userId: userId,
+            initData: initData 
+          }),
+        })
+        
+        if (checkResponse.ok) {
+          const checkResult = await checkResponse.json()
+          if (checkResult.invalid_word || checkResult.message === 'Слово не найдено в словаре') {
+            hapticFeedback('heavy')
+            alert('Слово не найдено в словаре')
+            setCurrentGuess('') // Очищаем ввод
+            return
+          }
+          // Если слово валидно, но не совпадает - продолжаем с обычной логикой показа результата
+        }
+      } catch (error) {
+        console.error('Error checking word:', error)
+        // Продолжаем, если проверка не удалась
+      }
+    }
+
     // Правильная логика определения состояния букв
     const newGuess: Cell[] = []
     const targetLetters = targetWord.split('')
@@ -430,7 +464,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
 
     // Проверяем победу
     if (currentGuess === targetWord) {
-      // Отправляем слово на сервер для проверки и начисления очков
+      // Сначала показываем визуальный результат (зеленые клетки уже установлены)
+      // Затем отправляем на сервер для проверки и начисления очков
       submitWordleGuess(currentGuess).then(result => {
         if (result.success) {
           setGameOver('win')
@@ -450,16 +485,28 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           setTimeout(() => setShowConfetti(false), 2000)
         } else if (result.already_guessed) {
           setAlreadyGuessed(true)
+          setGameOver('win') // Показываем как выигрыш, если уже отгадано
           hapticFeedback('heavy')
-          alert(result.message || 'Это слово уже было отгадано!')
         } else {
+          // Если ошибка, но слово правильное - все равно показываем победу
+          // (может быть проблема с сетью, но визуально слово угадано)
+          console.error('Error submitting word, but word is correct:', result.message)
+          setGameOver('win')
+          setScore(5)
+          setAlreadyGuessed(true)
+          setShowConfetti(true)
           hapticFeedback('heavy')
-          alert(result.message || 'Ошибка при проверке слова')
+          setTimeout(() => setShowConfetti(false), 2000)
         }
       }).catch(error => {
         console.error('Error submitting word:', error)
+        // Если ошибка сети, но слово правильное - все равно показываем победу
+        setGameOver('win')
+        setScore(5)
+        setAlreadyGuessed(true)
+        setShowConfetti(true)
         hapticFeedback('heavy')
-        alert('Ошибка при отправке слова')
+        setTimeout(() => setShowConfetti(false), 2000)
       })
     } else if (currentAttempt === MAX_ATTEMPTS - 1) {
       setGameOver('lose')
