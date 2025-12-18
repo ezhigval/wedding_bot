@@ -65,6 +65,26 @@ func InitBot(ctx context.Context) (*tgbotapi.BotAPI, error) {
 func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
 	log.Println("🔄 Запуск обработчика обновлений Telegram...")
 	
+	// Сбрасываем вебхук, если он был установлен (чтобы избежать конфликтов)
+	log.Println("🔧 Проверка и сброс вебхука...")
+	deleteWebhookConfig := tgbotapi.DeleteWebhookConfig{DropPendingUpdates: false}
+	if _, err := bot.Request(deleteWebhookConfig); err != nil {
+		log.Printf("⚠️ Ошибка сброса вебхука (может быть не установлен): %v", err)
+	} else {
+		log.Println("✅ Вебхук сброшен (если был установлен)")
+	}
+	
+	// Задержка перед началом polling, чтобы старый процесс успел завершиться
+	// Это особенно важно при деплое на Render, где старый контейнер может еще работать
+	// Telegram API может держать соединение открытым до 60 секунд (timeout)
+	log.Println("⏳ Ожидание 15 секунд перед началом polling (для завершения старого процесса)...")
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(15 * time.Second):
+	}
+	log.Println("✅ Начинаем polling обновлений...")
+	
 	// Используем явный polling вместо GetUpdatesChan для полного контроля
 	// GetUpdatesChan может создавать множественные соединения при ошибках
 	u := tgbotapi.NewUpdate(0)
@@ -91,9 +111,18 @@ func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
 			if err != nil {
 				// Обрабатываем ошибки
 				if strings.Contains(err.Error(), "Conflict") {
+					// При конфликте увеличиваем задержку более агрессивно
+					// Это означает, что другой процесс все еще активен
 					log.Printf("⚠️ Conflict detected: %v. Ожидание %v перед повтором...", err, retryDelay)
+					if retryDelay < maxRetryDelay {
+						retryDelay = time.Duration(float64(retryDelay) * 1.5)
+					}
 				} else {
 					log.Printf("⚠️ Ошибка получения обновлений: %v. Повтор через %v...", err, retryDelay)
+					// Для других ошибок увеличиваем задержку медленнее
+					if retryDelay < maxRetryDelay {
+						retryDelay = time.Duration(float64(retryDelay) * 1.2)
+					}
 				}
 				
 				// Exponential backoff
@@ -101,9 +130,6 @@ func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
 				case <-ctx.Done():
 					return
 				case <-time.After(retryDelay):
-					if retryDelay < maxRetryDelay {
-						retryDelay = time.Duration(float64(retryDelay) * 1.5)
-					}
 				}
 				continue
 			}
