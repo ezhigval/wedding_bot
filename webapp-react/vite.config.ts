@@ -15,6 +15,12 @@ export default defineConfig({
     emptyOutDir: true, // Удаляем старые файлы при сборке
     rollupOptions: {
       input: path.resolve(__dirname, 'index.html'),
+      output: {
+        // Добавляем хеши к именам файлов для cache busting
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+      },
     },
   },
   publicDir: 'public',

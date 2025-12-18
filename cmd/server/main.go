@@ -287,6 +287,20 @@ func serveStaticFiles() http.Handler {
 
 		contentType := getContentType(path)
 		w.Header().Set("Content-Type", contentType)
+		
+		// Отключаем кэширование для HTML и JS файлов (чтобы обновления применялись сразу)
+		if strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".mjs") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		} else if strings.HasSuffix(path, ".css") {
+			// CSS можно кэшировать, но с коротким временем
+			w.Header().Set("Cache-Control", "public, max-age=300") // 5 минут
+		} else {
+			// Для остальных файлов (изображения и т.д.) - кэшируем дольше
+			w.Header().Set("Cache-Control", "public, max-age=3600") // 1 час
+		}
+		
 		http.ServeFile(w, r, filePath)
 	})
 }
