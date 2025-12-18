@@ -26,7 +26,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [selectedWord, setSelectedWord] = useState<CrosswordWord | null>(null)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
   const [guessedWords, setGuessedWords] = useState<Set<string>>(new Set())
-  const [wrongAttempts, setWrongAttempts] = useState<Set<string>>(new Set())
+  const [wrongWords, setWrongWords] = useState<Set<string>>(new Set()) // Неправильные слова после завершения
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
@@ -44,7 +44,22 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const lastTapRef = useRef<number>(0)
   const keyboardStartY = useRef(0)
   const keyboardCurrentY = useRef(0)
-  const isSolved = crossword ? crossword.words.every(word => guessedWords.has(word.word.toUpperCase())) : false
+  
+  // Проверяем, завершен ли кроссворд (все клетки заполнены)
+  const isCompleted = crossword ? crossword.words.every(word => {
+    // Проверяем, что все клетки слова заполнены
+    for (let i = 0; i < word.word.length; i++) {
+      const row = word.direction === 'down' ? word.row + i : word.row
+      const col = word.direction === 'across' ? word.col + i : word.col
+      if (!cells[row] || !cells[row][col] || !cells[row][col].letter) {
+        return false
+      }
+    }
+    return true
+  }) : false
+  
+  // Кроссворд решен, если завершен и все слова правильные
+  const isSolved = isCompleted && crossword ? crossword.words.every(word => guessedWords.has(word.word.toUpperCase())) : false
 
   // Русская раскладка ЙЦУКЕН для виртуальной клавиатуры
   // Первый ряд: Й Ц У К Е Н Г Ш Щ З Х Ъ
@@ -119,10 +134,10 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
         // Генерируем кроссворд
         const generated = generateCrossword(data.words)
         const guessedSet = new Set(data.guessed_words.map((w: string) => w.toUpperCase()))
-        const wrongSet = new Set((data.wrong_attempts || []).map((w: string) => w.toUpperCase()))
+        const wrongSet = new Set((data.wrong_words || []).map((w: string) => w.toUpperCase()))
         setCrossword(generated)
         setGuessedWords(guessedSet)
-        setWrongAttempts(wrongSet)
+        setWrongWords(wrongSet)
         
         // Устанавливаем дату начала кроссворда
         if (data.start_date) {
@@ -141,8 +156,22 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           startCountdownTimer(today)
         }
 
-        // Если уже решен, скрываем клавиатуру
-        if (generated.words.every(w => guessedSet.has(w.word.toUpperCase()))) {
+        // Проверяем, завершен ли кроссворд (все клетки заполнены и слова проверены)
+        const allFilled = data.cell_letters && Object.keys(data.cell_letters).length > 0 && 
+          generated.words.every(w => {
+            for (let i = 0; i < w.word.length; i++) {
+              const row = w.direction === 'down' ? w.row + i : w.row
+              const col = w.direction === 'across' ? w.col + i : w.col
+              const key = `${row},${col}`
+              if (!data.cell_letters || !data.cell_letters[key]) return false
+            }
+            return true
+          })
+        const allWordsChecked = generated.words.every(w => 
+          guessedSet.has(w.word.toUpperCase()) || wrongSet.has(w.word.toUpperCase())
+        )
+        
+        if (allFilled && allWordsChecked) {
           setShowKeyboard(false)
           setSelectedWord(null)
         }
@@ -173,35 +202,56 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           }
         })
 
-        // Затем заполняем буквы ТОЛЬКО для отгаданных слов
+        // Заполняем буквы из сохраненного состояния (cell_letters)
+        // После завершения правильные слова будут зелеными, неправильные желтыми
         generated.words.forEach(word => {
           const isGuessed = guessedSet.has(word.word.toUpperCase())
+          const isWrong = wrongSet.has(word.word.toUpperCase())
           
-          if (isGuessed) {
-            // Показываем буквы только для отгаданных слов
-            for (let i = 0; i < word.word.length; i++) {
-              const row = word.direction === 'down' ? word.row + i : word.row
-              const col = word.direction === 'across' ? word.col + i : word.col
-              
+          for (let i = 0; i < word.word.length; i++) {
+            const row = word.direction === 'down' ? word.row + i : word.row
+            const col = word.direction === 'across' ? word.col + i : word.col
+            const key = `${row},${col}`
+            
+            // Если слово отгадано - показываем правильную букву и помечаем как правильное
+            if (isGuessed) {
               newCells[row][col].letter = word.word[i]
               newCells[row][col].isCorrect = true
+            } 
+            // Если слово неправильное после завершения - помечаем как неправильное
+            else if (isWrong && data.cell_letters && data.cell_letters[key]) {
+              newCells[row][col].letter = data.cell_letters[key]
+              newCells[row][col].isCorrect = false
             }
           }
         })
 
-        // Восстанавливаем сохраненные буквы в клетках (если есть)
+        // Восстанавливаем сохраненные буквы в клетках (если есть и кроссворд не завершен)
         if (data.cell_letters && typeof data.cell_letters === 'object') {
           const cellLetters = data.cell_letters
-          Object.keys(cellLetters).forEach(key => {
-            const [row, col] = key.split(',').map(Number)
-            if (row >= 0 && row < newCells.length && col >= 0 && col < newCells[row].length) {
-              const cell = newCells[row][col]
-              // Восстанавливаем букву только если клетка не отгадана
-              if (!cell.isCorrect && cell.isFilled && cellLetters[key]) {
-                newCells[row][col].letter = cellLetters[key]
-              }
+          const allFilled = generated.words.every(w => {
+            for (let i = 0; i < w.word.length; i++) {
+              const row = w.direction === 'down' ? w.row + i : w.row
+              const col = w.direction === 'across' ? w.col + i : w.col
+              const key = `${row},${col}`
+              if (!cellLetters[key]) return false
             }
+            return true
           })
+          
+          // Если кроссворд не завершен, восстанавливаем буквы
+          if (!allFilled) {
+            Object.keys(cellLetters).forEach(key => {
+              const [row, col] = key.split(',').map(Number)
+              if (row >= 0 && row < newCells.length && col >= 0 && col < newCells[row].length) {
+                const cell = newCells[row][col]
+                // Восстанавливаем букву только если клетка не отгадана
+                if (!cell.isCorrect && cell.isFilled && cellLetters[key]) {
+                  newCells[row][col].letter = cellLetters[key]
+                }
+              }
+            })
+          }
         }
 
         setCells(newCells)
@@ -223,7 +273,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [config])
 
   const handleCellClick = (row: number, col: number) => {
-    if (!crossword) return
+    if (!crossword || isCompleted) return // Блокируем клики после завершения
 
     const cell = cells[row][col]
     if (!cell.isFilled) return
@@ -337,79 +387,137 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [showKeyboard, keyboardDragY])
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedWord || !selectedCell || isSolved) return
+    if (!selectedWord || !selectedCell || isCompleted) return
 
     const value = e.target.value.toUpperCase().replace(/[^А-ЯЁ]/g, '').slice(0, selectedWord.word.length)
     setCurrentInput(value)
     updateCellsWithValue(value)
-
-    // Автопроверка
-    if (value.length === selectedWord.word.length) {
-      checkWord(selectedWord, value)
-    }
+    
+    // Проверяем завершение после обновления клеток
+    setTimeout(() => checkCompletion(), 100)
   }
 
   const handleKeyPress = (letter: string) => {
-    if (!selectedWord || !selectedCell || isSolved) return
+    if (!selectedWord || !selectedCell || isCompleted) return
 
     const newValue = (currentInput + letter).toUpperCase().slice(0, selectedWord.word.length)
     setCurrentInput(newValue)
     updateCellsWithValue(newValue)
-
-    // Автопроверка
-    if (newValue.length === selectedWord.word.length) {
-      checkWord(selectedWord, newValue)
-    }
+    
+    // Проверяем завершение после обновления клеток
+    setTimeout(() => checkCompletion(), 100)
   }
 
   const handleBackspace = () => {
-    if (!selectedWord || !selectedCell || isSolved) return
+    if (!selectedWord || !selectedCell || isCompleted) return
 
     const newValue = currentInput.slice(0, -1)
     setCurrentInput(newValue)
     updateCellsWithValue(newValue)
+    
+    // Проверяем завершение после обновления клеток
+    setTimeout(() => checkCompletion(), 100)
   }
 
   const updateCellsWithValue = (value: string) => {
-    if (!selectedWord) return
+    if (!selectedWord || !crossword) return
 
-    // Обновляем клетки - вводим буквы только в неотгаданные клетки
-    const newCells = [...cells]
+    // Обновляем клетки - вводим буквы только в незавершенные клетки
+    const newCells = cells.map(row => [...row])
+    
     for (let i = 0; i < selectedWord.word.length; i++) {
       const row = selectedWord.direction === 'down' ? selectedWord.row + i : selectedWord.row
       const col = selectedWord.direction === 'across' ? selectedWord.col + i : selectedWord.col
       
-      // Если клетка уже отгадана, оставляем букву как есть
-      if (newCells[row][col].isCorrect) {
+      // Если кроссворд завершен, не позволяем изменять
+      if (isCompleted) {
         continue
       }
       
       if (i < value.length) {
+        const newLetter = value[i]
+        const existingLetter = newCells[row][col].letter
+        
+        // Проверяем пересечения: если в этой клетке уже есть буква из другого слова,
+        // она должна совпадать с новой буквой
+        if (existingLetter && existingLetter !== newLetter) {
+          // Находим все слова, которые проходят через эту клетку
+          const intersectingWords = crossword.words.filter(w => {
+            if (w.word === selectedWord.word && w.direction === selectedWord.direction) {
+              return false // Исключаем текущее слово
+            }
+            for (let j = 0; j < w.word.length; j++) {
+              const wRow = w.direction === 'down' ? w.row + j : w.row
+              const wCol = w.direction === 'across' ? w.col + j : w.col
+              if (wRow === row && wCol === col) {
+                return true
+              }
+            }
+            return false
+          })
+          
+          // Если есть пересекающиеся слова с другой буквой - не позволяем ввод
+          const hasConflict = intersectingWords.some(w => {
+            for (let j = 0; j < w.word.length; j++) {
+              const wRow = w.direction === 'down' ? w.row + j : w.row
+              const wCol = w.direction === 'across' ? w.col + j : w.col
+              if (wRow === row && wCol === col) {
+                const cellLetter = newCells[wRow][wCol].letter
+                // Если в пересекающемся слове уже есть буква, она должна совпадать
+                if (cellLetter && cellLetter !== newLetter) {
+                  return true
+                }
+              }
+            }
+            return false
+          })
+          
+          if (hasConflict) {
+            hapticFeedback('heavy')
+            alert('Буква в этой клетке уже используется другим словом!')
+            return // Не обновляем клетку
+          }
+        }
+        
         // Вводим букву
         newCells[row][col] = {
           ...newCells[row][col],
-          letter: value[i],
+          letter: newLetter,
           isFilled: true
         }
       } else {
-        // Очищаем при удалении
-        newCells[row][col] = {
-          ...newCells[row][col],
-          letter: '',
-          isFilled: true
-        }
-      }
-    }
-
-    // Очищаем оставшиеся клетки слова, если ввод стал короче
-    for (let i = value.length; i < selectedWord.word.length; i++) {
-      const row = selectedWord.direction === 'down' ? selectedWord.row + i : selectedWord.row
-      const col = selectedWord.direction === 'across' ? selectedWord.col + i : selectedWord.col
-
-      if (row < newCells.length && col < newCells[row].length && !newCells[row][col].isCorrect) {
-        newCells[row][col] = {
-          ...newCells[row][col],
-          letter: ''
+        // Очищаем при удалении (только если нет конфликтов с другими словами)
+        const intersectingWords = crossword.words.filter(w => {
+          if (w.word === selectedWord.word && w.direction === selectedWord.direction) {
+            return false
+          }
+          for (let j = 0; j < w.word.length; j++) {
+            const wRow = w.direction === 'down' ? w.row + j : w.row
+            const wCol = w.direction === 'across' ? w.col + j : w.col
+            if (wRow === row && wCol === col) {
+              return true
+            }
+          }
+          return false
+        })
+        
+        // Очищаем только если нет пересекающихся слов с буквами
+        const hasIntersectingLetter = intersectingWords.some(w => {
+          for (let j = 0; j < w.word.length; j++) {
+            const wRow = w.direction === 'down' ? w.row + j : w.row
+            const wCol = w.direction === 'across' ? w.col + j : w.col
+            if (wRow === row && wCol === col && newCells[wRow][wCol].letter) {
+              return true
+            }
+          }
+          return false
+        })
+        
+        if (!hasIntersectingLetter) {
+          newCells[row][col] = {
+            ...newCells[row][col],
+            letter: ''
+          }
         }
       }
     }
@@ -421,24 +529,139 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
       saveCrosswordCellState()
     }
   }
-
-  // Функция для сохранения состояния клеток
-  const saveCrosswordCellState = async () => {
-    if (!userId || !crossword) return
+  
+  // Проверка завершения кроссворда и финальная проверка всех слов
+  const checkCompletion = async () => {
+    if (!crossword || !userId) return
     
-    // Собираем текущие буквы в клетках (только неотгаданные)
+    // Проверяем, все ли клетки заполнены (используем текущее состояние cells)
+    const allFilled = crossword.words.every(word => {
+      for (let i = 0; i < word.word.length; i++) {
+        const row = word.direction === 'down' ? word.row + i : word.row
+        const col = word.direction === 'across' ? word.col + i : word.col
+        if (!cells[row] || !cells[row][col] || !cells[row][col].letter) {
+          return false
+        }
+      }
+      return true
+    })
+    
+    if (!allFilled) return
+    
+    // Проверяем, не завершен ли уже (чтобы не проверять повторно)
+    // Если все слова уже проверены (в guessedWords или wrongWords) - не проверяем снова
+    const allWordsChecked = crossword.words.every(word => 
+      guessedWords.has(word.word.toUpperCase()) || wrongWords.has(word.word.toUpperCase())
+    )
+    
+    if (allWordsChecked) return
+    
+    // Все клетки заполнены - проверяем все слова
+    const newGuessedWords = new Set<string>()
+    const newWrongWords = new Set<string>()
+    
+    crossword.words.forEach(word => {
+      // Собираем буквы из клеток
+      let userWord = ''
+      for (let i = 0; i < word.word.length; i++) {
+        const row = word.direction === 'down' ? word.row + i : word.row
+        const col = word.direction === 'across' ? word.col + i : word.col
+        userWord += cells[row][col].letter || ''
+      }
+      
+      // Проверяем правильность
+      if (userWord.toUpperCase() === word.word.toUpperCase()) {
+        newGuessedWords.add(word.word.toUpperCase())
+      } else {
+        newWrongWords.add(word.word.toUpperCase())
+      }
+    })
+    
+    // Обновляем состояние
+    setGuessedWords(newGuessedWords)
+    setWrongWords(newWrongWords)
+    setScore(newGuessedWords.size)
+    
+    // Обновляем клетки: правильные - зеленые, неправильные - желтые
+    const newCells = cells.map((row, rowIdx) =>
+      row.map((cell, colIdx) => {
+        // Находим все слова, которые проходят через эту клетку
+        const wordsInCell = crossword.words.filter(w => {
+          for (let i = 0; i < w.word.length; i++) {
+            const wRow = w.direction === 'down' ? w.row + i : w.row
+            const wCol = w.direction === 'across' ? w.col + i : w.col
+            if (wRow === rowIdx && wCol === colIdx) {
+              return true
+            }
+          }
+          return false
+        })
+        
+        // Если хотя бы одно слово правильное - клетка правильная (зеленая)
+        // Если все слова неправильные - клетка неправильная (желтая)
+        const hasCorrectWord = wordsInCell.some(w => newGuessedWords.has(w.word.toUpperCase()))
+        
+        return {
+          ...cell,
+          isCorrect: hasCorrectWord,
+          // Если есть правильное слово - зеленый, если только неправильные - желтый
+        }
+      })
+    )
+    
+    setCells(newCells)
+    
+    // Если все слова правильные - запускаем салют
+    if (newGuessedWords.size === crossword.words.length) {
+      setShowConfetti(true)
+      setTimeout(() => setShowConfetti(false), 2000)
+      hapticFeedback('heavy')
+    } else {
+      hapticFeedback('medium')
+    }
+    
+    // Скрываем клавиатуру
+    setShowKeyboard(false)
+    setSelectedWord(null)
+    
+    // Сохраняем финальное состояние
     const cellLetters: { [key: string]: string } = {}
-    cells.forEach((row, rowIndex) => {
+    newCells.forEach((row, rowIndex) => {
       row.forEach((cell, colIndex) => {
-        if (cell.isFilled && !cell.isCorrect && cell.letter) {
+        if (cell.isFilled && cell.letter) {
           cellLetters[`${rowIndex},${colIndex}`] = cell.letter
         }
       })
     })
     
-    // Сохраняем прогресс с текущими буквами и историей попыток
     try {
-      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongAttempts), crosswordStartDate)
+      await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters, Array.from(newWrongWords), crosswordStartDate)
+      
+      // Начисляем очки (1 слово = 1 очко, баланс 5:1)
+      const gamePoints = Math.floor(newGuessedWords.size / 5)
+      await updateGameScore(userId, 'crossword', gamePoints)
+    } catch (error) {
+      console.error('Error saving completed crossword:', error)
+    }
+  }
+
+  // Функция для сохранения состояния клеток
+  const saveCrosswordCellState = async () => {
+    if (!userId || !crossword || isCompleted) return
+    
+    // Собираем текущие буквы в клетках
+    const cellLetters: { [key: string]: string } = {}
+    cells.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (cell.isFilled && cell.letter) {
+          cellLetters[`${rowIndex},${colIndex}`] = cell.letter
+        }
+      })
+    })
+    
+    // Сохраняем прогресс с текущими буквами
+    try {
+      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongWords), crosswordStartDate)
     } catch (error) {
       console.error('Error saving crossword cell state:', error)
     }
@@ -502,98 +725,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
   }, [])
 
-  const checkWord = async (word: CrosswordWord, userInput: string) => {
-    if (!userId || !crossword || isSolved) return
-
-    const isCorrect = userInput.toUpperCase() === word.word.toUpperCase()
-    
-    if (isCorrect && !guessedWords.has(word.word.toUpperCase())) {
-      // Слово отгадано впервые
-      const newGuessedWords = new Set([...guessedWords, word.word.toUpperCase()])
-      setGuessedWords(newGuessedWords)
-      setScore(newGuessedWords.size)
-      
-      // Удаляем из неправильных попыток, если было там
-      const newWrongAttempts = new Set(wrongAttempts)
-      newWrongAttempts.delete(userInput.toUpperCase())
-      setWrongAttempts(newWrongAttempts)
-      
-      // Запускаем салют
-      setShowConfetti(true)
-      setTimeout(() => setShowConfetti(false), 2000)
-      
-      // Обновляем клетки как правильные
-      const newCells = [...cells]
-      for (let i = 0; i < word.word.length; i++) {
-        const row = word.direction === 'down' ? word.row + i : word.row
-        const col = word.direction === 'across' ? word.col + i : word.col
-        newCells[row][col] = {
-          ...newCells[row][col],
-          isCorrect: true,
-          letter: word.word[i]
-        }
-      }
-      setCells(newCells)
-      setCurrentInput('') // Очищаем ввод после правильного ответа
-      // Скрываем клавиатуру после правильного ответа
-      setShowKeyboard(false)
-      if (newGuessedWords.size === crossword.words.length) {
-        setSelectedWord(null)
-      }
-
-      // Сохраняем прогресс
-      if (userId !== null) {
-        // Собираем текущие буквы в клетках
-        const cellLetters: { [key: string]: string } = {}
-        newCells.forEach((row, rowIndex) => {
-          row.forEach((cell, colIndex) => {
-            if (cell.isFilled && !cell.isCorrect && cell.letter) {
-              cellLetters[`${rowIndex},${colIndex}`] = cell.letter
-            }
-          })
-        })
-        await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters, Array.from(wrongAttempts), crosswordStartDate)
-      }
-      
-      // Обновляем счет в статистике (1 слово = 1 очко, баланс 5:1)
-      const gamePoints = Math.floor(newGuessedWords.size / 5)
-      await updateGameScore(userId, 'crossword', gamePoints)
-      
-      hapticFeedback('heavy')
-    } else if (!isCorrect) {
-      // Неправильное слово - сохраняем попытку и очищаем ввод
-      const newWrongAttempts = new Set([...wrongAttempts, userInput.toUpperCase()])
-      setWrongAttempts(newWrongAttempts)
-      
-      const newCells = [...cells]
-      for (let i = 0; i < word.word.length; i++) {
-        const row = word.direction === 'down' ? word.row + i : word.row
-        const col = word.direction === 'across' ? word.col + i : word.col
-        if (!newCells[row][col].isCorrect) {
-          newCells[row][col] = {
-            ...newCells[row][col],
-            letter: ''
-          }
-        }
-      }
-      setCells(newCells)
-      
-      // Сохраняем состояние с неправильной попыткой
-      if (userId !== null) {
-        const cellLetters: { [key: string]: string } = {}
-        newCells.forEach((row, rowIndex) => {
-          row.forEach((cell, colIndex) => {
-            if (cell.isFilled && !cell.isCorrect && cell.letter) {
-              cellLetters[`${rowIndex},${colIndex}`] = cell.letter
-            }
-          })
-        })
-        await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(newWrongAttempts), crosswordStartDate)
-      }
-      
-      hapticFeedback('light')
-    }
-  }
+  // Старая функция checkWord удалена - теперь проверка происходит только при завершении кроссворда
 
   if (loading) {
     return (
@@ -702,13 +834,15 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
           {/* Таймер до следующего кроссворда */}
           {timeUntilNextCrossword && (
             <div className={`mb-4 p-3 rounded-lg text-center text-sm border ${
-              crossword.words.every(word => guessedWords.has(word.word.toUpperCase()))
+              isCompleted
                 ? 'bg-[#FFE9AD] text-[#5A7C52] border-[#5A7C52]/20' 
                 : 'bg-[#FDFBF5] text-[#5A7C52] border-[#5A7C52]/20'
             }`}>
-              {crossword.words.every(word => guessedWords.has(word.word.toUpperCase())) ? (
+              {isCompleted ? (
                 <div>
-                  <div className="font-semibold mb-2">Кроссворд решен!</div>
+                  <div className="font-semibold mb-2">
+                    {isSolved ? 'Кроссворд решен!' : 'Кроссворд завершен!'}
+                  </div>
                   <div>Следующий кроссворд через: {timeUntilNextCrossword.hours}ч {timeUntilNextCrossword.minutes}м {timeUntilNextCrossword.seconds}с</div>
                 </div>
               ) : (
@@ -733,8 +867,10 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                     className={`
                       relative border border-gray-600 rounded
                       ${cell.isFilled 
-                        ? cell.isCorrect 
-                          ? 'bg-green-100 text-green-800' 
+                        ? isCompleted
+                          ? cell.isCorrect 
+                            ? 'bg-green-100 text-green-800' // Правильные слова - зеленые
+                            : 'bg-yellow-100 text-yellow-800' // Неправильные слова - желтые
                           : cell.isPartOfSelectedWord
                           ? 'bg-blue-100 text-blue-800'
                           : 'bg-white text-gray-800'
@@ -742,7 +878,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                       }
                       ${cell.isSelected ? 'ring-2 ring-primary ring-offset-1' : ''}
                       flex items-center justify-center font-bold text-sm
-                      cursor-pointer transition-all
+                      ${isCompleted ? 'cursor-default' : 'cursor-pointer'} transition-all
                     `}
                     style={{ width: cellSize, height: cellSize }}
                   >
@@ -774,18 +910,30 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
                 <div
                   key={`${word.number}-${word.direction}`}
                   onClick={() => {
-                    const row = word.row
-                    const col = word.col
-                    handleCellClick(row, col)
+                    if (!isCompleted) {
+                      const row = word.row
+                      const col = word.col
+                      handleCellClick(row, col)
+                    }
                   }}
-                  onDoubleClick={handleDoubleTap}
+                  onDoubleClick={() => {
+                    if (!isCompleted) {
+                      handleDoubleTap()
+                    }
+                  }}
                   className={`
-                    p-3 rounded-lg border-2 cursor-pointer transition-all
-                    ${guessedWords.has(word.word.toUpperCase())
-                      ? 'bg-green-50 border-green-300'
+                    p-3 rounded-lg border-2 transition-all
+                    ${isCompleted
+                      ? guessedWords.has(word.word.toUpperCase())
+                        ? 'bg-green-50 border-green-300 cursor-default'
+                        : wrongWords.has(word.word.toUpperCase())
+                        ? 'bg-yellow-50 border-yellow-300 cursor-default'
+                        : 'bg-gray-50 border-gray-200 cursor-default'
+                      : guessedWords.has(word.word.toUpperCase())
+                      ? 'bg-green-50 border-green-300 cursor-pointer'
                       : selectedWord?.word === word.word && selectedWord?.direction === word.direction
-                      ? 'bg-blue-50 border-blue-300'
-                      : 'bg-gray-50 border-gray-200 hover:border-primary/50'
+                      ? 'bg-blue-50 border-blue-300 cursor-pointer'
+                      : 'bg-gray-50 border-gray-200 hover:border-primary/50 cursor-pointer'
                     }
                   `}
                 >
@@ -823,7 +971,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
       {/* Виртуальная клавиатура */}
       <AnimatePresence>
-        {selectedWord && !guessedWords.has(selectedWord.word.toUpperCase()) && showKeyboard && (
+        {selectedWord && !isCompleted && showKeyboard && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ 
@@ -940,23 +1088,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
               >
                 ⌫ Удалить
               </motion.button>
-              <motion.button
-                onClick={() => {
-                  if (currentInput.length === selectedWord.word.length) {
-                    hapticFeedback('medium')
-                    checkWord(selectedWord, currentInput)
-                  }
-                }}
-                whileTap={{ scale: 0.9 }}
-                disabled={currentInput.length !== selectedWord.word.length}
-                className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  currentInput.length === selectedWord.word.length
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                ✓ Проверить
-              </motion.button>
+              {/* Кнопка "Проверить" удалена - проверка происходит автоматически при заполнении всех клеток кроссворда */}
             </div>
           </div>
           </motion.div>
