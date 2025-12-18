@@ -1,8 +1,8 @@
 # Build stage
 FROM golang:alpine AS builder
 
-# Install build dependencies for CGO
-RUN apk add --no-cache gcc musl-dev
+# Install build dependencies for CGO and Node.js for frontend build
+RUN apk add --no-cache gcc musl-dev nodejs npm
 
 WORKDIR /app
 
@@ -13,7 +13,12 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Build frontend first
+WORKDIR /app/webapp-react
+RUN npm ci && npm run build
+
 # Build the application
+WORKDIR /app
 RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
 
 # Runtime stage
