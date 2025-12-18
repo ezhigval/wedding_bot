@@ -216,6 +216,42 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     loadGame()
   }, [config])
 
+  // Функция проверки валидности слова по словарю
+  const checkWordValidity = async (word: string): Promise<boolean> => {
+    try {
+      const config = await loadConfig()
+      const tg = window.Telegram?.WebApp
+      const initData = (tg as any)?.initData || ''
+      
+      // Проверяем валидность через submitWordleGuess (он вернет invalid_word если слово не в словаре)
+      const response = await fetch(`${config.apiUrl}/wordle/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          word: word, 
+          userId: userId,
+          initData: initData 
+        }),
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        // Если слово не в словаре - возвращаем false
+        if (result.invalid_word || result.message === 'Слово не найдено в словаре') {
+          return false
+        }
+        // Если слово валидно (даже если неправильное) - возвращаем true
+        return true
+      }
+      // Если ошибка - считаем слово валидным (чтобы не блокировать игру)
+      return true
+    } catch (error) {
+      console.error('Error checking word validity:', error)
+      // Если ошибка сети - считаем слово валидным
+      return true
+    }
+  }
+
   // Используем ref для предотвращения двойных нажатий
   const lastKeyPressTime = useRef<number>(0)
   const lastKey = useRef<string>('')
@@ -369,37 +405,16 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       return
     }
 
-    // Если слово не совпадает с целевым, проверяем его по словарю перед отправкой
+    // Если слово не совпадает с целевым, проверяем его валидность по словарю
+    // Если слово не в словаре - не принимаем попытку
     if (currentGuess !== targetWord) {
-      // Проверяем слово по словарю через API перед показом результата
-      try {
-        const config = await loadConfig()
-        const tg = window.Telegram?.WebApp
-        const initData = (tg as any)?.initData || ''
-        
-        const checkResponse = await fetch(`${config.apiUrl}/wordle/guess`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            word: currentGuess, 
-            userId: userId,
-            initData: initData 
-          }),
-        })
-        
-        if (checkResponse.ok) {
-          const checkResult = await checkResponse.json()
-          if (checkResult.invalid_word || checkResult.message === 'Слово не найдено в словаре') {
-            hapticFeedback('heavy')
-            alert('Слово не найдено в словаре')
-            setCurrentGuess('') // Очищаем ввод
-            return
-          }
-          // Если слово валидно, но не совпадает - продолжаем с обычной логикой показа результата
-        }
-      } catch (error) {
-        console.error('Error checking word:', error)
-        // Продолжаем, если проверка не удалась
+      // Проверяем валидность через API перед показом результата
+      const isValid = await checkWordValidity(currentGuess)
+      if (!isValid) {
+        hapticFeedback('heavy')
+        alert('Слово не найдено в словаре')
+        setCurrentGuess('') // Очищаем ввод
+        return
       }
     }
 

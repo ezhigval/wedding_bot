@@ -257,80 +257,46 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем состояние игры сначала, чтобы иметь fallback
-	state, stateErr := google_sheets.GetWordleState(ctx, userID)
-	if stateErr != nil {
-		log.Printf("Error getting wordle state for user %d: %v", userID, stateErr)
-	}
-
-	// Получаем текущее слово
+	// Получаем текущее слово для пользователя
 	currentWord, err := google_sheets.GetWordleWordForUser(ctx, userID)
 	if err != nil {
 		log.Printf("Error getting Wordle word for user %d: %v", userID, err)
-		// Если не удалось получить слово, пытаемся получить из состояния
-		if stateErr == nil && state != nil && state.CurrentWord != "" {
-			currentWord = state.CurrentWord
-			log.Printf("Using word from state (fallback) for user %d: %s", userID, currentWord)
-		} else {
-			JSONError(w, http.StatusInternalServerError, "server_error")
-			return
-		}
+		JSONError(w, http.StatusInternalServerError, "server_error")
+		return
 	}
 	if currentWord == "" {
-		log.Printf("Word not found for user %d, trying to get from state", userID)
-		// Пытаемся получить слово из состояния
-		if stateErr == nil && state != nil && state.CurrentWord != "" {
-			currentWord = state.CurrentWord
-			log.Printf("Using word from state for user %d: %s", userID, currentWord)
-		} else {
-			// Последняя попытка - если слово из запроса валидно и есть в словаре, используем его
-			// Это может помочь, если состояние не сохранилось правильно
-			if google_sheets.IsWordAllowed(ctx, word) {
-				log.Printf("Word from request is valid, using it as fallback for user %d: %s", userID, word)
-				currentWord = word
-			} else {
-				log.Printf("Word not found for user %d and no valid fallback available", userID)
-				JSONError(w, http.StatusNotFound, "word not found")
-				return
-			}
-		}
+		log.Printf("Word not found for user %d", userID)
+		JSONError(w, http.StatusNotFound, "word not found")
+		return
 	}
 	currentWord = strings.TrimSpace(strings.ToUpper(currentWord))
 
-	// Проверяем совпадение с текущим словом
+	// Проверяем валидность слова по словарю (если не совпадает с текущим)
 	if word != currentWord {
-		// Если слово не совпадает, проверяем валидность по словарю
+		// Проверяем, есть ли слово в словаре
 		if !google_sheets.IsWordAllowed(ctx, word) {
 			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"success": false,
-				"message": "Слово не найдено в словаре",
+				"success":     false,
+				"message":     "Слово не найдено в словаре",
 				"invalid_word": true,
 			})
 			return
 		}
-		// Слово валидно, но не совпадает с текущим
+		// Слово валидно, но не совпадает - это просто неправильная попытка
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
 			"success": false,
 			"message": "Неверное слово",
-			"incorrect": true,
 		})
 		return
 	}
 
-	// Состояние уже получено выше, используем его
-	if stateErr != nil {
-		log.Printf("Error getting wordle state: %v", stateErr)
-		// Не критично, продолжаем без проверки состояния
-		state = nil
-	}
-
-	// Проверяем, что текущее слово совпадает с отгаданным
-	if state != nil && state.CurrentWord == currentWord {
-		// Проверяем, не отгадано ли уже это слово (по попыткам)
+	// Слово правильное! Проверяем, не отгадано ли уже сегодня
+	state, err := google_sheets.GetWordleState(ctx, userID)
+	if err == nil && state != nil {
+		// Проверяем, есть ли уже выигрышная попытка
 		if state.Attempts != nil && len(state.Attempts) > 0 {
-			// Проверяем, есть ли выигрышная попытка (все буквы правильные)
 			for _, attempt := range state.Attempts {
-				if len(attempt) == 5 { // WORD_LENGTH = 5
+				if len(attempt) == 5 {
 					allCorrect := true
 					for _, cell := range attempt {
 						if cellState, ok := cell["state"].(string); !ok || cellState != "correct" {
@@ -339,7 +305,7 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					if allCorrect {
-						// Слово уже отгадано
+						// Уже отгадано сегодня
 						JSONResponse(w, http.StatusOK, map[string]interface{}{
 							"success":         false,
 							"message":         "Это слово уже было отгадано сегодня",
