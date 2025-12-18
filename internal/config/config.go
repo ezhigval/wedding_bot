@@ -63,6 +63,7 @@ var (
 	// Google Sheets настройки
 	GoogleSheetsID                   string
 	GoogleSheetsCredentials          string
+	GoogleSheetsCredentialsBase64    string
 	GoogleSheetsSheetName            string
 	GoogleSheetsInvitationsSheetName string
 	GoogleSheetsAdminsSheetName      string
@@ -193,6 +194,7 @@ func LoadConfig() error {
 	}
 
 	GoogleSheetsCredentials = os.Getenv("GOOGLE_SHEETS_CREDENTIALS")
+	GoogleSheetsCredentialsBase64 = os.Getenv("GOOGLE_SHEETS_CREDENTIALS_BASE64")
 
 	GoogleSheetsSheetName = os.Getenv("GOOGLE_SHEETS_SHEET_NAME")
 	if GoogleSheetsSheetName == "" {

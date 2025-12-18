@@ -2,12 +2,16 @@ package google_sheets
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
-	"golang.org/x/oauth2/google"
 
 	"wedding-bot/internal/config"
 )
@@ -18,15 +22,63 @@ var (
 	sheetsService    *sheets.Service
 )
 
+// getCredentialsJSON пытается получить bytes для Google credentials.
+// Поддерживает два формата: сырой JSON и base64 с JSON.
+func getCredentialsJSON() ([]byte, error) {
+	candidates := []string{
+		config.GoogleSheetsCredentials,
+		config.GoogleSheetsCredentialsBase64,
+	}
+
+	// Собираем варианты: сырой, без кавычек, unquote
+	var variants []string
+	for _, cand := range candidates {
+		cand = strings.TrimSpace(cand)
+		if cand == "" {
+			continue
+		}
+		variants = append(variants, cand)
+
+		trimmed := strings.Trim(cand, `"'`)
+		if trimmed != cand {
+			variants = append(variants, trimmed)
+		}
+
+		if unquoted, err := strconv.Unquote(cand); err == nil {
+			variants = append(variants, unquoted)
+		}
+	}
+
+	// Пробуем как JSON или base64 (std/raw/url)
+	for _, val := range variants {
+		if json.Valid([]byte(val)) {
+			return []byte(val), nil
+		}
+
+		decoders := []*base64.Encoding{
+			base64.StdEncoding,
+			base64.RawStdEncoding,
+			base64.URLEncoding,
+			base64.RawURLEncoding,
+		}
+		for _, enc := range decoders {
+			decoded, err := enc.DecodeString(val)
+			if err != nil {
+				continue
+			}
+			if json.Valid(decoded) {
+				return decoded, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("credentials не установлены или имеют неверный формат (ожидается JSON или base64 с JSON)")
+}
+
 // GetGoogleSheetsClient получает клиент Google Sheets
 func GetGoogleSheetsClient() (*sheets.Service, error) {
 	if !GspreadAvailable {
 		return nil, fmt.Errorf("Google Sheets API недоступен")
-	}
-
-	if config.GoogleSheetsCredentials == "" {
-		log.Printf("GOOGLE_SHEETS_CREDENTIALS не установлен")
-		return nil, fmt.Errorf("credentials не установлены")
 	}
 
 	// Если сервис уже создан, возвращаем его
@@ -34,8 +86,12 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 		return sheetsService, nil
 	}
 
-	// Парсим JSON credentials из переменной окружения
-	credsJSON := []byte(config.GoogleSheetsCredentials)
+	credsJSON, err := getCredentialsJSON()
+	if err != nil {
+		log.Printf("GOOGLE_SHEETS_CREDENTIALS не установлен или испорчен: %v", err)
+		return nil, fmt.Errorf("credentials не установлены: %w", err)
+	}
+
 	creds, err := google.CredentialsFromJSON(
 		context.Background(),
 		credsJSON,
@@ -195,4 +251,3 @@ func UpdateCell(spreadsheetID string, sheetName string, row, col int, value inte
 	values := [][]interface{}{{value}}
 	return UpdateSheetValues(spreadsheetID, sheetName, range_, values)
 }
-
