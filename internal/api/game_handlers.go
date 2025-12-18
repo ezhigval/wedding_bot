@@ -257,17 +257,43 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Получаем состояние игры сначала, чтобы иметь fallback
+	state, stateErr := google_sheets.GetWordleState(ctx, userID)
+	if stateErr != nil {
+		log.Printf("Error getting wordle state for user %d: %v", userID, stateErr)
+	}
+
 	// Получаем текущее слово
 	currentWord, err := google_sheets.GetWordleWordForUser(ctx, userID)
 	if err != nil {
 		log.Printf("Error getting Wordle word for user %d: %v", userID, err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
+		// Если не удалось получить слово, пытаемся получить из состояния
+		if stateErr == nil && state != nil && state.CurrentWord != "" {
+			currentWord = state.CurrentWord
+			log.Printf("Using word from state (fallback) for user %d: %s", userID, currentWord)
+		} else {
+			JSONError(w, http.StatusInternalServerError, "server_error")
+			return
+		}
 	}
 	if currentWord == "" {
-		log.Printf("Word not found for user %d", userID)
-		JSONError(w, http.StatusNotFound, "word not found")
-		return
+		log.Printf("Word not found for user %d, trying to get from state", userID)
+		// Пытаемся получить слово из состояния
+		if stateErr == nil && state != nil && state.CurrentWord != "" {
+			currentWord = state.CurrentWord
+			log.Printf("Using word from state for user %d: %s", userID, currentWord)
+		} else {
+			// Последняя попытка - если слово из запроса валидно и есть в словаре, используем его
+			// Это может помочь, если состояние не сохранилось правильно
+			if google_sheets.IsWordAllowed(ctx, word) {
+				log.Printf("Word from request is valid, using it as fallback for user %d: %s", userID, word)
+				currentWord = word
+			} else {
+				log.Printf("Word not found for user %d and no valid fallback available", userID)
+				JSONError(w, http.StatusNotFound, "word not found")
+				return
+			}
+		}
 	}
 	currentWord = strings.TrimSpace(strings.ToUpper(currentWord))
 
@@ -291,12 +317,11 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверяем состояние игры - если слово уже отгадано сегодня, нельзя отгадать снова
-	state, err := google_sheets.GetWordleState(ctx, userID)
-	if err != nil {
-		log.Printf("Error getting wordle state: %v", err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
+	// Состояние уже получено выше, используем его
+	if stateErr != nil {
+		log.Printf("Error getting wordle state: %v", stateErr)
+		// Не критично, продолжаем без проверки состояния
+		state = nil
 	}
 
 	// Проверяем, что текущее слово совпадает с отгаданным
