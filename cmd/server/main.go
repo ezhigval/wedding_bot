@@ -77,13 +77,20 @@ func main() {
 	}
 
 	// Инициализируем Google Sheets
+	log.Println("🔧 Инициализация Google Sheets...")
 	if err := google_sheets.EnsureRequiredSheets(ctx); err != nil {
-		log.Printf("⚠️ Ошибка инициализации Google Sheets: %v", err)
+		log.Printf("❌ Ошибка инициализации Google Sheets: %v", err)
+		log.Printf("💡 Возможные причины:")
+		log.Printf("   1. Неправильные credentials (проверь GOOGLE_SHEETS_CREDENTIALS)")
+		log.Printf("   2. Сервисный аккаунт не имеет доступа к таблице")
+		log.Printf("   3. Google Sheets API не включен в проекте")
+		log.Printf("   4. Неправильный GOOGLE_SHEETS_ID")
 	} else {
 		log.Println("✅ Google Sheets инициализирован")
 	}
 
 	// Проверяем структуру листа гостей
+	log.Println("🔍 Проверка структуры листа гостей...")
 	if err := google_sheets.ValidateGuestSheetStructure(ctx); err != nil {
 		log.Printf("⚠️ Ошибка проверки структуры листа гостей: %v", err)
 	} else {
