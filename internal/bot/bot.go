@@ -63,20 +63,73 @@ func InitBot(ctx context.Context) (*tgbotapi.BotAPI, error) {
 
 // startUpdateHandler обрабатывает обновления от Telegram
 func startUpdateHandler(ctx context.Context, bot *tgbotapi.BotAPI) {
+	log.Println("🔄 Запуск обработчика обновлений Telegram...")
+	
+	// Используем явный polling вместо GetUpdatesChan для полного контроля
+	// GetUpdatesChan может создавать множественные соединения при ошибках
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-
-	updates := bot.GetUpdatesChan(u)
-
+	
+	// Отслеживаем последний обработанный update ID
+	lastUpdateID := 0
+	
+	retryDelay := 3 * time.Second
+	maxRetryDelay := 60 * time.Second
+	
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("🛑 Остановка обработки обновлений бота")
 			bot.StopReceivingUpdates()
 			return
-		case update := <-updates:
-			// Обрабатываем обновление в отдельной горутине для параллелизма
-			go handleUpdate(bot, update)
+		default:
+			// Устанавливаем offset для получения только новых обновлений
+			u.Offset = lastUpdateID
+			
+			// Получаем обновления явно через Request
+			updates, err := bot.GetUpdates(u)
+			if err != nil {
+				// Обрабатываем ошибки
+				if strings.Contains(err.Error(), "Conflict") {
+					log.Printf("⚠️ Conflict detected: %v. Ожидание %v перед повтором...", err, retryDelay)
+				} else {
+					log.Printf("⚠️ Ошибка получения обновлений: %v. Повтор через %v...", err, retryDelay)
+				}
+				
+				// Exponential backoff
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(retryDelay):
+					if retryDelay < maxRetryDelay {
+						retryDelay = time.Duration(float64(retryDelay) * 1.5)
+					}
+				}
+				continue
+			}
+			
+			// Сбрасываем задержку при успешном получении
+			retryDelay = 3 * time.Second
+			
+			// Обрабатываем все полученные обновления
+			for _, update := range updates {
+				// Обновляем lastUpdateID
+				if update.UpdateID >= lastUpdateID {
+					lastUpdateID = update.UpdateID + 1
+				}
+				
+				// Обрабатываем обновление в отдельной горутине для параллелизма
+				go handleUpdate(bot, update)
+			}
+			
+			// Небольшая задержка между запросами, если обновлений нет
+			if len(updates) == 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
 		}
 	}
 }

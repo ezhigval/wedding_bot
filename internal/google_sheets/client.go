@@ -144,6 +144,8 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 	)
 	if err != nil {
 		log.Printf("❌ Ошибка создания credentials из JSON: %v", err)
+		// Сбрасываем кэш при ошибке, чтобы при следующем вызове попробовать заново
+		sheetsService = nil
 		return nil, fmt.Errorf("ошибка создания credentials: %w", err)
 	}
 
@@ -156,6 +158,8 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 	)
 	if err != nil {
 		log.Printf("❌ Ошибка создания сервиса Google Sheets: %v", err)
+		// Сбрасываем кэш при ошибке
+		sheetsService = nil
 		return nil, fmt.Errorf("ошибка создания сервиса Google Sheets: %w", err)
 	}
 
