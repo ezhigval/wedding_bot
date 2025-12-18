@@ -96,6 +96,7 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 	api.HandleFunc("/wordle/word", getWordleWordEndpoint).Methods("GET")
 	api.HandleFunc("/wordle/progress", getWordleProgressEndpoint).Methods("GET")
 	api.HandleFunc("/wordle/guess", submitWordleGuessEndpoint).Methods("POST")
+	api.HandleFunc("/wordle/check-word", checkWordValidityEndpoint).Methods("GET")
 	api.HandleFunc("/wordle/state", getWordleStateEndpoint).Methods("GET")
 	api.HandleFunc("/wordle/state", saveWordleStateEndpoint).Methods("POST")
 

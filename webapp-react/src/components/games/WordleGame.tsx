@@ -220,28 +220,11 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const checkWordValidity = async (word: string): Promise<boolean> => {
     try {
       const config = await loadConfig()
-      const tg = window.Telegram?.WebApp
-      const initData = (tg as any)?.initData || ''
-      
-      // Проверяем валидность через submitWordleGuess (он вернет invalid_word если слово не в словаре)
-      const response = await fetch(`${config.apiUrl}/wordle/guess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          word: word, 
-          userId: userId,
-          initData: initData 
-        }),
-      })
-      
+      // Используем отдельный endpoint для проверки словаря
+      const response = await fetch(`${config.apiUrl}/wordle/check-word?word=${encodeURIComponent(word)}`)
       if (response.ok) {
-        const result = await response.json()
-        // Если слово не в словаре - возвращаем false
-        if (result.invalid_word || result.message === 'Слово не найдено в словаре') {
-          return false
-        }
-        // Если слово валидно (даже если неправильное) - возвращаем true
-        return true
+        const data = await response.json()
+        return data.success === true
       }
       // Если ошибка - считаем слово валидным (чтобы не блокировать игру)
       return true
@@ -479,49 +462,39 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
 
     // Проверяем победу
     if (currentGuess === targetWord) {
-      // Сначала показываем визуальный результат (зеленые клетки уже установлены)
-      // Затем отправляем на сервер для проверки и начисления очков
+      // СЛОВО ПРАВИЛЬНОЕ - сразу показываем победу, независимо от ответа бэкенда
+      setGameOver('win')
+      setScore(5) // Каждое отгаданное слово = 5 очков
+      setAlreadyGuessed(true)
+      setGuessedWords(prev => [...prev, currentGuess])
+      setShowConfetti(true) // Запускаем салют
+      setCurrentGuess('') // Очищаем строку ввода
+      hapticFeedback('heavy')
+      // Запускаем таймер, если не запущен
+      const today = new Date().toISOString().split('T')[0]
+      startCountdownTimer(lastWordDate || today)
+      if (onScore) {
+        onScore(5) // Передаем 5 очков
+      }
+      // Скрываем салют через 2 секунды
+      setTimeout(() => setShowConfetti(false), 2000)
+      
+      // Отправляем на сервер для сохранения прогресса и начисления очков (в фоне)
       submitWordleGuess(currentGuess).then(result => {
         if (result.success) {
-          setGameOver('win')
-          setScore(5) // Каждое отгаданное слово = 5 очков
-          setAlreadyGuessed(true)
-          setGuessedWords(prev => [...prev, currentGuess])
-          setShowConfetti(true) // Запускаем салют
-          setCurrentGuess('') // Очищаем строку ввода, чтобы не дублировать
-          hapticFeedback('heavy')
-          // Запускаем таймер, если не запущен
-          const today = new Date().toISOString().split('T')[0]
-          startCountdownTimer(lastWordDate || today)
-          if (onScore) {
-            onScore(5) // Передаем 5 очков
-          }
-          // Скрываем салют через 2 секунды
-          setTimeout(() => setShowConfetti(false), 2000)
+          // Успешно сохранено на сервере
+          console.log('Word saved successfully:', result.message)
         } else if (result.already_guessed) {
+          // Уже было отгадано - это нормально, просто обновляем состояние
           setAlreadyGuessed(true)
-          setGameOver('win') // Показываем как выигрыш, если уже отгадано
-          hapticFeedback('heavy')
+          console.log('Word already guessed')
         } else {
-          // Если ошибка, но слово правильное - все равно показываем победу
-          // (может быть проблема с сетью, но визуально слово угадано)
-          console.error('Error submitting word, but word is correct:', result.message)
-          setGameOver('win')
-          setScore(5)
-          setAlreadyGuessed(true)
-          setShowConfetti(true)
-          hapticFeedback('heavy')
-          setTimeout(() => setShowConfetti(false), 2000)
+          // Ошибка на сервере, но слово правильное - игнорируем ошибку
+          console.warn('Server error, but word is correct:', result.message)
         }
       }).catch(error => {
-        console.error('Error submitting word:', error)
-        // Если ошибка сети, но слово правильное - все равно показываем победу
-        setGameOver('win')
-        setScore(5)
-        setAlreadyGuessed(true)
-        setShowConfetti(true)
-        hapticFeedback('heavy')
-        setTimeout(() => setShowConfetti(false), 2000)
+        // Ошибка сети - игнорируем, победа уже показана выше
+        console.error('Error submitting word to server:', error)
       })
     } else if (currentAttempt === MAX_ATTEMPTS - 1) {
       setGameOver('lose')

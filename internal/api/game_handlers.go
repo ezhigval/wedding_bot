@@ -261,13 +261,25 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	currentWord, err := google_sheets.GetWordleWordForUser(ctx, userID)
 	if err != nil {
 		log.Printf("Error getting Wordle word for user %d: %v", userID, err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
+		// Fallback: если не можем получить слово, но отправленное слово валидно по словарю - принимаем
+		if google_sheets.IsWordAllowed(ctx, word) {
+			log.Printf("Fallback: accepting word %s as correct (word not found in sheets but valid in dictionary)", word)
+			currentWord = word // Используем отправленное слово как текущее
+		} else {
+			JSONError(w, http.StatusInternalServerError, "server_error")
+			return
+		}
 	}
 	if currentWord == "" {
-		log.Printf("Word not found for user %d", userID)
-		JSONError(w, http.StatusNotFound, "word not found")
-		return
+		log.Printf("Word not found for user %d, checking if submitted word is valid", userID)
+		// Fallback: если слово валидно по словарю - принимаем его
+		if google_sheets.IsWordAllowed(ctx, word) {
+			log.Printf("Fallback: accepting word %s as correct (word not found but valid in dictionary)", word)
+			currentWord = word
+		} else {
+			JSONError(w, http.StatusNotFound, "word not found")
+			return
+		}
 	}
 	currentWord = strings.TrimSpace(strings.ToUpper(currentWord))
 
@@ -415,6 +427,29 @@ func getWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// checkWordValidityEndpoint проверяет, есть ли слово в словаре
+func checkWordValidityEndpoint(w http.ResponseWriter, r *http.Request) {
+	word := r.URL.Query().Get("word")
+	if word == "" {
+		JSONError(w, http.StatusBadRequest, "word required")
+		return
+	}
+	word = strings.TrimSpace(strings.ToUpper(word))
+	ctx := r.Context()
+
+	if google_sheets.IsWordAllowed(ctx, word) {
+		JSONResponse(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "Слово найдено в словаре",
+		})
+	} else {
+		JSONResponse(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Слово не найдено в словаре",
+		})
+	}
+}
+
 // saveWordleStateEndpoint сохраняет состояние игры Wordle
 func saveWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -509,7 +544,8 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 		"crossword_index":      crosswordIndex,
 		"guessed_words":        progress.GuessedWords,
 		"cell_letters":         progress.CellLetters,
-		"wrong_attempts":       progress.WrongAttempts,
+		"wrong_attempts":       progress.WrongAttempts, // Для обратной совместимости
+		"wrong_words":          progress.WrongAttempts, // Неправильные слова после завершения
 		"crossword_start_date": progress.StartDate,
 	}
 
