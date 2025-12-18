@@ -88,8 +88,8 @@ func GetCrosswordWords(ctx context.Context, crosswordIndex int) ([]CrosswordWord
 		}
 	}
 
-	// Если слов нет для данного кроссворда и это первый кроссворд, добавляем дефолтные
-	if len(words) == 0 && crosswordIndex == 0 {
+	// Если слов нет для данного кроссворда, добавляем дефолтные (для любого индекса)
+	if len(words) == 0 {
 		defaultWords := []CrosswordWord{
 			{"СВАДЬБА", "Главное событие дня"},
 			{"ТАМАДА", "Ведущий праздника"},
@@ -101,16 +101,20 @@ func GetCrosswordWords(ctx context.Context, crosswordIndex int) ([]CrosswordWord
 			{"ТАНЕЦ", "Развлечение на празднике"},
 		}
 
-		// Сохраняем дефолтные слова в таблицу
-		defaultData := make([][]interface{}, len(defaultWords))
-		for i, w := range defaultWords {
-			defaultData[i] = []interface{}{w.Word, w.Description}
+		// Сохраняем дефолтные слова в таблицу (только для индекса 0, чтобы не перезаписывать другие кроссворды)
+		if crosswordIndex == 0 {
+			defaultData := make([][]interface{}, len(defaultWords))
+			for i, w := range defaultWords {
+				defaultData[i] = []interface{}{w.Word, w.Description}
+			}
+
+			if err := AppendSheetValues(spreadsheetID, sheetName, defaultData); err != nil {
+				// Возвращаем дефолтные слова даже если не удалось сохранить
+				return defaultWords, nil
+			}
 		}
 
-		if err := AppendSheetValues(spreadsheetID, sheetName, defaultData); err != nil {
-			return defaultWords, nil // Возвращаем дефолтные слова даже если не удалось сохранить
-		}
-
+		// Возвращаем дефолтные слова для любого индекса, если слов нет
 		return defaultWords, nil
 	}
 

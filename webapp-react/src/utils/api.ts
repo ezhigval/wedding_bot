@@ -414,7 +414,8 @@ export interface CrosswordData {
   cell_letters?: { [key: string]: string }
   crossword_index?: number
   start_date?: string
-  wrong_attempts?: string[]
+  wrong_attempts?: string[] // Для обратной совместимости
+  wrong_words?: string[] // Неправильные слова после завершения
 }
 
 export async function getCrosswordData(userId: number): Promise<CrosswordData> {
@@ -423,7 +424,15 @@ export async function getCrosswordData(userId: number): Promise<CrosswordData> {
     const response = await fetch(`${config.apiUrl}/crossword-data?userId=${userId}`)
     if (response.ok) {
       const data = await response.json()
+      console.log('Crossword data loaded:', { 
+        wordsCount: data.words?.length || 0, 
+        crosswordIndex: data.crossword_index,
+        guessedWords: data.guessed_words?.length || 0 
+      })
       return data
+    } else {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Error loading crossword data:', response.status, errorData)
     }
   } catch (error) {
     console.error('Error loading crossword data:', error)

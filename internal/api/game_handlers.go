@@ -514,12 +514,21 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 		crosswordIndex = google_sheets.GetCurrentCrosswordIndex(ctx)
 	}
 
+	log.Printf("Getting crossword words for index: %d", crosswordIndex)
+
 	// Получаем слова
 	words, err := google_sheets.GetCrosswordWords(ctx, crosswordIndex)
 	if err != nil {
 		log.Printf("Error getting crossword words: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")
 		return
+	}
+
+	log.Printf("Found %d words for crossword index %d", len(words), crosswordIndex)
+
+	// Если слов нет - возвращаем пустой массив (фронтенд покажет "кроссворд еще не готов")
+	if len(words) == 0 {
+		log.Printf("No words found for crossword index %d", crosswordIndex)
 	}
 
 	// Получаем прогресс
