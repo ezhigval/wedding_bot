@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { UserProvider } from './contexts/UserContext'
 import { RegistrationProvider } from './contexts/RegistrationContext'
 import BottomNavbar from './components/BottomNavbar'
 import HomeTab from './components/tabs/HomeTab'
@@ -34,8 +35,9 @@ function App() {
   }
 
   return (
-    <RegistrationProvider>
-      <div className="h-screen bg-[#F8F8F8] flex flex-col overflow-hidden">
+    <UserProvider>
+      <RegistrationProvider>
+        <div className="h-screen bg-[#F8F8F8] flex flex-col overflow-hidden">
         <div 
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto" 
@@ -63,8 +65,9 @@ function App() {
         </div>
 
         <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
-      </div>
-    </RegistrationProvider>
+        </div>
+      </RegistrationProvider>
+    </UserProvider>
   )
 }
 

@@ -47,88 +47,36 @@ export async function loadTimeline(): Promise<TimelineItem[]> {
   return []
 }
 
-export async function submitRSVP(formData: {
-  lastName: string
-  firstName: string
-  category: string
-  side: string
-  guests: Array<{ firstName: string; lastName: string; telegram?: string }>
-}): Promise<{ success: boolean; error?: string }> {
+/**
+ * Отправляет форму RSVP
+ * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
+ * @param formData - данные формы
+ */
+export async function submitRSVP(
+  userId: number,
+  formData: {
+    lastName: string
+    firstName: string
+    category: string
+    side: string
+    guests: Array<{ firstName: string; lastName: string; telegram?: string }>
+  }
+): Promise<{ success: boolean; error?: string }> {
+  if (!userId) {
+    return { success: false, error: 'user_id required' }
+  }
+
   const config = await loadConfig()
   try {
-    // Получаем user_id из Telegram WebApp
-    const tg = window.Telegram?.WebApp
-    const initData = tg?.initData || ''
-    
-    // Пытаемся получить userId
-    let userId: number | null = null
-    
-    // Способ 1: Из initDataUnsafe (самый надежный способ)
-    if (tg?.initDataUnsafe?.user?.id) {
-      userId = tg.initDataUnsafe.user.id
-      console.log('[submitRSVP] Got user_id from initDataUnsafe:', userId)
-    }
-    
-    // Способ 2: Из localStorage (если был сохранен ранее)
-    if (!userId) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      if (savedUserId) {
-        userId = parseInt(savedUserId, 10)
-        if (!isNaN(userId)) {
-          console.log('[submitRSVP] Got user_id from localStorage:', userId)
-        } else {
-          userId = null
-        }
-      }
-    }
-    
-    // Способ 3: Из initData через API (если initDataUnsafe недоступен)
-    if (!userId && initData) {
-      try {
-        const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ initData }),
-        })
-        
-        if (response.ok) {
-          const parsed = await response.json()
-          if (parsed.userId) {
-            userId = parsed.userId
-            console.log('[submitRSVP] Got user_id from parse-init-data:', userId)
-            // Сохраняем в localStorage
-            if (userId !== null) {
-              localStorage.setItem('telegram_user_id', userId.toString())
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[submitRSVP] Error parsing initData:', error)
-      }
-    }
-    
-    // Формируем тело запроса
-    const requestBody: any = {
-      ...formData,
-      initData, // Telegram WebApp initData для проверки подлинности
-    }
-    
-    // Добавляем userId если он доступен
-    if (userId) {
-      requestBody.userId = userId
-      console.log('[submitRSVP] Sending registration with user_id:', userId)
-    } else {
-      console.warn('[submitRSVP] No user_id available, will try to extract from initData')
-    }
-    
     const response = await fetch(`${config.apiUrl}/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        ...formData,
+        userId,
+      }),
     })
 
     if (response.ok) {
@@ -168,166 +116,31 @@ export interface RegistrationStatus {
   error?: string
 }
 
-export async function checkRegistration(): Promise<RegistrationStatus> {
+/**
+ * Проверяет регистрацию пользователя
+ * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
+ */
+export async function checkRegistration(userId: number): Promise<RegistrationStatus> {
+  if (!userId) {
+    return { registered: false, error: 'no_user_id' }
+  }
+
   const config = await loadConfig()
   const checkUrl = `${config.apiUrl}/check-registration`
+  
   try {
-    // ВРЕМЕННАЯ СИМУЛЯЦИЯ ДЛЯ ТЕСТА - УДАЛИТЬ ПОСЛЕ ПРОВЕРКИ
-    // Симулируем user_id = 1034074077 для локального тестирования
-    const TEST_USER_ID = 1034074077
-    
-    // Проверяем, запущено ли локально (не в Telegram)
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    if (isLocalhost) {
-      console.log('[TEST MODE] Simulating user_id:', TEST_USER_ID)
-      // Прямо проверяем регистрацию с тестовым user_id
-      const params = new URLSearchParams({
-        userId: TEST_USER_ID.toString(),
-        firstName: '',
-        lastName: '',
-      })
-      const url = `${checkUrl}?${params.toString()}`
-      const response = await fetch(url, { method: 'POST' })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.registered) {
-          localStorage.setItem('telegram_user_id', TEST_USER_ID.toString())
-        }
-        return data
-      }
-    }
-    // КОНЕЦ ВРЕМЕННОЙ СИМУЛЯЦИИ
-    
-    // Получаем данные пользователя из Telegram WebApp
-    const tg = window.Telegram?.WebApp
-    const initData = tg?.initData || ''
-    
-    // Пытаемся получить userId из Telegram WebApp
-    let userId: number | null = null
-    let firstName = ''
-    let lastName = ''
-    
-    if (tg) {
-      // Способ 1: Из initDataUnsafe (самый надежный способ)
-      if (tg.initDataUnsafe?.user?.id) {
-        userId = tg.initDataUnsafe.user.id
-        firstName = tg.initDataUnsafe.user.first_name || ''
-        lastName = tg.initDataUnsafe.user.last_name || ''
-        console.log('[Telegram WebApp] Got user_id from initDataUnsafe:', userId)
-        // Сохраняем в localStorage
-        localStorage.setItem('telegram_user_id', userId.toString())
-      }
-      
-      // Способ 2: Из initData через API (если initDataUnsafe недоступен)
-      if (!userId && initData) {
-        try {
-          const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ initData }),
-          })
-          
-          if (response.ok) {
-            const parsed = await response.json()
-            if (parsed.userId) {
-              userId = parsed.userId
-              firstName = parsed.firstName || ''
-              lastName = parsed.lastName || ''
-              console.log('[Telegram WebApp] Got user_id from parse-init-data:', userId)
-              // Сохраняем в localStorage
-              if (userId !== null) {
-                localStorage.setItem('telegram_user_id', userId.toString())
-              }
-            }
-          } else {
-            const errorText = await response.text()
-            console.error('[Telegram WebApp] Error parsing initData:', response.status, errorText)
-          }
-        } catch (error) {
-          console.error('[Telegram WebApp] Error parsing initData:', error)
-        }
-      }
-      
-      // Способ 3: Из localStorage (если был сохранен ранее)
-      if (!userId) {
-        const savedUserId = localStorage.getItem('telegram_user_id')
-        if (savedUserId) {
-          userId = parseInt(savedUserId, 10)
-          if (!isNaN(userId)) {
-            console.log('[Telegram WebApp] Got user_id from localStorage:', userId)
-          } else {
-            userId = null
-          }
-        }
-      }
-    }
-    
-    // Логируем результат
-    if (!userId) {
-      console.warn('[Telegram WebApp] Could not get user_id. Available:', {
-        hasTg: !!tg,
-        hasInitData: !!initData,
-        hasInitDataUnsafe: !!tg?.initDataUnsafe,
-        hasInitDataUnsafeUser: !!tg?.initDataUnsafe?.user,
-      })
-    }
-    
-    // Если нет userId, но есть имя/фамилия - пробуем поиск только по имени
-    if (!userId && firstName && lastName) {
-      try {
-        const params = new URLSearchParams({
-          firstName,
-          lastName,
-          searchByNameOnly: 'true',
-        })
-        const url = `${checkUrl}?${params.toString()}`
-        const response = await fetch(url, { method: 'POST' })
-        
-        if (response.ok) {
-          const data = await response.json()
-          return data
-        } else {
-          const errorText = await response.text()
-          console.error('[Telegram WebApp] /check-registration name-only failed:', response.status, errorText)
-        }
-      } catch (error) {
-        console.error('Error checking by name only:', error)
-      }
-    }
-    
-    // Если нет userId вообще - возвращаем ошибку
-    if (!userId) {
-      return { registered: false, error: 'no_user_id' }
-    }
-    
-    // Если userId есть - проверяем регистрацию
-    if (userId === null) {
-      return { registered: false, error: 'no_user_id' }
-    }
-    
     const params = new URLSearchParams({
       userId: userId.toString(),
-      firstName,
-      lastName,
     })
     const url = `${checkUrl}?${params.toString()}`
     const response = await fetch(url, { method: 'POST' })
     
     if (response.ok) {
       const data = await response.json()
-      
-      // Если регистрация успешна, сохраняем userId в localStorage
-      if (data.registered && userId !== null) {
-        localStorage.setItem('telegram_user_id', userId.toString())
-      }
-      
       return data
     } else {
       const errorText = await response.text()
-      console.error('[Telegram WebApp] /check-registration failed:', response.status, errorText)
+      console.error('[checkRegistration] Failed:', response.status, errorText)
       return { registered: false, error: 'server_error' }
     }
   } catch (error) {
@@ -440,13 +253,18 @@ export async function getCrosswordData(userId: number): Promise<CrosswordData> {
   return { words: [], guessed_words: [] }
 }
 
-export async function getWordleWord(userId?: number): Promise<string | null> {
+/**
+ * Получает слово для Wordle
+ * @param userId - user_id из UserContext
+ */
+export async function getWordleWord(userId: number): Promise<string | null> {
+  if (!userId) {
+    return null
+  }
+
   const config = await loadConfig()
   try {
-    const url = userId 
-      ? `${config.apiUrl}/wordle/word?userId=${userId}`
-      : `${config.apiUrl}/wordle/word`
-    const response = await fetch(url)
+    const response = await fetch(`${config.apiUrl}/wordle/word?userId=${userId}`)
     if (response.ok) {
       const data = await response.json()
       return data.word || null
@@ -514,34 +332,18 @@ export async function saveWordleState(
   }
 }
 
-export async function getWordleProgress(): Promise<string[]> {
+/**
+ * Получает прогресс в Wordle
+ * @param userId - user_id из UserContext
+ */
+export async function getWordleProgress(userId: number): Promise<string[]> {
+  if (!userId) {
+    return []
+  }
+
   const config = await loadConfig()
   try {
-    const tg = window.Telegram?.WebApp
-    let initData = (tg as any)?.initData || ''
-    
-    // Если initData нет, пытаемся использовать userId из localStorage
-    if (!initData) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      
-      if (isLocalhost && savedUserId) {
-        const response = await fetch(`${config.apiUrl}/wordle/progress?userId=${savedUserId}`)
-        if (response.ok) {
-          const data = await response.json()
-          return data.guessed_words || []
-        }
-      }
-      return []
-    }
-    
-    let response = await fetch(`${config.apiUrl}/wordle/progress?initData=${encodeURIComponent(initData)}`)
-    if (!response.ok) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      if (savedUserId) {
-        response = await fetch(`${config.apiUrl}/wordle/progress?userId=${savedUserId}`)
-      }
-    }
+    const response = await fetch(`${config.apiUrl}/wordle/progress?userId=${userId}`)
     if (response.ok) {
       const data = await response.json()
       return data.guessed_words || []
@@ -552,47 +354,25 @@ export async function getWordleProgress(): Promise<string[]> {
   return []
 }
 
-export async function submitWordleGuess(word: string): Promise<{ success: boolean; message?: string; points?: number; already_guessed?: boolean }> {
+/**
+ * Отправляет отгаданное слово в Wordle
+ * @param userId - user_id из UserContext
+ * @param word - отгаданное слово
+ */
+export async function submitWordleGuess(
+  userId: number,
+  word: string
+): Promise<{ success: boolean; message?: string; points?: number; already_guessed?: boolean }> {
+  if (!userId) {
+    return { success: false, message: 'Не удалось получить данные пользователя' }
+  }
+
   const config = await loadConfig()
   try {
-    const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
-    let userId: number | null = null
-    
-    // Сначала пытаемся получить userId из initData
-    if (initData) {
-      try {
-        const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData }),
-        })
-        if (response.ok) {
-          const parsed = await response.json()
-          userId = parsed.userId
-        }
-      } catch (e) {
-        console.error('Error parsing initData:', e)
-      }
-    }
-    
-    // Если не получилось, пытаемся использовать userId из localStorage
-    if (!userId) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      if (savedUserId) {
-        userId = parseInt(savedUserId)
-      }
-    }
-    
-    if (!userId) {
-      return { success: false, message: 'Не удалось получить данные пользователя' }
-    }
-    
-    // Отправляем запрос с userId и initData (для бэка хватает userId, но initData пригодится для кросс-проверки)
     const response = await fetch(`${config.apiUrl}/wordle/guess`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word, userId, initData }),
+      body: JSON.stringify({ word, userId }),
     })
     
     if (response.ok) {

@@ -129,6 +129,9 @@ func verifyTelegramSignature(params map[string]string) error {
 
 // ParseInitData парсит initData от Telegram для извлечения user_id
 func ParseInitData(initData string) (map[string]interface{}, error) {
+	// #region agent log
+	log.Printf("[DEBUG ParseInitData] Called with initData length: %d, empty: %v", len(initData), initData == "")
+	// #endregion
 	if initData == "" {
 		return nil, fmt.Errorf("initData required")
 	}
@@ -136,9 +139,15 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	// Парсим query string: собираем сырые пары для подписи и декодированные для данных
 	params, rawParams := parseInitDataParams(initData)
 	isDebug := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
+	// #region agent log
+	log.Printf("[DEBUG ParseInitData] Parsed params: has_user=%v, user_value_length=%d, isDebug=%v", params["user"] != "", len(params["user"]), isDebug)
+	// #endregion
 
 	// Проверяем подпись
 	if err := verifyInitDataSignature(params, rawParams, isDebug); err != nil {
+		// #region agent log
+		log.Printf("[DEBUG ParseInitData] Signature verification failed: %v", err)
+		// #endregion
 		if isDebug {
 			log.Printf("⚠️ Ошибка подписи initData, продолжаем в DEBUG: %v", err)
 		} else {
@@ -148,6 +157,9 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 
 	// Извлекаем user из user JSON
 	userJSON := params["user"]
+	// #region agent log
+	log.Printf("[DEBUG ParseInitData] userJSON extracted: length=%d, empty=%v", len(userJSON), userJSON == "")
+	// #endregion
 	if userJSON == "" {
 		return nil, fmt.Errorf("user not found in initData")
 	}
@@ -178,11 +190,27 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	switch v := userData["id"].(type) {
 	case float64:
 		userID = int(v)
+		// #region agent log
+		log.Printf("[DEBUG ParseInitData] Extracted userID from float64: %d", userID)
+		// #endregion
 	case int:
 		userID = v
+		// #region agent log
+		log.Printf("[DEBUG ParseInitData] Extracted userID from int: %d", userID)
+		// #endregion
 	case int64:
 		userID = int(v)
+		// #region agent log
+		log.Printf("[DEBUG ParseInitData] Extracted userID from int64: %d", userID)
+		// #endregion
 	default:
+		// #region agent log
+		keys := make([]string, 0, len(userData))
+		for k := range userData {
+			keys = append(keys, k)
+		}
+		log.Printf("[DEBUG ParseInitData] user_id not found or invalid type: %T, value: %v, userData keys: %v", v, v, keys)
+		// #endregion
 		return nil, fmt.Errorf("user_id not found or invalid type in user: %T", v)
 	}
 

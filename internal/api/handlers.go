@@ -86,6 +86,9 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if userIDStr == "" {
+		// #region agent log
+		log.Printf("[DEBUG checkRegistration] userIDStr is empty. firstName=%s, lastName=%s, searchByNameOnly=%v", firstName, lastName, searchByNameOnly)
+		// #endregion
 		if firstName != "" && lastName != "" {
 			guest, err := google_sheets.FindGuestByName(ctx, firstName, lastName)
 			if err != nil {
@@ -111,6 +114,9 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// #region agent log
+		log.Printf("[DEBUG checkRegistration] Returning user_id_or_name_required. userIDStr=%s, firstName=%s, lastName=%s", userIDStr, firstName, lastName)
+		// #endregion
 		JSONError(w, http.StatusBadRequest, "user_id_or_name_required")
 		return
 	}
@@ -195,8 +201,14 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем user_id из initData если не передан напрямую
 	userID := req.UserID
+	// #region agent log
+	log.Printf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
+	// #endregion
 	if userID == 0 && req.InitData != "" {
 		result, err := ParseInitData(req.InitData)
+		// #region agent log
+		log.Printf("[DEBUG registerGuest] ParseInitData result: err=%v, result=%+v", err, result)
+		// #endregion
 		if err == nil {
 			// Пробуем разные типы для userId
 			if uid, ok := result["userId"].(int); ok {
@@ -206,6 +218,9 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 			} else if uidInt64, ok := result["userId"].(int64); ok {
 				userID = int(uidInt64)
 			}
+			// #region agent log
+			log.Printf("[DEBUG registerGuest] Parsed user_id from initData: %d (type check: int=%v, float64=%v, int64=%v)", userID, result["userId"], result["userId"], result["userId"])
+			// #endregion
 			log.Printf("Parsed user_id from initData: %d", userID)
 		} else {
 			log.Printf("Error parsing initData: %v", err)
@@ -213,6 +228,9 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if userID == 0 {
+		// #region agent log
+		log.Printf("[DEBUG registerGuest] user_id is 0 after all attempts. InitData provided: %v (len=%d), UserID in request: %d, FirstName: %s, LastName: %s", req.InitData != "", len(req.InitData), req.UserID, req.FirstName, req.LastName)
+		// #endregion
 		log.Printf("Registration failed: user_id is 0. InitData provided: %v, UserID in request: %d", req.InitData != "", req.UserID)
 		JSONError(w, http.StatusBadRequest, "user_id required")
 		return

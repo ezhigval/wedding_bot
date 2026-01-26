@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-mo
 import { generateCrossword, type CrosswordGrid, type CrosswordWord } from '../../utils/crosswordGenerator'
 import { getCrosswordData, saveCrosswordProgress, updateGameScore, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
+import { useUser } from '../../contexts/UserContext'
 import Confetti from '../common/Confetti'
 import type { Config } from '../../types'
 
@@ -29,7 +30,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [wrongWords, setWrongWords] = useState<Set<string>>(new Set()) // Неправильные слова после завершения
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [userId, setUserId] = useState<number | null>(null)
+  const { userId } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [crosswordIndex, setCrosswordIndex] = useState<number>(0)
   const [crosswordStartDate, setCrosswordStartDate] = useState<string>('')
@@ -76,49 +77,13 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [])
 
   useEffect(() => {
-    if (!config) return
+    if (!config || !userId) return
 
     const loadGame = async () => {
       setLoading(true)
       try {
-        // Получаем userId
-        const tg = window.Telegram?.WebApp
-        const initData = (tg as any)?.initData || ''
-        let currentUserId: number | null = null
-
-        if (initData) {
-          try {
-            const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ initData }),
-            })
-            if (response.ok) {
-              const parsed = await response.json()
-              currentUserId = parsed.userId
-            }
-          } catch (e) {
-            console.error('Error parsing initData:', e)
-          }
-        }
-
-        if (!currentUserId) {
-          const savedUserId = localStorage.getItem('telegram_user_id')
-          if (savedUserId) {
-            currentUserId = parseInt(savedUserId)
-          }
-        }
-
-        if (!currentUserId) {
-          console.error('Cannot load crossword: userId not found')
-          setLoading(false)
-          return
-        }
-
-        setUserId(currentUserId)
-
         // Загружаем данные кроссворда
-        const data = await getCrosswordData(currentUserId)
+        const data = await getCrosswordData(userId)
         
         if (data.words.length === 0) {
           console.warn('Нет слов для кроссворда')
@@ -270,7 +235,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
 
     loadGame()
-  }, [config])
+  }, [config, userId])
 
   const handleCellClick = (row: number, col: number) => {
     if (!crossword || isCompleted) return // Блокируем клики после завершения

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getWordleWord, getWordleProgress, submitWordleGuess, getWordleState, saveWordleState, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
+import { useUser } from '../../contexts/UserContext'
 import Confetti from '../common/Confetti'
 import type { Config } from '../../types'
 
@@ -37,7 +38,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [guessedWords, setGuessedWords] = useState<string[]>([])
   const [alreadyGuessed, setAlreadyGuessed] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [userId, setUserId] = useState<number | null>(null)
+  const { userId } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [lastWordDate, setLastWordDate] = useState<string>('')
   const [timeUntilNextWord, setTimeUntilNextWord] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
@@ -57,50 +58,15 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   }, [])
 
   useEffect(() => {
-    if (!config) return
+    if (!config || !userId) return
 
     const loadGame = async () => {
       setLoading(true)
       try {
-        // Получаем userId
-        const tg = window.Telegram?.WebApp
-        const initData = (tg as any)?.initData || ''
-        let currentUserId: number | null = null
-
-        if (initData) {
-          try {
-            const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ initData }),
-            })
-            if (response.ok) {
-              const parsed = await response.json()
-              currentUserId = parsed.userId
-            }
-          } catch (e) {
-            console.error('Error parsing initData:', e)
-          }
-        }
-
-        if (!currentUserId) {
-          const savedUserId = localStorage.getItem('telegram_user_id')
-          if (savedUserId) {
-            currentUserId = parseInt(savedUserId)
-          }
-        }
-
-        if (!currentUserId) {
-          console.error('Cannot load Wordle: userId not found')
-          setLoading(false)
-          return
-        }
-
-        setUserId(currentUserId)
 
         // Загружаем состояние игры
-        const state = await getWordleState(currentUserId)
-        const progress = await getWordleProgress()
+        const state = await getWordleState(userId)
+        const progress = await getWordleProgress(userId)
         
         if (state && state.current_word && state.attempts && state.last_word_date) {
           // Восстанавливаем состояние из сохраненного
@@ -164,7 +130,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           startCountdownTimer(state.last_word_date)
         } else {
           // Нет сохраненного состояния - загружаем новое слово
-          const word = await getWordleWord(currentUserId)
+          const word = await getWordleWord(userId)
           
           if (word) {
             setTargetWord(word.toUpperCase())
@@ -192,8 +158,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           
           // Сохраняем начальное состояние
           setTimeout(() => {
-            if (currentUserId && word) {
-              saveWordleState(currentUserId, word.toUpperCase(), [], today, '').catch(console.error)
+            if (userId && word) {
+              saveWordleState(userId, word.toUpperCase(), [], today, '').catch(console.error)
             }
           }, 1000)
         }
@@ -214,7 +180,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     }
     
     loadGame()
-  }, [config])
+  }, [config, userId])
 
   // Функция проверки валидности слова по словарю
   const checkWordValidity = async (word: string): Promise<boolean> => {
@@ -480,7 +446,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       setTimeout(() => setShowConfetti(false), 2000)
       
       // Отправляем на сервер для сохранения прогресса и начисления очков (в фоне)
-      submitWordleGuess(currentGuess).then(result => {
+      if (!userId) return
+      submitWordleGuess(userId, currentGuess).then(result => {
         if (result.success) {
           // Успешно сохранено на сервере
           console.log('Word saved successfully:', result.message)

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import SectionTitle from './common/SectionTitle'
 import { submitRSVP } from '../utils/api'
 import { showAlert, hapticFeedback } from '../utils/telegram'
+import { useUser } from '../contexts/UserContext'
 import type { Guest } from '../types'
 
 const MAX_GUESTS = 9
@@ -13,6 +14,7 @@ interface RSVPFormProps {
 }
 
 export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
+  const { userId } = useUser()
   const [guests, setGuests] = useState<Guest[]>([])
   const [formData, setFormData] = useState({
     lastName: '',
@@ -83,10 +85,16 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
       }
     }
 
+    if (!userId) {
+      setError('Не удалось получить данные пользователя. Пожалуйста, перезагрузите приложение.')
+      hapticFeedback('heavy')
+      return
+    }
+
     setIsSubmitting(true)
     hapticFeedback('medium')
 
-    const result = await submitRSVP({
+    const result = await submitRSVP(userId, {
       lastName: formData.lastName || '', // Для guests-only может быть пустым
       firstName: formData.firstName || '', // Для guests-only может быть пустым
       category: formData.category || '', // Для guests-only может быть пустым
