@@ -16,11 +16,6 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const { userId, manualUsername, isLoading: userIdLoading } = useUser()
 
   const refreshRegistration = async () => {
-    if (userIdLoading) {
-      setIsLoading(true)
-      return
-    }
-
     setIsLoading(true)
     try {
       const attemptCheck = async (): Promise<RegistrationStatus> => {
@@ -45,10 +40,6 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    if (userIdLoading) {
-      setIsLoading(true)
-      return
-    }
     refreshRegistration()
   }, [userId, userIdLoading, manualUsername])
 
