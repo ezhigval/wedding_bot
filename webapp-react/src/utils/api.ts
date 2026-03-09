@@ -169,7 +169,17 @@ export async function checkRegistration(userId: number, username?: string): Prom
       params.set('username', normalizedUsername)
     }
     const url = `${checkUrl}?${params.toString()}`
-    const response = await fetch(url, { method: 'POST' })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        username: normalizedUsername,
+        initData: getInitData(),
+      }),
+    })
     
     if (response.ok) {
       const data = await response.json()

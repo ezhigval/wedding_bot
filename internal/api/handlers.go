@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -93,10 +94,25 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	var req struct {
+		UserID   int    `json:"userId"`
+		Username string `json:"username"`
+		InitData string `json:"initData"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+			JSONError(w, http.StatusBadRequest, "invalid request")
+			return
+		}
+	}
+
 	userIDStr := strings.TrimSpace(r.URL.Query().Get("userId"))
 	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	if username == "" {
+		username = google_sheets.NormalizeTelegramUsername(req.Username)
+	}
 
-	userID := 0
+	userID := req.UserID
 	if userIDStr != "" {
 		parsedUserID, err := strconv.Atoi(userIDStr)
 		if err != nil {
@@ -104,6 +120,18 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = parsedUserID
+	}
+
+	if req.InitData != "" {
+		result, err := ParseInitData(req.InitData)
+		if err == nil {
+			if userID == 0 {
+				userID = extractUserIDFromParsedInitData(result)
+			}
+			if username == "" {
+				username = extractUsernameFromParsedInitData(result)
+			}
+		}
 	}
 
 	if userID == 0 && username == "" {

@@ -154,7 +154,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
           identity.username = current.username
         }
         if (current.userId) {
-          identity = current
+          const merged: ExtractedIdentity = { ...current }
+          // Иногда username появляется в ранней попытке, а user_id — в поздней.
+          // Сохраняем найденный username, чтобы не терять fallback-идентификацию.
+          if (!merged.username && identity.username) {
+            merged.username = identity.username
+          }
+          identity = merged
           break
         }
       }
