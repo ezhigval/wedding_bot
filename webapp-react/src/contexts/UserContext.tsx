@@ -20,6 +20,8 @@ interface ExtractedIdentity {
 
 const SESSION_USER_ID_KEY = 'telegram_user_id_session'
 const SESSION_USERNAME_KEY = 'telegram_username_session'
+const PERSISTENT_USER_ID_KEY = 'telegram_user_id'
+const PERSISTENT_USERNAME_KEY = 'telegram_username'
 
 function normalizeUsername(username?: string | null): string | null {
   const normalized = (username || '').trim().replace(/^@/, '').toLowerCase()
@@ -140,9 +142,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Способ 5: Ручной username (для режима вне Telegram)
+    // Способ 5: Из localStorage (persistent fallback, как в рабочей схеме a554b30)
+    const savedPersistentUserId = localStorage.getItem(PERSISTENT_USER_ID_KEY)
+    const savedPersistentUsername = normalizeUsername(localStorage.getItem(PERSISTENT_USERNAME_KEY))
+    if (savedPersistentUserId) {
+      const parsedId = parseInt(savedPersistentUserId, 10)
+      if (!isNaN(parsedId) && parsedId > 0) {
+        console.log('[UserContext] Got user_id from localStorage:', parsedId)
+        return { userId: parsedId, username: savedPersistentUsername }
+      }
+    }
+
+    // Способ 6: Ручной username (для режима вне Telegram)
     const savedManualUsername = normalizeUsername(localStorage.getItem('manual_username'))
-    return { userId: null, username: savedManualUsername }
+    return { userId: null, username: savedManualUsername || savedPersistentUsername }
   }
 
   const refreshUserId = async () => {
@@ -180,7 +193,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
         // Сохраняем только в пределах текущей сессии,
         // чтобы не тащить старый user_id между разными пользователями на устройстве.
         sessionStorage.setItem(SESSION_USER_ID_KEY, identity.userId.toString())
-        localStorage.removeItem('telegram_user_id')
+        localStorage.setItem(PERSISTENT_USER_ID_KEY, identity.userId.toString())
+        if (identity.username) {
+          localStorage.setItem(PERSISTENT_USERNAME_KEY, identity.username)
+        }
         setError(null)
       } else {
         setUserId(null)
