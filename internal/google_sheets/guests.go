@@ -89,7 +89,20 @@ func buildAuthIdentifierForStorage(userID int, username string) string {
 }
 
 func isConfirmedValue(value string) bool {
-	return strings.ToUpper(strings.TrimSpace(value)) == "ДА"
+	clean := strings.TrimSpace(value)
+	if clean == "" {
+		return false
+	}
+
+	switch strings.ToLower(clean) {
+	case "да", "true", "1", "yes", "y", "истина", "ok":
+		return true
+	case "нет", "false", "0", "no", "n", "ложь":
+		return false
+	}
+
+	upper := strings.ToUpper(clean)
+	return upper == "TRUE" || upper == "ДА" || upper == "✓" || upper == "✔"
 }
 
 // AddGuestToSheets добавляет гостя в Google Sheets
@@ -154,7 +167,7 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 		updates := []*sheets.ValueRange{
 			{
 				Range:  fmt.Sprintf("%s!C%d", sheetName, foundRow),
-				Values: [][]interface{}{{"ДА"}},
+				Values: [][]interface{}{{true}},
 			},
 		}
 
@@ -234,7 +247,7 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	} else {
 		rowData = append(rowData, "")
 	}
-	rowData = append(rowData, "ДА") // Подтверждение
+	rowData = append(rowData, true) // Подтверждение (checkbox)
 	if category != nil {
 		rowData = append(rowData, *category)
 	} else {
@@ -547,9 +560,9 @@ func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, userna
 		return fmt.Errorf("гость с username=%s не найден", NormalizeTelegramUsername(username))
 	}
 
-	// Обновляем столбец C на "НЕТ"
+	// Снимаем подтверждение в столбце C (checkbox false)
 	valueRange := &sheets.ValueRange{
-		Values: [][]interface{}{{"НЕТ"}},
+		Values: [][]interface{}{{false}},
 	}
 
 	range_ := fmt.Sprintf("%s!C%d", sheetName, foundRow)

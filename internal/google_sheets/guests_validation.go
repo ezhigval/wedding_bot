@@ -11,6 +11,53 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
+type guestHeaderSpec struct {
+	displayName string
+	aliases     []string
+	required    bool
+}
+
+func normalizeHeaderForCompare(value string) string {
+	clean := strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer(
+		" ", "",
+		"_", "",
+		"-", "",
+		"—", "",
+		"\t", "",
+		".", "",
+		",", "",
+		":", "",
+		";", "",
+		"(", "",
+		")", "",
+		"/", "",
+		"\\", "",
+		"'", "",
+		"\"", "",
+	)
+	return replacer.Replace(clean)
+}
+
+func headerMatchesAnyAlias(header string, aliases []string) bool {
+	normalizedHeader := normalizeHeaderForCompare(header)
+	if normalizedHeader == "" {
+		return false
+	}
+
+	for _, alias := range aliases {
+		normalizedAlias := normalizeHeaderForCompare(alias)
+		if normalizedAlias == "" {
+			continue
+		}
+		if strings.Contains(normalizedHeader, normalizedAlias) || strings.Contains(normalizedAlias, normalizedHeader) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ValidateGuestSheetStructure проверяет структуру листа "Список гостей"
 // и создает заголовки, если их нет
 func ValidateGuestSheetStructure(ctx context.Context) error {
@@ -58,44 +105,71 @@ func ValidateGuestSheetStructure(ctx context.Context) error {
 		}
 	}
 
-	// Ожидаемые заголовки (минимальный набор)
-	expectedHeaders := map[int]string{
-		0: "Имя",           // A
-		1: "Фамилия",       // B (опционально, может быть объединено с A)
-		2: "Подтверждение", // C
-		3: "Категория",     // D
-		4: "Сторона",       // E
-		5: "user_id",       // F
-		6: "Стол",          // G
+	// Ожидаемые заголовки и совместимые варианты.
+	// Базовая рабочая схема:
+	// A = имя и фамилия, C = присутствие (checkbox true/false), F = user_id/username
+	expectedHeaders := map[int]guestHeaderSpec{
+		0: {
+			displayName: "Имя и фамилия",
+			aliases:     []string{"Имя и фамилия", "ФИО", "Имя", "Full name"},
+			required:    true,
+		}, // A
+		1: {
+			displayName: "Возраст",
+			aliases:     []string{"Возраст", "Фамилия", "Age"},
+			required:    false,
+		}, // B
+		2: {
+			displayName: "Присутствие на свадьбе",
+			aliases:     []string{"Присутствие на свадьбе", "Присутствие", "Подтверждение", "Attendance"},
+			required:    true,
+		}, // C
+		3: {
+			displayName: "Родство",
+			aliases:     []string{"Родство", "Категория", "Category"},
+			required:    false,
+		}, // D
+		4: {
+			displayName: "Сторона",
+			aliases:     []string{"Сторона", "Side"},
+			required:    false,
+		}, // E
+		5: {
+			displayName: "Телеграм Юсер_айди",
+			aliases: []string{
+				"Телеграм Юсер_айди",
+				"Telegram user id",
+				"Telegram ID",
+				"user_id",
+				"userid",
+				"username",
+			},
+			required: true,
+		}, // F
+		6: {
+			displayName: "Стол",
+			aliases:     []string{"Стол", "Table"},
+			required:    false,
+		}, // G
 	}
 
-	// Проверяем наличие обязательных заголовков
+	// Проверяем наличие заголовков
 	missingHeaders := []string{}
 	needsUpdate := false
 
-	// Проверяем, есть ли хотя бы заголовок "Имя" в колонке A
-	if len(headers) == 0 || headers[0] == "" {
-		needsUpdate = true
-		missingHeaders = append(missingHeaders, "Имя (колонка A)")
-	}
-
-	// Проверяем наличие других важных заголовков
-	for col, expectedHeader := range expectedHeaders {
+	for col, spec := range expectedHeaders {
 		if col >= len(headers) || strings.TrimSpace(headers[col]) == "" {
-			// Если это не обязательный заголовок (B - Фамилия может быть объединено с A), пропускаем
-			if col == 1 {
+			if !spec.required {
 				continue
 			}
 			needsUpdate = true
-			missingHeaders = append(missingHeaders, fmt.Sprintf("%s (колонка %s)", expectedHeader, getColumnLetter(col+1)))
-		} else {
-			// Проверяем, что заголовок правильный (не строго, но логично)
-			currentHeader := strings.TrimSpace(strings.ToLower(headers[col]))
-			expectedLower := strings.ToLower(expectedHeader)
-			if !strings.Contains(currentHeader, expectedLower) && !strings.Contains(expectedLower, currentHeader) {
-				// Заголовок есть, но не совпадает - это не критично, просто логируем
-				log.Printf("⚠️ В колонке %s заголовок '%s' не совпадает с ожидаемым '%s'", getColumnLetter(col+1), headers[col], expectedHeader)
-			}
+			missingHeaders = append(missingHeaders, fmt.Sprintf("%s (колонка %s)", spec.displayName, getColumnLetter(col+1)))
+			continue
+		}
+
+		if !headerMatchesAnyAlias(headers[col], spec.aliases) {
+			// Заголовок есть, но отличается от знакомых вариантов — не критично, только лог.
+			log.Printf("⚠️ В колонке %s заголовок '%s' не распознан (ожидалось что-то из: %s)", getColumnLetter(col+1), headers[col], strings.Join(spec.aliases, ", "))
 		}
 	}
 
@@ -105,12 +179,12 @@ func ValidateGuestSheetStructure(ctx context.Context) error {
 
 		// Создаем массив заголовков
 		newHeaders := make([]interface{}, 7)
-		newHeaders[0] = "Имя"
-		newHeaders[1] = "Фамилия"
-		newHeaders[2] = "Подтверждение"
-		newHeaders[3] = "Категория"
+		newHeaders[0] = "Имя и фамилия"
+		newHeaders[1] = "Возраст"
+		newHeaders[2] = "Присутствие на свадьбе"
+		newHeaders[3] = "Родство"
 		newHeaders[4] = "Сторона"
-		newHeaders[5] = "user_id"
+		newHeaders[5] = "Телеграм Юсер_айди"
 		newHeaders[6] = "Стол"
 
 		// Обновляем только если первая строка пустая или неполная
@@ -166,4 +240,3 @@ func getColumnLetter(colNum int) string {
 
 	return result
 }
-
