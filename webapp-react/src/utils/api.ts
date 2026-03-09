@@ -13,6 +13,34 @@ const DEFAULT_CONFIG: Config = {
 
 let cachedConfig: Config | null = null
 
+function firstNonEmptyString(...values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue
+    }
+    const clean = value.trim()
+    if (clean !== '' && clean !== 'undefined' && clean !== 'null') {
+      return clean
+    }
+  }
+  return undefined
+}
+
+function normalizeApiUrl(rawApiUrl: string | undefined): string {
+  const fallback = DEFAULT_CONFIG.apiUrl
+  const candidate = firstNonEmptyString(rawApiUrl)
+  if (!candidate) {
+    return fallback
+  }
+
+  try {
+    const normalized = new URL(candidate, window.location.origin)
+    return normalized.toString().replace(/\/+$/, '')
+  } catch {
+    return fallback
+  }
+}
+
 export async function loadConfig(): Promise<Config> {
   if (cachedConfig) {
     return cachedConfig
@@ -24,15 +52,34 @@ export async function loadConfig(): Promise<Config> {
     const response = await fetch(`${DEFAULT_CONFIG.apiUrl}/config`)
     if (response.ok) {
       const data = await response.json()
-      const mapped: Partial<Config> = {
-        weddingDate: data.weddingDate || data.wedding_date,
-        groomName: data.groomName || data.groom_name,
-        brideName: data.brideName || data.bride_name,
-        groomTelegram: data.groomTelegram || data.groom_telegram,
-        brideTelegram: data.brideTelegram || data.bride_telegram,
-        weddingAddress: data.weddingAddress || data.wedding_address,
-        apiUrl: data.apiUrl || data.api_url,
+      const mapped: Partial<Config> = {}
+      const weddingDate = firstNonEmptyString(data.weddingDate, data.wedding_date)
+      const groomName = firstNonEmptyString(data.groomName, data.groom_name)
+      const brideName = firstNonEmptyString(data.brideName, data.bride_name)
+      const groomTelegram = firstNonEmptyString(data.groomTelegram, data.groom_telegram)
+      const brideTelegram = firstNonEmptyString(data.brideTelegram, data.bride_telegram)
+      const weddingAddress = firstNonEmptyString(data.weddingAddress, data.wedding_address)
+
+      if (weddingDate) {
+        mapped.weddingDate = weddingDate
       }
+      if (groomName) {
+        mapped.groomName = groomName
+      }
+      if (brideName) {
+        mapped.brideName = brideName
+      }
+      if (groomTelegram) {
+        mapped.groomTelegram = groomTelegram
+      }
+      if (brideTelegram) {
+        mapped.brideTelegram = brideTelegram
+      }
+      if (weddingAddress) {
+        mapped.weddingAddress = weddingAddress
+      }
+      mapped.apiUrl = normalizeApiUrl(firstNonEmptyString(data.apiUrl, data.api_url))
+
       config = { ...DEFAULT_CONFIG, ...mapped }
     }
   } catch (error) {
@@ -92,12 +139,17 @@ export async function submitRSVP(
       }),
     })
 
-    if (response.ok) {
-      return { success: true }
-    } else {
-      const data = await response.json()
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      return { success: false, error: 'Некорректный ответ сервера. Обновите страницу и попробуйте снова.' }
+    }
+
+    const data = await response.json()
+    if (!response.ok || data?.success === false) {
       return { success: false, error: data.error || 'Ошибка регистрации' }
     }
+
+    return { success: true }
   } catch (error) {
     console.error('Error submitting RSVP:', error)
     return { success: false, error: 'Ошибка сети' }
@@ -127,12 +179,17 @@ export async function cancelInvitation(auth?: {
       }),
     })
 
-    if (response.ok) {
-      return { success: true }
-    } else {
-      const data = await response.json()
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      return { success: false, error: 'Некорректный ответ сервера. Обновите страницу и попробуйте снова.' }
+    }
+
+    const data = await response.json()
+    if (!response.ok || data?.success === false) {
       return { success: false, error: data.error || 'Ошибка отмены' }
     }
+
+    return { success: true }
   } catch (error) {
     console.error('Error canceling invitation:', error)
     return { success: false, error: 'Ошибка сети' }
