@@ -294,6 +294,7 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 		"groom_telegram":  config.GroomTelegram,
 		"bride_telegram":  config.BrideTelegram,
 		"group_link":      config.GroupLink,
+		"api_url":         "/api",
 	}
 
 	JSONResponse(w, http.StatusOK, config)
