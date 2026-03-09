@@ -311,6 +311,7 @@ func CheckGuestRegistrationByIdentifier(ctx context.Context, userID int, usernam
 		return false, fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
+	foundMatch := false
 	for i, row := range resp.Values {
 		if len(row) <= 5 {
 			continue
@@ -320,6 +321,7 @@ func CheckGuestRegistrationByIdentifier(ctx context.Context, userID int, usernam
 		if !guestIdentifierMatches(identifier, userID, username) {
 			continue
 		}
+		foundMatch = true
 
 		confirmation := ""
 		if len(row) > 2 {
@@ -328,7 +330,15 @@ func CheckGuestRegistrationByIdentifier(ctx context.Context, userID int, usernam
 
 		registered := isConfirmedValue(confirmation)
 		log.Printf("Найдена строка гостя по идентификатору (row=%d, registered=%v, id=%s)", i+1, registered, identifier)
-		return registered, nil
+		if registered {
+			return true, nil
+		}
+		// Не выходим сразу при false: ниже может быть другая строка этого же пользователя с подтверждением.
+	}
+
+	if foundMatch {
+		log.Printf("Найдены строки по идентификатору, но без подтверждения участия (user_id=%d, username=%s)", userID, NormalizeTelegramUsername(username))
+		return false, nil
 	}
 
 	if userID > 0 {
