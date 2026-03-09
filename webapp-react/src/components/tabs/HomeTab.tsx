@@ -144,21 +144,22 @@ function VenueInfo() {
       className="text-center mb-3"
     >
       <h3 className="text-2xl md:text-3xl font-secondary font-semibold text-primary mb-1 leading-[1.2]">
-        Токсово
+        Санкт-Петербург
       </h3>
-      <p className="text-lg md:text-xl font-main text-gray-700 mb-1 leading-[1.2]">Панорама Холл</p>
+      <p className="text-lg md:text-xl font-main text-gray-700 mb-1 leading-[1.2]">Ресторан Марсала</p>
       <p className="text-[16.8px] md:text-[19.2px] text-gray-600 leading-[1.2]">
-        Разъезжая улица, 15, городской посёлок Токсово, Токсовское городское поселение,
-        Всеволожский район, Ленинградская область
+        Большой проспект Петроградской стороны, 84, Санкт-Петербург
       </p>
     </motion.div>
   )
 }
 
 function VenueMap() {
-  const lat = 60.136143
-  const lon = 30.525849
-  const zoom = 15
+  const address = 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург'
+  const query = encodeURIComponent(address)
+  const centerLat = 59.9386
+  const centerLon = 30.3141
+  const zoom = 12
 
   return (
     <motion.div
@@ -169,7 +170,7 @@ function VenueMap() {
       className="w-full aspect-video rounded-lg overflow-hidden shadow-lg mb-4"
     >
       <iframe
-        src={`https://yandex.ru/map-widget/v1/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat}`}
+        src={`https://yandex.ru/map-widget/v1/?ll=${centerLon},${centerLat}&z=${zoom}&mode=search&text=${query}`}
         width="100%"
         height="100%"
         frameBorder="0"

@@ -6,7 +6,7 @@ const DEFAULT_CONFIG: Config = {
   brideName: 'Мария',
   groomTelegram: 'ezhigval',
   brideTelegram: '',
-  weddingAddress: 'Санкт-Петербург',
+  weddingAddress: 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург',
   apiUrl: window.location.origin + '/api',
 }
 

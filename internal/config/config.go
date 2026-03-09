@@ -112,7 +112,7 @@ func LoadConfig() error {
 
 	WeddingAddress = os.Getenv("WEDDING_ADDRESS")
 	if WeddingAddress == "" {
-		WeddingAddress = "Санкт-Петербург"
+		WeddingAddress = "Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург"
 	}
 
 	// URL Mini App
