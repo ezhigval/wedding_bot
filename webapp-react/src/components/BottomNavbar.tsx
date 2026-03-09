@@ -1,4 +1,3 @@
-import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import type { TabName } from '../types'
 import { hapticFeedback } from '../utils/telegram'
@@ -23,117 +22,13 @@ const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = 
   { id: 'wishes', label: 'Пожелания' },
 ]
 
-const ITEMS_PER_ROW = 4 // Количество кнопок в одном ряду
-const ROW_HEIGHT = 80 // Высота одного ряда в пикселях
-const DRAG_INDICATOR_HEIGHT = 30 // Высота индикатора для вытягивания (уменьшена)
-const DRAG_THRESHOLD = 20 // Порог для открытия/закрытия при перетаскивании (уменьшен для более отзывчивости)
-const CLICK_THRESHOLD = 5 // Порог для различения клика и драга
-
-// Вычисляем количество рядов
-const totalRows = Math.ceil(allNavItems.length / ITEMS_PER_ROW)
-const visibleRows = 1 // Первый ряд (4 кнопки)
-
 export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
-  const navRef = useRef<HTMLDivElement>(null)
-  const startY = useRef(0)
-  const currentY = useRef(0)
-  const startTime = useRef(0)
-  const hasMoved = useRef(false)
-
-  // Убрали трансформацию y - теперь управляем только высотой
-
   const handleTabClick = (tab: TabName, e?: React.MouseEvent) => {
-    // Проверяем, что это был клик, а не драг
-    if (hasMoved.current || isDragging) {
-      e?.preventDefault()
-      e?.stopPropagation()
-      return
-    }
+    e?.preventDefault()
     hapticFeedback('light')
     onTabChange(tab)
-    // Закрываем навбар после выбора вкладки
-    if (isExpanded) {
-      setIsExpanded(false)
-    }
     // Скролл будет сброшен в App.tsx через useEffect при изменении activeTab
   }
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    // Игнорируем клики по кнопкам - они обрабатываются отдельно
-    const target = e.target as HTMLElement
-    if (target.closest('button')) {
-      return
-    }
-
-    startY.current = e.clientY
-    currentY.current = startY.current
-    startTime.current = Date.now()
-    hasMoved.current = false
-    setIsDragging(true)
-    e.preventDefault()
-    e.stopPropagation()
-    // Для тач-устройств блокируем скролл
-    if (e.pointerType === 'touch') {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    }
-  }
-
-  // Убрали синхронизацию с dragY - теперь управляем только через isExpanded
-
-  // Обработка глобальных событий pointer
-  useEffect(() => {
-    if (isDragging) {
-      const handleGlobalPointerMove = (e: PointerEvent) => {
-        currentY.current = e.clientY
-        const deltaY = startY.current - currentY.current
-        
-        // Отмечаем, что произошло движение
-        if (Math.abs(deltaY) > CLICK_THRESHOLD) {
-          hasMoved.current = true
-        }
-        
-        // Не используем dragY для трансформации, только для отслеживания движения
-      }
-
-      const handleGlobalPointerUp = () => {
-        const deltaY = startY.current - currentY.current
-
-        if (Math.abs(deltaY) > DRAG_THRESHOLD) {
-          // Если было перетаскивание - обрабатываем как драг
-          if (deltaY > DRAG_THRESHOLD) {
-            // Вытягиваем навбар
-            setIsExpanded(true)
-            hapticFeedback('medium')
-          } else if (deltaY < -DRAG_THRESHOLD && isExpanded) {
-            // Сворачиваем навбар
-            setIsExpanded(false)
-            hapticFeedback('medium')
-          }
-        } else {
-          // Если движения не было или было минимальное - это клик, переключаем состояние
-          setIsExpanded(!isExpanded)
-          hapticFeedback('light')
-        }
-        
-        setIsDragging(false)
-        
-        // Сбрасываем флаг движения после небольшой задержки
-        setTimeout(() => {
-          hasMoved.current = false
-        }, 150)
-      }
-
-      window.addEventListener('pointermove', handleGlobalPointerMove)
-      window.addEventListener('pointerup', handleGlobalPointerUp)
-
-      return () => {
-        window.removeEventListener('pointermove', handleGlobalPointerMove)
-        window.removeEventListener('pointerup', handleGlobalPointerUp)
-      }
-    }
-  }, [isDragging, isExpanded])
 
   const renderNavButton = (item: { id: TabName; label: string; isSpecial?: boolean }) => {
     const isActive = activeTab === item.id
@@ -143,13 +38,13 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
       <motion.button
         key={item.id}
         onClick={(e) => handleTabClick(item.id, e)}
-        className="flex flex-col items-center justify-center gap-0.5 px-1 py-2 h-20 min-w-0 transition-colors"
+        className="flex flex-col items-center justify-center gap-0.5 px-1 py-1 h-12 min-w-0 transition-colors"
         whileTap={{ scale: 0.95 }}
       >
         <motion.div
           animate={{ scale: isActive ? 1.1 : 1 }}
           transition={{ duration: 0.2 }}
-          className="w-6 h-6"
+          className="w-5 h-5"
         >
           <NavIcon
             name={item.id as 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'}
@@ -158,7 +53,7 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
           />
         </motion.div>
         <span
-          className={`text-xs font-main transition-colors ${
+          className={`text-[10px] font-main transition-colors ${
             isActive
               ? 'text-primary font-semibold'
               : 'text-gray-600'
@@ -170,55 +65,18 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     )
   }
 
-  // Разделяем кнопки на видимые и скрытые
-  const visibleItems = allNavItems.slice(0, visibleRows * ITEMS_PER_ROW)
-  const hiddenItems = allNavItems.slice(visibleRows * ITEMS_PER_ROW)
-
   return (
-    <motion.nav
-      ref={navRef}
-      animate={{
-        height: isExpanded 
-          ? DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * totalRows 
-          : DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows,
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 border-t-2 border-primary/30 shadow-lg backdrop-blur-sm"
+      style={{
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 6px)',
       }}
-      initial={{ height: DRAG_INDICATOR_HEIGHT + ROW_HEIGHT * visibleRows }}
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-primary/30 shadow-lg backdrop-blur-sm overflow-hidden flex flex-col justify-end"
-      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      onPointerDown={handlePointerDown}
     >
-      {/* Индикатор для вытягивания - увеличенный и более заметный */}
-      <div className="w-full flex justify-center py-1 cursor-grab active:cursor-grabbing touch-none select-none drag-handle flex-shrink-0">
-        <motion.div
-          className="relative"
-          animate={{
-            scale: isDragging ? 1.1 : 1,
-          }}
-          transition={{ duration: 0.2 }}
-        >
-          <motion.div
-            className="w-20 h-1.5 bg-gradient-to-r from-gray-400 via-gray-500 to-gray-400 rounded-full shadow-md"
-            animate={{
-              width: isDragging ? '6rem' : '5rem',
-              opacity: isDragging ? 1 : 0.7,
-              boxShadow: isDragging 
-                ? '0 4px 12px rgba(0, 0, 0, 0.2)' 
-                : '0 2px 6px rgba(0, 0, 0, 0.1)',
-            }}
-            transition={{ duration: 0.2 }}
-          />
-        </motion.div>
+      {/* Сетка кнопок 4x2 всегда видимая */}
+      <div className="grid grid-cols-4 gap-0 px-1 pt-1">
+        {allNavItems.map(renderNavButton)}
       </div>
-
-      {/* Сетка кнопок 4xN */}
-      <div className="grid grid-cols-4 gap-0 flex-shrink-0" style={{ gridTemplateRows: `repeat(${isExpanded ? totalRows : visibleRows}, ${ROW_HEIGHT}px)` }}>
-        {/* Видимые кнопки (первый ряд) */}
-        {visibleItems.map(renderNavButton)}
-        
-        {/* Скрытые кнопки (показываются при вытягивании) */}
-        {isExpanded && hiddenItems.map(renderNavButton)}
-      </div>
-    </motion.nav>
+    </nav>
   )
 }
 

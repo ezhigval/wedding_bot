@@ -19,7 +19,7 @@ export default function SeatingTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 pb-[120px]">
+    <div className="min-h-screen px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       <SectionCard>
         <SectionTitle>РАССАДКА</SectionTitle>
         <p className="text-center text-gray-500 py-4 text-[19.2px]">

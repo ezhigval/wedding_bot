@@ -23,7 +23,7 @@ export default function HomeTab() {
   }
 
   return (
-    <div className="min-h-screen pb-[120px]">
+    <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       {/* Hero Section */}
       <section className="relative w-full">
         <div className="relative h-[60vh] min-h-[400px] overflow-hidden">
@@ -157,9 +157,10 @@ function VenueInfo() {
 function VenueMap() {
   const address = 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург'
   const query = encodeURIComponent(address)
-  const centerLat = 59.9386
-  const centerLon = 30.3141
-  const zoom = 12
+  // Координаты дома: Большой проспект П.С., 84 (нужны, чтобы метка всегда была на месте)
+  const lat = 59.9643641
+  const lon = 30.3092636
+  const zoom = 16
 
   return (
     <motion.div
@@ -170,7 +171,7 @@ function VenueMap() {
       className="w-full aspect-video rounded-lg overflow-hidden shadow-lg mb-4"
     >
       <iframe
-        src={`https://yandex.ru/map-widget/v1/?ll=${centerLon},${centerLat}&z=${zoom}&mode=search&text=${query}`}
+        src={`https://yandex.ru/map-widget/v1/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat},pm2rdm&mode=search&text=${query}`}
         width="100%"
         height="100%"
         frameBorder="0"

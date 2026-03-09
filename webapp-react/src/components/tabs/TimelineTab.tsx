@@ -7,6 +7,24 @@ import { loadTimeline } from '../../utils/api'
 import { useRegistration } from '../../contexts/RegistrationContext'
 import type { TimelineItem } from '../../types'
 
+function splitEventAndAddress(event: string): { title: string; address?: string } {
+  const trimmed = event.trim()
+  // Поддерживаем формат: "Событие (адрес)" — адрес берём только из завершающих скобок,
+  // чтобы не ломать возможные скобки внутри текста.
+  const match = trimmed.match(/^(.*?)(?:\s*\(([^()]+)\))\s*$/)
+  if (!match) {
+    return { title: trimmed }
+  }
+
+  const title = match[1].trim()
+  const address = match[2].trim()
+  if (!title || !address) {
+    return { title: trimmed }
+  }
+
+  return { title, address }
+}
+
 export default function TimelineTab() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,7 +52,7 @@ export default function TimelineTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 pb-[120px]">
+    <div className="min-h-screen px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       <SectionCard>
         <SectionTitle>ПЛАН ДНЯ</SectionTitle>
         {loading ? (
@@ -52,6 +70,9 @@ export default function TimelineTab() {
         ) : (
           <div className="space-y-2">
             {timeline.map((item, index) => (
+              (() => {
+                const { title, address } = splitEventAndAddress(item.event)
+                return (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, x: -20 }}
@@ -64,9 +85,16 @@ export default function TimelineTab() {
                   {item.time}
                 </div>
                 <div className="flex-1 text-gray-700 text-[19.2px] md:text-[21.6px] leading-[1.2]">
-                  {item.event}
+                  <div>{title}</div>
+                  {address && (
+                    <div className="mt-1 text-gray-500 text-[16.8px] md:text-[19.2px] leading-[1.2]">
+                      <span className="font-semibold text-gray-600">Адрес:</span> {address}
+                    </div>
+                  )}
                 </div>
               </motion.div>
+                )
+              })()
             ))}
           </div>
         )}

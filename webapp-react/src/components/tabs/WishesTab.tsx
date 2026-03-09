@@ -22,7 +22,7 @@ export default function WishesTab() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 pb-[120px]">
+    <div className="min-h-screen px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}

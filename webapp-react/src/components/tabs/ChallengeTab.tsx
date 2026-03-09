@@ -316,9 +316,12 @@ export default function ChallengeTab() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden pb-[120px]">
+    <div className="h-screen flex flex-col overflow-hidden pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       {/* Прокручиваемая область с играми */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: '200px' }}>
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)' }}
+      >
         <SectionCard>
           <SectionTitle>ИСПЫТАНИЕ</SectionTitle>
           <p className="text-center text-gray-600 mb-6 leading-[1.2] text-[19.2px]">
