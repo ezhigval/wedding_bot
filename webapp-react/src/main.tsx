@@ -64,7 +64,7 @@ if (tg) {
     }
   }
   // Сохраняем статичный user_id для локальной разработки
-  localStorage.setItem('telegram_user_id', '1034074077')
+  sessionStorage.setItem('telegram_user_id_session', '1034074077')
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -74,4 +74,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
-

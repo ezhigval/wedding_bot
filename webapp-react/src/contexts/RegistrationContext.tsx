@@ -16,18 +16,31 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const { userId, manualUsername, isLoading: userIdLoading } = useUser()
 
   const refreshRegistration = async () => {
+    if (userIdLoading) {
+      setIsLoading(true)
+      return
+    }
+
     setIsLoading(true)
     try {
-      // Проверяем по user_id и/или username.
-      // Это важно, потому что в колонке F может храниться как user_id, так и username.
-      if (!userIdLoading && (userId || manualUsername)) {
-        const status: RegistrationStatus = await checkRegistration(userId || 0, manualUsername || '')
-        setIsRegistered(status.registered || false)
+      if (!userId && !manualUsername) {
+        setIsRegistered(false)
         return
       }
 
-      // Нет идентификатора — не зависаем в Loading, просто считаем незарегистрированным
-      setIsRegistered(false)
+      const attemptCheck = async (): Promise<RegistrationStatus> => {
+        return checkRegistration(userId || 0, manualUsername || '')
+      }
+
+      let status: RegistrationStatus = await attemptCheck()
+
+      // Короткий повторный запрос при временном сбое.
+      if (!status.registered && (status.error === 'network_error' || status.error === 'server_error')) {
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        status = await attemptCheck()
+      }
+
+      setIsRegistered(status.registered || false)
     } catch (error) {
       console.error('Error checking registration:', error)
       setIsRegistered(false)
@@ -37,6 +50,10 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (userIdLoading) {
+      setIsLoading(true)
+      return
+    }
     refreshRegistration()
   }, [userId, userIdLoading, manualUsername])
 

@@ -9,6 +9,7 @@ import FlappyBirdGame from '../games/FlappyBirdGame'
 import CrosswordGame from '../games/CrosswordGame'
 import WordleGame from '../games/WordleGame'
 import { useRegistration } from '../../contexts/RegistrationContext'
+import { useUser } from '../../contexts/UserContext'
 import { loadConfig, getGameStats, updateGameScore, type GameStats } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
 import type { Config } from '../../types'
@@ -30,6 +31,7 @@ const ALL_GAMES: Game[] = [
 
 export default function ChallengeTab() {
   const { isRegistered, isLoading } = useRegistration()
+  const { userId } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [stats, setStats] = useState<GameStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
@@ -55,41 +57,13 @@ export default function ChallengeTab() {
     if (isRegistered && config) {
       loadStats()
     }
-  }, [isRegistered, config])
+  }, [isRegistered, config, userId])
 
   const loadStats = async () => {
     if (!config) return
     
     setLoadingStats(true)
     try {
-      // Получаем user_id
-      const tg = window.Telegram?.WebApp
-      const initData = (tg as any)?.initData || ''
-      let userId: number | null = null
-      
-      if (initData) {
-        try {
-          const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData }),
-          })
-          if (response.ok) {
-            const parsed = await response.json()
-            userId = parsed.userId
-          }
-        } catch (e) {
-          console.error('Error parsing initData:', e)
-        }
-      }
-      
-      if (!userId) {
-        const savedUserId = localStorage.getItem('telegram_user_id')
-        if (savedUserId) {
-          userId = parseInt(savedUserId)
-        }
-      }
-      
       if (userId) {
         const statsData = await getGameStats(userId)
         setStats(statsData)
@@ -159,34 +133,6 @@ export default function ChallengeTab() {
 
   const handleGameScore = async (score: number, gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
     if (!config) return
-
-    // Получаем userId
-    const tg = window.Telegram?.WebApp
-    const initData = (tg as any)?.initData || ''
-    let userId: number | null = null
-    
-    if (initData) {
-      try {
-        const response = await fetch(`${config.apiUrl}/parse-init-data`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData }),
-        })
-        if (response.ok) {
-          const parsed = await response.json()
-          userId = parsed.userId
-        }
-      } catch (e) {
-        console.error('Error parsing initData:', e)
-      }
-    }
-    
-    if (!userId) {
-      const savedUserId = localStorage.getItem('telegram_user_id')
-      if (savedUserId) {
-        userId = parseInt(savedUserId)
-      }
-    }
 
     if (!userId) {
       console.error('Cannot update score: userId not found')

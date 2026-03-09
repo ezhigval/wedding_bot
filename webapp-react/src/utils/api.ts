@@ -112,10 +112,8 @@ export async function cancelInvitation(auth?: {
   const config = await loadConfig()
   try {
     const initData = auth?.initData ?? getInitData()
-    const savedUserId = localStorage.getItem('telegram_user_id')
-    const manualUsername = localStorage.getItem('manual_username')
-    const effectiveUserId = auth?.userId && auth.userId > 0 ? auth.userId : (savedUserId ? parseInt(savedUserId, 10) : 0)
-    const effectiveUsername = (auth?.username || manualUsername || '').trim()
+    const effectiveUserId = auth?.userId && auth.userId > 0 ? auth.userId : 0
+    const effectiveUsername = (auth?.username || '').trim().replace(/^@/, '').toLowerCase()
 
     const response = await fetch(`${config.apiUrl}/cancel-registration`, {
       method: 'POST',
@@ -152,7 +150,7 @@ export interface RegistrationStatus {
  * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
  */
 export async function checkRegistration(userId: number, username?: string): Promise<RegistrationStatus> {
-  const normalizedUsername = (username || '').trim()
+  const normalizedUsername = (username || '').trim().replace(/^@/, '').toLowerCase()
   if (!userId && !normalizedUsername) {
     return { registered: false, error: 'no_user_id_or_username' }
   }

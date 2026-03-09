@@ -18,6 +18,9 @@ interface ExtractedIdentity {
   username: string | null
 }
 
+const SESSION_USER_ID_KEY = 'telegram_user_id_session'
+const SESSION_USERNAME_KEY = 'telegram_username_session'
+
 function normalizeUsername(username?: string | null): string | null {
   const normalized = (username || '').trim().replace(/^@/, '').toLowerCase()
   return normalized || null
@@ -66,10 +69,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const cleaned = normalizeUsername(username)
     if (!cleaned) {
       localStorage.removeItem('manual_username')
+      sessionStorage.removeItem(SESSION_USERNAME_KEY)
       setManualUsernameState(null)
       return
     }
     localStorage.setItem('manual_username', cleaned)
+    sessionStorage.setItem(SESSION_USERNAME_KEY, cleaned)
     setManualUsernameState(cleaned)
   }
 
@@ -124,19 +129,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Способ 4: Из localStorage (кэш с прошлой успешной сессии)
-    const savedUserId = localStorage.getItem('telegram_user_id')
-    const savedUsername = normalizeUsername(localStorage.getItem('manual_username'))
-    let id: number | null = null
-    if (savedUserId) {
-      const parsedId = parseInt(savedUserId, 10)
-      if (!isNaN(parsedId)) {
-        id = parsedId
-        console.log('[UserContext] Got user_id from localStorage:', id)
+    // Способ 4: В пределах текущей сессии (sessionStorage)
+    const savedSessionUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)
+    const savedSessionUsername = normalizeUsername(sessionStorage.getItem(SESSION_USERNAME_KEY))
+    if (savedSessionUserId) {
+      const parsedId = parseInt(savedSessionUserId, 10)
+      if (!isNaN(parsedId) && parsedId > 0) {
+        console.log('[UserContext] Got user_id from sessionStorage:', parsedId)
+        return { userId: parsedId, username: savedSessionUsername }
       }
     }
 
-    return { userId: id, username: savedUsername }
+    // Способ 5: Ручной username (для режима вне Telegram)
+    const savedManualUsername = normalizeUsername(localStorage.getItem('manual_username'))
+    return { userId: null, username: savedManualUsername }
   }
 
   const refreshUserId = async () => {
@@ -171,15 +177,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       if (identity.userId) {
         setUserId(identity.userId)
-        // Сохраняем в localStorage для fallback
-        localStorage.setItem('telegram_user_id', identity.userId.toString())
+        // Сохраняем только в пределах текущей сессии,
+        // чтобы не тащить старый user_id между разными пользователями на устройстве.
+        sessionStorage.setItem(SESSION_USER_ID_KEY, identity.userId.toString())
+        localStorage.removeItem('telegram_user_id')
         setError(null)
       } else {
         setUserId(null)
+        sessionStorage.removeItem(SESSION_USER_ID_KEY)
         if (!identity.username) {
           setError('user_id_not_found')
         } else {
           setError(null)
+          sessionStorage.setItem(SESSION_USERNAME_KEY, identity.username)
         }
         console.warn('[UserContext] Could not extract user_id. Available:', {
           hasTg: !!window.Telegram?.WebApp,
@@ -198,9 +208,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const savedManual = localStorage.getItem('manual_username')
-    if (savedManual) {
-      setManualUsernameState(savedManual)
+    const savedSessionUsername = normalizeUsername(sessionStorage.getItem(SESSION_USERNAME_KEY))
+    if (savedSessionUsername) {
+      setManualUsernameState(savedSessionUsername)
+    } else {
+      const savedManual = normalizeUsername(localStorage.getItem('manual_username'))
+      if (savedManual) {
+        setManualUsernameState(savedManual)
+      }
     }
     refreshUserId()
   }, [])

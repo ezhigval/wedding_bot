@@ -13,7 +13,6 @@ export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
   const { userId, manualUsername, setManualUsername } = useUser()
-  const [formSubmitted, setFormSubmitted] = useState(false)
   const [usernameInput, setUsernameInput] = useState(manualUsername ? `@${manualUsername}` : '')
 
   useEffect(() => {
@@ -21,7 +20,6 @@ export default function HomeTab() {
   }, [])
 
   const handleFormSuccess = () => {
-    setFormSubmitted(true)
     refreshRegistration() // Обновляем статус регистрации
   }
 
@@ -112,7 +110,7 @@ export default function HomeTab() {
       </section>
 
       {/* RSVP Form for unregistered users */}
-      {!registrationLoading && !isRegistered && !formSubmitted && (
+      {!registrationLoading && !isRegistered && (
         <section className="px-4 pt-4 pb-0">
           <SectionCard className="rsvp-section">
             {!userId && (
@@ -209,4 +207,3 @@ function VenueMap() {
     </motion.div>
   )
 }
-

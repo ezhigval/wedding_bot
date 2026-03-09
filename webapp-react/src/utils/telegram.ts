@@ -1,4 +1,6 @@
-export const tg = window.Telegram?.WebApp
+export function getTelegramWebApp() {
+  return window.Telegram?.WebApp
+}
 
 function getUrlParam(name: string): string | null {
   try {
@@ -18,7 +20,7 @@ function getUrlParam(name: string): string | null {
 
 export function getInitDataAny(): string {
   // 1) Внутри Telegram WebApp
-  const initData = tg?.initData
+  const initData = getTelegramWebApp()?.initData
   if (initData) return initData
 
   // 2) При открытии не внутри Telegram, но с параметром (например, tgWebAppData)
@@ -44,16 +46,22 @@ export function getInitDataAny(): string {
 }
 
 export function hapticFeedback(style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' = 'light') {
-  tg?.HapticFeedback?.impactOccurred(style)
+  getTelegramWebApp()?.HapticFeedback?.impactOccurred(style)
 }
 
 export function showAlert(message: string) {
-  tg?.showAlert(message)
+  const webApp = getTelegramWebApp()
+  if (webApp?.showAlert) {
+    webApp.showAlert(message)
+    return
+  }
+  window.alert(message)
 }
 
 export async function showConfirm(message: string): Promise<boolean> {
-  if (tg?.showConfirm) {
-    return tg.showConfirm(message)
+  const webApp = getTelegramWebApp()
+  if (webApp?.showConfirm) {
+    return webApp.showConfirm(message)
   }
   return Promise.resolve(window.confirm(message))
 }
@@ -61,4 +69,3 @@ export async function showConfirm(message: string): Promise<boolean> {
 export function getInitData(): string {
   return getInitDataAny()
 }
-

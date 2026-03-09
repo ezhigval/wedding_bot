@@ -271,6 +271,53 @@ func VerifyTelegramWebappData(initData string) bool {
 	return verifyTelegramSignature(rawParams) == nil
 }
 
+// ResolveUserIDByUsername пытается получить Telegram user_id по username через Bot API.
+// Работает, если бот может резолвить этот username в чате.
+func ResolveUserIDByUsername(username string) (int, error) {
+	u := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(username), "@"))
+	if u == "" {
+		return 0, fmt.Errorf("username is empty")
+	}
+	if config.BotToken == "" {
+		return 0, fmt.Errorf("bot token not configured")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat", config.BotToken)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	q := req.URL.Query()
+	q.Set("chat_id", "@"+u)
+	req.URL.RawQuery = q.Encode()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		Ok          bool   `json:"ok"`
+		Description string `json:"description"`
+		Result      struct {
+			ID int64 `json:"id"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return 0, err
+	}
+	if !data.Ok {
+		return 0, fmt.Errorf("getChat failed: %s", data.Description)
+	}
+	if data.Result.ID <= 0 {
+		return 0, fmt.Errorf("invalid resolved id")
+	}
+
+	return int(data.Result.ID), nil
+}
+
 // IsUserInGroupChat проверяет, состоит ли пользователь в общем чате гостей
 func IsUserInGroupChat(userID int) (bool, error) {
 	if config.BotToken == "" || config.GroupID == "" {

@@ -88,6 +88,84 @@ func registrationCacheKeys(userID int, username string) []string {
 	return keys
 }
 
+func usernameToUserIDCacheKey(username string) string {
+	return fmt.Sprintf("tg:user-id-by-username:%s", google_sheets.NormalizeTelegramUsername(username))
+}
+
+func cacheUsernameToUserID(username string, userID int) {
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	if normalizedUsername == "" || userID <= 0 {
+		return
+	}
+	cache.SetMemoryCache(usernameToUserIDCacheKey(normalizedUsername), userID, 24*time.Hour)
+}
+
+func getCachedUserIDByUsername(username string) (int, bool) {
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	if normalizedUsername == "" {
+		return 0, false
+	}
+
+	cached, ok := cache.GetMemoryCacheValue(usernameToUserIDCacheKey(normalizedUsername))
+	if !ok {
+		return 0, false
+	}
+
+	switch v := cached.(type) {
+	case int:
+		if v > 0 {
+			return v, true
+		}
+	case int64:
+		if v > 0 {
+			return int(v), true
+		}
+	case float64:
+		if v > 0 {
+			return int(v), true
+		}
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && parsed > 0 {
+			return parsed, true
+		}
+	}
+
+	return 0, false
+}
+
+func resolveAuthIdentity(userID int, username, initData string) (int, string) {
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	resolvedUserID := userID
+
+	if initData != "" {
+		if result, err := ParseInitData(initData); err == nil {
+			if resolvedUserID == 0 {
+				resolvedUserID = extractUserIDFromParsedInitData(result)
+			}
+			if normalizedUsername == "" {
+				normalizedUsername = extractUsernameFromParsedInitData(result)
+			}
+		}
+	}
+
+	if resolvedUserID > 0 && normalizedUsername != "" {
+		cacheUsernameToUserID(normalizedUsername, resolvedUserID)
+		return resolvedUserID, normalizedUsername
+	}
+
+	if resolvedUserID == 0 && normalizedUsername != "" {
+		if cachedID, ok := getCachedUserIDByUsername(normalizedUsername); ok {
+			return cachedID, normalizedUsername
+		}
+		if resolvedID, err := ResolveUserIDByUsername(normalizedUsername); err == nil && resolvedID > 0 {
+			cacheUsernameToUserID(normalizedUsername, resolvedID)
+			return resolvedID, normalizedUsername
+		}
+	}
+
+	return resolvedUserID, normalizedUsername
+}
+
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
@@ -109,7 +187,7 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	userIDStr := strings.TrimSpace(r.URL.Query().Get("userId"))
 	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
 	if username == "" {
-		username = google_sheets.NormalizeTelegramUsername(req.Username)
+		username = req.Username
 	}
 
 	userID := req.UserID
@@ -122,17 +200,7 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 		userID = parsedUserID
 	}
 
-	if req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if userID == 0 {
-				userID = extractUserIDFromParsedInitData(result)
-			}
-			if username == "" {
-				username = extractUsernameFromParsedInitData(result)
-			}
-		}
-	}
+	userID, username = resolveAuthIdentity(userID, username, req.InitData)
 
 	if userID == 0 && username == "" {
 		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
@@ -210,30 +278,14 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем user_id из initData если не передан напрямую
 	userID := req.UserID
-	manualUsername := google_sheets.NormalizeTelegramUsername(req.Username)
+	manualUsername := req.Username
 	// #region agent log
 	log.Printf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
 	// #endregion
-	if req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		// #region agent log
-		log.Printf("[DEBUG registerGuest] ParseInitData result: err=%v, result=%+v", err, result)
-		// #endregion
-		if err == nil {
-			if userID == 0 {
-				userID = extractUserIDFromParsedInitData(result)
-			}
-			if manualUsername == "" {
-				manualUsername = extractUsernameFromParsedInitData(result)
-			}
-			// #region agent log
-			log.Printf("[DEBUG registerGuest] Parsed auth from initData: user_id=%d, username=%s", userID, manualUsername)
-			// #endregion
-			log.Printf("Parsed user_id from initData: %d", userID)
-		} else {
-			log.Printf("Error parsing initData: %v", err)
-		}
-	}
+	userID, manualUsername = resolveAuthIdentity(userID, manualUsername, req.InitData)
+	// #region agent log
+	log.Printf("[DEBUG registerGuest] Resolved auth identity: user_id=%d, username=%s", userID, manualUsername)
+	// #endregion
 
 	// Разрешаем регистрацию без user_id только при наличии username (режим браузера вне Telegram)
 	if userID == 0 && manualUsername == "" {
@@ -316,18 +368,8 @@ func cancelGuestRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := req.UserID
-	username := google_sheets.NormalizeTelegramUsername(req.Username)
-	if req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if userID == 0 {
-				userID = extractUserIDFromParsedInitData(result)
-			}
-			if username == "" {
-				username = extractUsernameFromParsedInitData(result)
-			}
-		}
-	}
+	username := req.Username
+	userID, username = resolveAuthIdentity(userID, username, req.InitData)
 
 	if userID == 0 && username == "" {
 		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
