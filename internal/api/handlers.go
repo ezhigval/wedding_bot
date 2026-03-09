@@ -111,20 +111,15 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheKey := ""
-	switch {
-	case userID > 0:
-		cacheKey = fmt.Sprintf("registration:id:%d", userID)
-	case username != "":
-		cacheKey = fmt.Sprintf("registration:username:%s", username)
-	}
+	cacheKeys := registrationCacheKeys(userID, username)
 
-	// Проверяем регистрацию
-	if cacheKey != "" {
+	// Используем кэш только для положительного результата.
+	// Негативный кэш может быстро устаревать и давать ложный "не зарегистрирован".
+	for _, cacheKey := range cacheKeys {
 		if cached, ok := cache.GetMemoryCacheValue(cacheKey); ok {
-			if val, ok := cached.(bool); ok {
+			if val, ok := cached.(bool); ok && val {
 				resp := map[string]interface{}{
-					"registered": val,
+					"registered": true,
 					"cached":     true,
 				}
 				if userID > 0 {
@@ -147,8 +142,10 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cacheKey != "" {
-		cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
+	if registered {
+		for _, cacheKey := range cacheKeys {
+			cache.SetMemoryCache(cacheKey, true, 30*time.Second)
+		}
 	}
 
 	resp := map[string]interface{}{
