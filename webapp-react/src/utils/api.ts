@@ -153,10 +153,43 @@ export async function checkRegistration(userId: number, username?: string): Prom
   const normalizedUsername = (username || '').trim().replace(/^@/, '').toLowerCase()
   const initData = getInitData()
 
-  // Разрешаем проверку только по initData: сервер сам извлечет user_id/username,
-  // если фронт еще не успел получить их локально.
-  if (!userId && !normalizedUsername && !initData) {
-    return { registered: false, error: 'no_user_id_or_username' }
+  // Fallback к стабильным хранилищам (как в старой рабочей логике),
+  // если контекст еще не успел поднять user_id.
+  let effectiveUserId = userId
+  let effectiveUsername = normalizedUsername
+
+  if (!effectiveUserId) {
+    const sessionUserId = sessionStorage.getItem('telegram_user_id_session')
+    if (sessionUserId) {
+      const parsed = parseInt(sessionUserId, 10)
+      if (!isNaN(parsed) && parsed > 0) {
+        effectiveUserId = parsed
+      }
+    }
+  }
+
+  if (!effectiveUserId) {
+    const persistentUserId = localStorage.getItem('telegram_user_id')
+    if (persistentUserId) {
+      const parsed = parseInt(persistentUserId, 10)
+      if (!isNaN(parsed) && parsed > 0) {
+        effectiveUserId = parsed
+      }
+    }
+  }
+
+  if (!effectiveUsername) {
+    const manual = (localStorage.getItem('manual_username') || '').trim().replace(/^@/, '').toLowerCase()
+    if (manual) {
+      effectiveUsername = manual
+    }
+  }
+
+  if (!effectiveUsername) {
+    const persistentUsername = (localStorage.getItem('telegram_username') || '').trim().replace(/^@/, '').toLowerCase()
+    if (persistentUsername) {
+      effectiveUsername = persistentUsername
+    }
   }
 
   const config = await loadConfig()
@@ -164,11 +197,11 @@ export async function checkRegistration(userId: number, username?: string): Prom
   
   try {
     const params = new URLSearchParams()
-    if (userId) {
-      params.set('userId', userId.toString())
+    if (effectiveUserId) {
+      params.set('userId', effectiveUserId.toString())
     }
-    if (normalizedUsername) {
-      params.set('username', normalizedUsername)
+    if (effectiveUsername) {
+      params.set('username', effectiveUsername)
     }
     const url = `${checkUrl}?${params.toString()}`
     const response = await fetch(url, {
@@ -177,8 +210,8 @@ export async function checkRegistration(userId: number, username?: string): Prom
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        userId,
-        username: normalizedUsername,
+        userId: effectiveUserId || 0,
+        username: effectiveUsername,
         initData,
       }),
     })
