@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"google.golang.org/api/sheets/v4"
@@ -11,8 +12,88 @@ import (
 	"wedding-bot/internal/config"
 )
 
+func cellToString(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case float64:
+		if val == float64(int64(val)) {
+			return strconv.FormatInt(int64(val), 10)
+		}
+		return strings.TrimSpace(strconv.FormatFloat(val, 'f', -1, 64))
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", val))
+	}
+}
+
+func normalizeGuestIdentifier(value string) string {
+	clean := strings.TrimSpace(strings.Trim(value, `"'`))
+	if clean == "" {
+		return ""
+	}
+
+	if n, ok := normalizeNumericIdentifier(clean); ok {
+		return n
+	}
+
+	return NormalizeTelegramUsername(clean)
+}
+
+func normalizeNumericIdentifier(value string) (string, bool) {
+	clean := strings.TrimSpace(value)
+	if clean == "" {
+		return "", false
+	}
+
+	if intValue, err := strconv.ParseInt(clean, 10, 64); err == nil && intValue > 0 {
+		return strconv.FormatInt(intValue, 10), true
+	}
+
+	if floatValue, err := strconv.ParseFloat(clean, 64); err == nil {
+		intValue := int64(floatValue)
+		if floatValue == float64(intValue) && intValue > 0 {
+			return strconv.FormatInt(intValue, 10), true
+		}
+	}
+
+	return "", false
+}
+
+func guestIdentifierMatches(sheetValue string, userID int, username string) bool {
+	normalizedSheet := normalizeGuestIdentifier(sheetValue)
+	if normalizedSheet == "" {
+		return false
+	}
+
+	if userID > 0 && normalizedSheet == strconv.Itoa(userID) {
+		return true
+	}
+
+	normalizedUsername := NormalizeTelegramUsername(username)
+	return normalizedUsername != "" && normalizedSheet == normalizedUsername
+}
+
+func buildAuthIdentifierForStorage(userID int, username string) string {
+	if userID > 0 {
+		return strconv.Itoa(userID)
+	}
+	normalizedUsername := NormalizeTelegramUsername(username)
+	if normalizedUsername != "" {
+		return normalizedUsername
+	}
+	return ""
+}
+
+func isConfirmedValue(value string) bool {
+	return strings.ToUpper(strings.TrimSpace(value)) == "ДА"
+}
+
 // AddGuestToSheets добавляет гостя в Google Sheets
-func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int, category, side *string, userID *int) error {
+func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int, category, side *string, userID *int, username *string) error {
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
 		return err
@@ -29,18 +110,40 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	}
 
 	fullName := strings.TrimSpace(fmt.Sprintf("%s %s", firstName, lastName))
+	authUserID := 0
+	if userID != nil {
+		authUserID = *userID
+	}
+	authUsername := ""
+	if username != nil {
+		authUsername = *username
+	}
+	authIdentifier := buildAuthIdentifierForStorage(authUserID, authUsername)
 	values := resp.Values
 
 	// Ищем существующую строку
 	foundRow := -1
+	foundBy := ""
 	for i, row := range values {
 		if len(row) > 0 {
-			existingName := ""
-			if val, ok := row[0].(string); ok {
-				existingName = strings.TrimSpace(val)
-			}
-			if strings.EqualFold(existingName, fullName) {
+			existingName := cellToString(row[0])
+			if fullName != "" && strings.EqualFold(existingName, fullName) {
 				foundRow = i + 1 // +1 потому что индексация с 1
+				foundBy = "name"
+				break
+			}
+		}
+	}
+
+	// Дополнительно ищем по идентификатору (column F): user_id или username.
+	if foundRow <= 0 && (authUserID > 0 || authUsername != "") {
+		for i, row := range values {
+			if len(row) <= 5 {
+				continue
+			}
+			if guestIdentifierMatches(cellToString(row[5]), authUserID, authUsername) {
+				foundRow = i + 1
+				foundBy = "identifier"
 				break
 			}
 		}
@@ -69,10 +172,32 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 			})
 		}
 
-		if userID != nil {
+		existingIdentifier := ""
+		if foundRow-1 >= 0 && foundRow-1 < len(values) && len(values[foundRow-1]) > 5 {
+			existingIdentifier = cellToString(values[foundRow-1][5])
+		}
+
+		// Обновляем идентификатор в колонке F:
+		// 1) всегда заполняем пустой идентификатор,
+		// 2) если пришел user_id, а в ячейке username — заменяем на user_id.
+		identifierToWrite := ""
+		shouldWriteIdentifier := false
+		if authUserID > 0 {
+			identifierToWrite = strconv.Itoa(authUserID)
+			if existingIdentifier == "" {
+				shouldWriteIdentifier = true
+			} else if _, isNumeric := normalizeNumericIdentifier(existingIdentifier); !isNumeric {
+				shouldWriteIdentifier = true
+			}
+		} else if authIdentifier != "" && existingIdentifier == "" {
+			identifierToWrite = authIdentifier
+			shouldWriteIdentifier = true
+		}
+
+		if shouldWriteIdentifier {
 			updates = append(updates, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!F%d", sheetName, foundRow),
-				Values: [][]interface{}{{fmt.Sprintf("%d", *userID)}},
+				Values: [][]interface{}{{identifierToWrite}},
 			})
 		}
 
@@ -86,7 +211,10 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 			return fmt.Errorf("ошибка обновления строки: %w", err)
 		}
 
-		log.Printf("Гость %s найден в строке %d, обновлено подтверждение", fullName, foundRow)
+		if fullName == "" {
+			fullName = "без имени"
+		}
+		log.Printf("Гость %s найден в строке %d (по %s), обновлено подтверждение", fullName, foundRow, foundBy)
 		return nil
 	}
 
@@ -117,11 +245,7 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	} else {
 		rowData = append(rowData, "")
 	}
-	if userID != nil {
-		rowData = append(rowData, fmt.Sprintf("%d", *userID))
-	} else {
-		rowData = append(rowData, "")
-	}
+	rowData = append(rowData, authIdentifier)
 
 	// Вставляем данные
 	valueRange := &sheets.ValueRange{
@@ -143,66 +267,22 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	return nil
 }
 
-// CancelInvitation отменяет приглашение - обновляет столбец C на "НЕТ"
-func CancelInvitation(ctx context.Context, firstName, lastName string) error {
-	service, err := GetGoogleSheetsClient()
-	if err != nil {
-		return err
-	}
-
-	spreadsheetID := config.GoogleSheetsID
-	sheetName := config.GoogleSheetsSheetName
-
-	fullName := strings.TrimSpace(fmt.Sprintf("%s %s", firstName, lastName))
-
-	// Получаем все значения
-	readRange := fmt.Sprintf("%s!A:C", sheetName)
-	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
-	if err != nil {
-		return fmt.Errorf("ошибка чтения значений: %w", err)
-	}
-
-	// Ищем строку
-	foundRow := -1
-	for i, row := range resp.Values {
-		if len(row) > 0 {
-			existingName := ""
-			if val, ok := row[0].(string); ok {
-				existingName = strings.TrimSpace(val)
-			}
-			if strings.EqualFold(existingName, fullName) {
-				foundRow = i + 1
-				break
-			}
-		}
-	}
-
-	if foundRow <= 0 {
-		return fmt.Errorf("гость %s не найден", fullName)
-	}
-
-	// Обновляем столбец C
-	valueRange := &sheets.ValueRange{
-		Values: [][]interface{}{{"НЕТ"}},
-	}
-
-	range_ := fmt.Sprintf("%s!C%d", sheetName, foundRow)
-	_, err = service.Spreadsheets.Values.Update(
-		spreadsheetID,
-		range_,
-		valueRange,
-	).ValueInputOption("USER_ENTERED").Do()
-
-	if err != nil {
-		return fmt.Errorf("ошибка обновления: %w", err)
-	}
-
-	log.Printf("Приглашение для %s отменено (строка %d)", fullName, foundRow)
-	return nil
-}
-
 // CheckGuestRegistration проверяет, зарегистрирован ли гость
 func CheckGuestRegistration(ctx context.Context, userID int) (bool, error) {
+	return CheckGuestRegistrationByIdentifier(ctx, userID, "")
+}
+
+// CheckGuestRegistrationByUsername проверяет регистрацию по username (column F).
+func CheckGuestRegistrationByUsername(ctx context.Context, username string) (bool, error) {
+	return CheckGuestRegistrationByIdentifier(ctx, 0, username)
+}
+
+// CheckGuestRegistrationByIdentifier проверяет регистрацию по user_id и/или username.
+func CheckGuestRegistrationByIdentifier(ctx context.Context, userID int, username string) (bool, error) {
+	if userID <= 0 && NormalizeTelegramUsername(username) == "" {
+		return false, nil
+	}
+
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
 		return false, err
@@ -211,45 +291,113 @@ func CheckGuestRegistration(ctx context.Context, userID int) (bool, error) {
 	spreadsheetID := config.GoogleSheetsID
 	sheetName := config.GoogleSheetsSheetName
 
-	// Получаем все значения столбца F (user_id)
-	readRange := fmt.Sprintf("%s!F:F", sheetName)
+	// Column A: full name, C: confirmation, F: auth identifier (user_id or username)
+	readRange := fmt.Sprintf("%s!A:F", sheetName)
 	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
 	if err != nil {
 		return false, fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	userIDStr := fmt.Sprintf("%d", userID)
 	for i, row := range resp.Values {
-		if len(row) > 0 {
-			// Пробуем разные типы значений
-			var found bool
-			if val, ok := row[0].(string); ok {
-				// Сравниваем как строку
-				if strings.TrimSpace(val) == userIDStr {
-					found = true
-				}
-			} else if val, ok := row[0].(float64); ok {
-				// Сравниваем как число (float64 из Google Sheets)
-				if int(val) == userID {
-					found = true
-				}
-			} else if val, ok := row[0].(int64); ok {
-				// Сравниваем как int64
-				if int(val) == userID {
-					found = true
-				}
-			}
-			
-			if found {
-				log.Printf("Found registered user_id %d in row %d", userID, i+1)
-				return true, nil
-			}
+		if len(row) <= 5 {
+			continue
 		}
+
+		identifier := cellToString(row[5])
+		if !guestIdentifierMatches(identifier, userID, username) {
+			continue
+		}
+
+		confirmation := ""
+		if len(row) > 2 {
+			confirmation = cellToString(row[2])
+		}
+
+		registered := isConfirmedValue(confirmation)
+		log.Printf("Найдена строка гостя по идентификатору (row=%d, registered=%v, id=%s)", i+1, registered, identifier)
+		return registered, nil
 	}
-	
-	log.Printf("User_id %d not found in guest list", userID)
+
+	if userID > 0 {
+		log.Printf("user_id %d не найден среди зарегистрированных гостей", userID)
+	} else {
+		log.Printf("username %s не найден среди зарегистрированных гостей", NormalizeTelegramUsername(username))
+	}
 
 	return false, nil
+}
+
+// FindGuestByIdentifier находит гостя по user_id/username в колонке F независимо от подтверждения.
+func FindGuestByIdentifier(ctx context.Context, userID int, username string) (*GuestInfo, error) {
+	if userID <= 0 && NormalizeTelegramUsername(username) == "" {
+		return nil, nil
+	}
+
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return nil, err
+	}
+
+	spreadsheetID := config.GoogleSheetsID
+	sheetName := config.GoogleSheetsSheetName
+
+	readRange := fmt.Sprintf("%s!A:F", sheetName)
+	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения значений: %w", err)
+	}
+
+	for _, row := range resp.Values {
+		if len(row) <= 5 {
+			continue
+		}
+
+		identifier := cellToString(row[5])
+		if !guestIdentifierMatches(identifier, userID, username) {
+			continue
+		}
+
+		fullName := ""
+		if len(row) > 0 {
+			fullName = cellToString(row[0])
+		}
+		if fullName == "" {
+			continue
+		}
+
+		nameParts := strings.SplitN(fullName, " ", 2)
+		firstName := nameParts[0]
+		lastName := ""
+		if len(nameParts) > 1 {
+			lastName = nameParts[1]
+		}
+
+		category := ""
+		if len(row) > 3 {
+			category = cellToString(row[3])
+		}
+
+		side := ""
+		if len(row) > 4 {
+			side = cellToString(row[4])
+		}
+
+		guest := &GuestInfo{
+			FirstName: firstName,
+			LastName:  lastName,
+			UserID:    identifier,
+			Category:  category,
+			Side:      side,
+		}
+
+		if _, ok := normalizeNumericIdentifier(identifier); !ok {
+			guest.Username = NormalizeTelegramUsername(identifier)
+		}
+
+		return guest, nil
+	}
+
+	return nil, nil
 }
 
 // GuestInfo представляет информацию о госте
@@ -284,23 +432,18 @@ func GetAllGuestsFromSheets(ctx context.Context) ([]GuestInfo, error) {
 			continue
 		}
 
-		fullName := ""
-		if val, ok := row[0].(string); ok {
-			fullName = strings.TrimSpace(val)
-		}
+		fullName := cellToString(row[0])
 		if fullName == "" {
 			continue
 		}
 
 		confirmation := ""
 		if len(row) > 2 {
-			if val, ok := row[2].(string); ok {
-				confirmation = strings.TrimSpace(val)
-			}
+			confirmation = cellToString(row[2])
 		}
 
 		// Берем только тех, кто подтвердил участие
-		if strings.ToUpper(confirmation) != "ДА" {
+		if !isConfirmedValue(confirmation) {
 			continue
 		}
 
@@ -314,29 +457,28 @@ func GetAllGuestsFromSheets(ctx context.Context) ([]GuestInfo, error) {
 
 		category := ""
 		if len(row) > 3 {
-			if val, ok := row[3].(string); ok {
-				category = strings.TrimSpace(val)
-			}
+			category = cellToString(row[3])
 		}
 
 		side := ""
 		if len(row) > 4 {
-			if val, ok := row[4].(string); ok {
-				side = strings.TrimSpace(val)
-			}
+			side = cellToString(row[4])
 		}
 
 		userID := ""
 		if len(row) > 5 {
-			if val, ok := row[5].(string); ok {
-				userID = strings.TrimSpace(val)
-			}
+			userID = cellToString(row[5])
+		}
+
+		username := ""
+		if _, isNumeric := normalizeNumericIdentifier(userID); !isNumeric {
+			username = NormalizeTelegramUsername(userID)
 		}
 
 		guests = append(guests, GuestInfo{
 			FirstName: firstName,
 			LastName:  lastName,
-			Username:  "",
+			Username:  username,
 			UserID:    userID,
 			Category:  category,
 			Side:      side,
@@ -357,6 +499,20 @@ func GetGuestsCountFromSheets(ctx context.Context) (int, error) {
 
 // CancelGuestRegistrationByUserID отменяет регистрацию гостя по user_id
 func CancelGuestRegistrationByUserID(ctx context.Context, userID int) error {
+	return CancelGuestRegistrationByIdentifier(ctx, userID, "")
+}
+
+// CancelGuestRegistrationByUsername отменяет регистрацию по username (column F).
+func CancelGuestRegistrationByUsername(ctx context.Context, username string) error {
+	return CancelGuestRegistrationByIdentifier(ctx, 0, username)
+}
+
+// CancelGuestRegistrationByIdentifier отменяет регистрацию по user_id и/или username.
+func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, username string) error {
+	if userID <= 0 && NormalizeTelegramUsername(username) == "" {
+		return fmt.Errorf("идентификатор гостя не передан")
+	}
+
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
 		return err
@@ -365,8 +521,6 @@ func CancelGuestRegistrationByUserID(ctx context.Context, userID int) error {
 	spreadsheetID := config.GoogleSheetsID
 	sheetName := config.GoogleSheetsSheetName
 
-	userIDStr := fmt.Sprintf("%d", userID)
-
 	// Получаем все значения
 	readRange := fmt.Sprintf("%s!A:F", sheetName)
 	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
@@ -374,21 +528,23 @@ func CancelGuestRegistrationByUserID(ctx context.Context, userID int) error {
 		return fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	// Ищем строку по user_id
+	// Ищем строку по user_id/username в колонке F
 	foundRow := -1
 	for i, row := range resp.Values {
-		if len(row) > 5 {
-			if val, ok := row[5].(string); ok {
-				if strings.TrimSpace(val) == userIDStr {
-					foundRow = i + 1
-					break
-				}
-			}
+		if len(row) <= 5 {
+			continue
+		}
+		if guestIdentifierMatches(cellToString(row[5]), userID, username) {
+			foundRow = i + 1
+			break
 		}
 	}
 
 	if foundRow <= 0 {
-		return fmt.Errorf("гость с user_id=%d не найден", userID)
+		if userID > 0 {
+			return fmt.Errorf("гость с user_id=%d не найден", userID)
+		}
+		return fmt.Errorf("гость с username=%s не найден", NormalizeTelegramUsername(username))
 	}
 
 	// Обновляем столбец C на "НЕТ"
@@ -407,7 +563,11 @@ func CancelGuestRegistrationByUserID(ctx context.Context, userID int) error {
 		return fmt.Errorf("ошибка обновления: %w", err)
 	}
 
-	log.Printf("Регистрация гостя с user_id=%d отменена (строка %d)", userID, foundRow)
+	if userID > 0 {
+		log.Printf("Регистрация гостя с user_id=%d отменена (строка %d)", userID, foundRow)
+	} else {
+		log.Printf("Регистрация гостя с username=%s отменена (строка %d)", NormalizeTelegramUsername(username), foundRow)
+	}
 	return nil
 }
 
@@ -419,7 +579,7 @@ func DeleteGuestFromSheets(ctx context.Context, userID int) error {
 	}
 
 	spreadsheetID := config.GoogleSheetsID
-	sheetName := config.GoogleSheetsID
+	sheetName := config.GoogleSheetsSheetName
 
 	userIDStr := fmt.Sprintf("%d", userID)
 
@@ -491,24 +651,6 @@ func DeleteGuestFromSheets(ctx context.Context, userID int) error {
 	return nil
 }
 
-// FindGuestByName находит гостя по имени и фамилии
-func FindGuestByName(ctx context.Context, firstName, lastName string) (*GuestInfo, error) {
-	guests, err := GetAllGuestsFromSheets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	fullName := strings.TrimSpace(strings.ToLower(fmt.Sprintf("%s %s", firstName, lastName)))
-	for _, guest := range guests {
-		guestFullName := strings.TrimSpace(strings.ToLower(fmt.Sprintf("%s %s", guest.FirstName, guest.LastName)))
-		if guestFullName == fullName {
-			return &guest, nil
-		}
-	}
-
-	return nil, nil
-}
-
 // NormalizeTelegramID нормализует Telegram ID
 func NormalizeTelegramID(telegramID string) string {
 	// Убираем пробелы и кавычки
@@ -516,4 +658,3 @@ func NormalizeTelegramID(telegramID string) string {
 	id = strings.Trim(id, `"'`)
 	return id
 }
-

@@ -76,7 +76,6 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 	api.HandleFunc("/check-registration", checkRegistration).Methods("POST")
 	api.HandleFunc("/register", registerGuest).Methods("POST")
 	api.HandleFunc("/cancel-registration", cancelGuestRegistration).Methods("POST")
-	api.HandleFunc("/confirm-identity", confirmIdentity).Methods("POST")
 
 	// Guests
 	api.HandleFunc("/guests", getGuestsList).Methods("GET")
@@ -223,6 +222,12 @@ func humanizeError(code string) string {
 		return "Неверный user_id"
 	case "user_id required":
 		return "Требуется user_id"
+	case "user_id_or_username_required":
+		return "Требуется user_id или Telegram username"
+	case "guest_not_found":
+		return "Гость не найден в списке"
+	case "failed_to_cancel":
+		return "Не удалось отменить регистрацию"
 	case "server_error":
 		return "Внутренняя ошибка сервера"
 	default:

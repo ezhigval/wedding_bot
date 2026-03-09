@@ -6,10 +6,12 @@ import RegistrationRequired from '../common/RegistrationRequired'
 import { useRegistration } from '../../contexts/RegistrationContext'
 import { loadConfig } from '../../utils/api'
 import { showAlert, hapticFeedback, getInitData } from '../../utils/telegram'
+import { useUser } from '../../contexts/UserContext'
 import type { Config } from '../../types'
 
 export default function PhotoTab() {
   const { isRegistered, isLoading } = useRegistration()
+  const { userId } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -60,13 +62,19 @@ export default function PhotoTab() {
 
     try {
       const initData = getInitData()
+      if (!userId && !initData) {
+        showAlert('Загрузка фото доступна только при открытии приложения в Telegram.')
+        hapticFeedback('heavy')
+        return
+      }
       const response = await fetch(`${config?.apiUrl || '/api'}/upload-photo`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          photo: photoPreview, // base64 строка
+          userId: userId || 0,
+          photoData: photoPreview, // base64 строка
           initData,
         }),
       })

@@ -6,12 +6,15 @@ import CountdownTimer from '../common/CountdownTimer'
 import RSVPForm from '../RSVPForm'
 import { loadConfig } from '../../utils/api'
 import { useRegistration } from '../../contexts/RegistrationContext'
+import { useUser } from '../../contexts/UserContext'
 import type { Config } from '../../types'
 
 export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
+  const { userId, manualUsername, setManualUsername } = useUser()
   const [formSubmitted, setFormSubmitted] = useState(false)
+  const [usernameInput, setUsernameInput] = useState(manualUsername ? `@${manualUsername}` : '')
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -112,6 +115,31 @@ export default function HomeTab() {
       {!registrationLoading && !isRegistered && !formSubmitted && (
         <section className="px-4 pt-4 pb-0">
           <SectionCard className="rsvp-section">
+            {!userId && (
+              <div className="mb-3">
+                <SectionTitle>ВХОД</SectionTitle>
+                <p className="text-center text-gray-600 mb-2 leading-[1.2] text-[16.8px]">
+                  Если вы открыли ссылку вне Telegram, введите ваш Telegram username.
+                </p>
+                <div className="flex gap-2 items-center justify-center">
+                  <input
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="@username"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-[16.8px] w-56"
+                  />
+                  <button
+                    className="bg-primary text-white rounded-lg px-4 py-2 font-semibold"
+                    onClick={async () => {
+                      setManualUsername(usernameInput)
+                      await refreshRegistration()
+                    }}
+                  >
+                    Войти
+                  </button>
+                </div>
+              </div>
+            )}
             <RSVPForm mode="full" onSuccess={handleFormSuccess} />
           </SectionCard>
         </section>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import SectionTitle from './common/SectionTitle'
 import { submitRSVP } from '../utils/api'
-import { showAlert, hapticFeedback } from '../utils/telegram'
+import { showAlert, hapticFeedback, getInitData } from '../utils/telegram'
 import { useUser } from '../contexts/UserContext'
 import type { Guest } from '../types'
 
@@ -14,7 +14,7 @@ interface RSVPFormProps {
 }
 
 export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
-  const { userId } = useUser()
+  const { userId, manualUsername } = useUser()
   const [guests, setGuests] = useState<Guest[]>([])
   const [formData, setFormData] = useState({
     lastName: '',
@@ -85,8 +85,8 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
       }
     }
 
-    if (!userId) {
-      setError('Не удалось получить данные пользователя. Пожалуйста, перезагрузите приложение.')
+    if (!userId && !manualUsername) {
+      setError('Не удалось получить данные пользователя. Откройте приложение в Telegram или войдите по @username.')
       hapticFeedback('heavy')
       return
     }
@@ -94,7 +94,7 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
     setIsSubmitting(true)
     hapticFeedback('medium')
 
-    const result = await submitRSVP(userId, {
+    const result = await submitRSVP(userId || 0, {
       lastName: formData.lastName || '', // Для guests-only может быть пустым
       firstName: formData.firstName || '', // Для guests-only может быть пустым
       category: formData.category || '', // Для guests-only может быть пустым
@@ -104,7 +104,7 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
         lastName: g.lastName,
         telegram: g.telegram,
       })),
-    })
+    }, { initData: getInitData(), username: manualUsername || '' })
 
     setIsSubmitting(false)
 

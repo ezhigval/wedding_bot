@@ -118,7 +118,12 @@ func handleTogglePhotoMode(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	registered, err := google_sheets.CheckGuestRegistration(ctx, int(userID))
+	username := ""
+	if message.From != nil {
+		username = message.From.UserName
+	}
+
+	registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, int(userID), username)
 	if err != nil {
 		log.Printf("Ошибка проверки регистрации: %v", err)
 		// В случае ошибки разрешаем включить

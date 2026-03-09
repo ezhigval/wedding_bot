@@ -288,8 +288,8 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 		// Проверяем, есть ли слово в словаре
 		if !google_sheets.IsWordAllowed(ctx, word) {
 			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"success":     false,
-				"message":     "Слово не найдено в словаре",
+				"success":      false,
+				"message":      "Слово не найдено в словаре",
 				"invalid_word": true,
 			})
 			return
@@ -555,6 +555,7 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 		"cell_letters":         progress.CellLetters,
 		"wrong_attempts":       progress.WrongAttempts, // Для обратной совместимости
 		"wrong_words":          progress.WrongAttempts, // Неправильные слова после завершения
+		"start_date":           progress.StartDate,     // Для обратной совместимости фронта
 		"crossword_start_date": progress.StartDate,
 	}
 

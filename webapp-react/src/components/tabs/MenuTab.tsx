@@ -6,11 +6,13 @@ import RSVPForm from '../RSVPForm'
 import { loadConfig, cancelInvitation } from '../../utils/api'
 import { showAlert, showConfirm, hapticFeedback } from '../../utils/telegram'
 import { useRegistration } from '../../contexts/RegistrationContext'
+import { useUser } from '../../contexts/UserContext'
 import type { Config } from '../../types'
 
 export default function MenuTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
+  const { userId, manualUsername } = useUser()
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -21,7 +23,10 @@ export default function MenuTab() {
     if (!confirmed) return
 
     hapticFeedback('medium')
-    const result = await cancelInvitation()
+    const result = await cancelInvitation({
+      userId: userId || 0,
+      username: manualUsername || '',
+    })
 
     if (result.success) {
       showAlert('Приглашение отменено. Вы можете заполнить форму заново.')
@@ -108,4 +113,3 @@ function ContactItem({ name, telegram }: { name: string; telegram: string }) {
     </motion.a>
   )
 }
-

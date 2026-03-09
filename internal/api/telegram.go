@@ -181,6 +181,7 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 			"userId":    userID,
 			"firstName": "",
 			"lastName":  "",
+			"username":  "",
 			"user":      userJSON,
 		}, nil
 	}
@@ -224,10 +225,16 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 		lastName = ln
 	}
 
+	username := ""
+	if un, ok := userData["username"].(string); ok {
+		username = strings.TrimSpace(un)
+	}
+
 	return map[string]interface{}{
 		"userId":    userID,
 		"firstName": firstName,
 		"lastName":  lastName,
+		"username":  username,
 		"user":      userJSON,
 	}, nil
 }

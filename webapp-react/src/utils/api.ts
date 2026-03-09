@@ -1,4 +1,5 @@
 import type { Config, TimelineItem } from '../types'
+import { getInitData } from './telegram'
 
 const DEFAULT_CONFIG: Config = {
   weddingDate: '2026-06-05',
@@ -23,7 +24,16 @@ export async function loadConfig(): Promise<Config> {
     const response = await fetch(`${DEFAULT_CONFIG.apiUrl}/config`)
     if (response.ok) {
       const data = await response.json()
-      config = { ...DEFAULT_CONFIG, ...data }
+      const mapped: Partial<Config> = {
+        weddingDate: data.weddingDate || data.wedding_date,
+        groomName: data.groomName || data.groom_name,
+        brideName: data.brideName || data.bride_name,
+        groomTelegram: data.groomTelegram || data.groom_telegram,
+        brideTelegram: data.brideTelegram || data.bride_telegram,
+        weddingAddress: data.weddingAddress || data.wedding_address,
+        apiUrl: data.apiUrl || data.api_url,
+      }
+      config = { ...DEFAULT_CONFIG, ...mapped }
     }
   } catch (error) {
     console.log('Используем конфигурацию по умолчанию:', error)
@@ -60,9 +70,10 @@ export async function submitRSVP(
     category: string
     side: string
     guests: Array<{ firstName: string; lastName: string; telegram?: string }>
-  }
+  },
+  auth?: { initData?: string; username?: string }
 ): Promise<{ success: boolean; error?: string }> {
-  if (!userId) {
+  if (!userId && !auth?.initData && !auth?.username) {
     return { success: false, error: 'user_id required' }
   }
 
@@ -76,6 +87,8 @@ export async function submitRSVP(
       body: JSON.stringify({
         ...formData,
         userId,
+        initData: auth?.initData || '',
+        username: auth?.username || '',
       }),
     })
 
@@ -91,11 +104,29 @@ export async function submitRSVP(
   }
 }
 
-export async function cancelInvitation(): Promise<{ success: boolean; error?: string }> {
+export async function cancelInvitation(auth?: {
+  userId?: number | null
+  username?: string | null
+  initData?: string
+}): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/cancel`, {
+    const initData = auth?.initData ?? getInitData()
+    const savedUserId = localStorage.getItem('telegram_user_id')
+    const manualUsername = localStorage.getItem('manual_username')
+    const effectiveUserId = auth?.userId && auth.userId > 0 ? auth.userId : (savedUserId ? parseInt(savedUserId, 10) : 0)
+    const effectiveUsername = (auth?.username || manualUsername || '').trim()
+
+    const response = await fetch(`${config.apiUrl}/cancel-registration`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: effectiveUserId || 0,
+        initData,
+        username: effectiveUsername,
+      }),
     })
 
     if (response.ok) {
@@ -120,18 +151,23 @@ export interface RegistrationStatus {
  * Проверяет регистрацию пользователя
  * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
  */
-export async function checkRegistration(userId: number): Promise<RegistrationStatus> {
-  if (!userId) {
-    return { registered: false, error: 'no_user_id' }
+export async function checkRegistration(userId: number, username?: string): Promise<RegistrationStatus> {
+  const normalizedUsername = (username || '').trim()
+  if (!userId && !normalizedUsername) {
+    return { registered: false, error: 'no_user_id_or_username' }
   }
 
   const config = await loadConfig()
   const checkUrl = `${config.apiUrl}/check-registration`
   
   try {
-    const params = new URLSearchParams({
-      userId: userId.toString(),
-    })
+    const params = new URLSearchParams()
+    if (userId) {
+      params.set('userId', userId.toString())
+    }
+    if (normalizedUsername) {
+      params.set('username', normalizedUsername)
+    }
     const url = `${checkUrl}?${params.toString()}`
     const response = await fetch(url, { method: 'POST' })
     
@@ -191,7 +227,7 @@ export async function updateGameScore(
 ): Promise<{ success: boolean; stats?: GameStats; error?: string }> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/game-score`, {
+    const response = await fetch(`${config.apiUrl}/update-game-score`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -234,15 +270,21 @@ export interface CrosswordData {
 export async function getCrosswordData(userId: number): Promise<CrosswordData> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/crossword-data?userId=${userId}`)
+    const response = await fetch(`${config.apiUrl}/crossword/data?userId=${userId}`)
     if (response.ok) {
       const data = await response.json()
+      const normalized: CrosswordData = {
+        ...data,
+        words: data.words || [],
+        guessed_words: data.guessed_words || [],
+        start_date: data.start_date || data.crossword_start_date || '',
+      }
       console.log('Crossword data loaded:', { 
-        wordsCount: data.words?.length || 0, 
-        crosswordIndex: data.crossword_index,
-        guessedWords: data.guessed_words?.length || 0 
+        wordsCount: normalized.words?.length || 0, 
+        crosswordIndex: normalized.crossword_index,
+        guessedWords: normalized.guessed_words?.length || 0 
       })
-      return data
+      return normalized
     } else {
       const errorData = await response.json().catch(() => ({}))
       console.error('Error loading crossword data:', response.status, errorData)
@@ -398,18 +440,19 @@ export async function saveCrosswordProgress(
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/crossword-progress`, {
+    const response = await fetch(`${config.apiUrl}/crossword/progress`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         userId,
-        guessedWords,
+        guessed_words: guessedWords,
         crossword_index: crosswordIndex,
         cell_letters: cellLetters,
         wrong_attempts: wrongAttempts,
-        start_date: startDate,
+        crossword_start_date: startDate,
+        initData: getInitData(),
       }),
     })
 

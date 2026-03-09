@@ -19,6 +19,44 @@ type InvitationInfo struct {
 	IsSent    bool
 }
 
+// NormalizeTelegramUsername приводит Telegram username/ссылку к каноничному виду (lowercase, без @ и t.me/)
+func NormalizeTelegramUsername(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"'`)
+	s = strings.ToLower(s)
+	s = strings.TrimPrefix(s, "https://t.me/")
+	s = strings.TrimPrefix(s, "http://t.me/")
+	s = strings.TrimPrefix(s, "t.me/")
+	s = strings.TrimPrefix(s, "@")
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
+}
+
+// FindInvitationByTelegramUsername ищет приглашение по Telegram username (столбец B на листе приглашений).
+func FindInvitationByTelegramUsername(ctx context.Context, username string) (*InvitationInfo, error) {
+	u := NormalizeTelegramUsername(username)
+	if u == "" {
+		return nil, nil
+	}
+
+	invitations, err := GetInvitationsList(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, inv := range invitations {
+		if NormalizeTelegramUsername(inv.TelegramID) == u {
+			// копия в heap
+			c := inv
+			return &c, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // GetInvitationsList получает список приглашений из Google Sheets
 func GetInvitationsList(ctx context.Context) ([]InvitationInfo, error) {
 	service, err := GetGoogleSheetsClient()

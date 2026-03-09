@@ -13,18 +13,21 @@ const RegistrationContext = createContext<RegistrationContextType | undefined>(u
 export function RegistrationProvider({ children }: { children: ReactNode }) {
   const [isRegistered, setIsRegistered] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const { userId, isLoading: userIdLoading } = useUser()
+  const { userId, manualUsername, isLoading: userIdLoading } = useUser()
 
   const refreshRegistration = async () => {
-    // Ждем, пока user_id будет получен
-    if (userIdLoading || !userId) {
-      return
-    }
-
     setIsLoading(true)
     try {
-      const status: RegistrationStatus = await checkRegistration(userId)
-      setIsRegistered(status.registered || false)
+      // Проверяем по user_id и/или username.
+      // Это важно, потому что в колонке F может храниться как user_id, так и username.
+      if (!userIdLoading && (userId || manualUsername)) {
+        const status: RegistrationStatus = await checkRegistration(userId || 0, manualUsername || '')
+        setIsRegistered(status.registered || false)
+        return
+      }
+
+      // Нет идентификатора — не зависаем в Loading, просто считаем незарегистрированным
+      setIsRegistered(false)
     } catch (error) {
       console.error('Error checking registration:', error)
       setIsRegistered(false)
@@ -35,7 +38,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshRegistration()
-  }, [userId, userIdLoading])
+  }, [userId, userIdLoading, manualUsername])
 
   return (
     <RegistrationContext.Provider value={{ isRegistered, isLoading, refreshRegistration }}>
@@ -51,4 +54,3 @@ export function useRegistration() {
   }
   return context
 }
-

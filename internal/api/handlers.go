@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"wedding-bot/internal/cache"
@@ -39,147 +40,129 @@ func parseInitData(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, http.StatusOK, result)
 }
 
+func extractUserIDFromParsedInitData(result map[string]interface{}) int {
+	if result == nil {
+		return 0
+	}
+
+	switch uid := result["userId"].(type) {
+	case int:
+		return uid
+	case float64:
+		return int(uid)
+	case int64:
+		return int(uid)
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(uid)); err == nil {
+			return parsed
+		}
+	}
+
+	return 0
+}
+
+func extractUsernameFromParsedInitData(result map[string]interface{}) string {
+	if result == nil {
+		return ""
+	}
+
+	if username, ok := result["username"].(string); ok {
+		return google_sheets.NormalizeTelegramUsername(username)
+	}
+
+	return ""
+}
+
+func registrationCacheKeys(userID int, username string) []string {
+	keys := make([]string, 0, 2)
+	if userID > 0 {
+		keys = append(keys, fmt.Sprintf("registration:id:%d", userID))
+	}
+
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	if normalizedUsername != "" {
+		keys = append(keys, fmt.Sprintf("registration:username:%s", normalizedUsername))
+	}
+
+	return keys
+}
+
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	userIDStr := r.URL.Query().Get("userId")
-	firstName := r.URL.Query().Get("firstName")
-	lastName := r.URL.Query().Get("lastName")
-	searchByNameOnly := r.URL.Query().Get("searchByNameOnly") == "true"
+	userIDStr := strings.TrimSpace(r.URL.Query().Get("userId"))
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
 
-	if searchByNameOnly {
-		if firstName == "" || lastName == "" {
-			JSONError(w, http.StatusBadRequest, "name_required")
-			return
-		}
-
-		guest, err := google_sheets.FindGuestByName(ctx, firstName, lastName)
+	userID := 0
+	if userIDStr != "" {
+		parsedUserID, err := strconv.Atoi(userIDStr)
 		if err != nil {
-			log.Printf("Error finding guest: %v", err)
-			JSONError(w, http.StatusInternalServerError, "server_error")
+			JSONError(w, http.StatusBadRequest, "invalid_user_id")
 			return
 		}
+		userID = parsedUserID
+	}
 
-		if guest != nil {
-			if guest.UserID != "" {
-				JSONResponse(w, http.StatusOK, map[string]interface{}{
-					"registered": true,
-				})
-				return
-			}
-
-			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"registered":         false,
-				"needs_confirmation": true,
-				"guest_name":         fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
-			})
-			return
-		}
-
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"registered": false,
-		})
+	if userID == 0 && username == "" {
+		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
 		return
 	}
 
-	if userIDStr == "" {
-		// #region agent log
-		log.Printf("[DEBUG checkRegistration] userIDStr is empty. firstName=%s, lastName=%s, searchByNameOnly=%v", firstName, lastName, searchByNameOnly)
-		// #endregion
-		if firstName != "" && lastName != "" {
-			guest, err := google_sheets.FindGuestByName(ctx, firstName, lastName)
-			if err != nil {
-				log.Printf("Error finding guest: %v", err)
-				JSONError(w, http.StatusInternalServerError, "server_error")
-				return
-			}
-
-			if guest != nil {
-				if guest.UserID != "" {
-					JSONResponse(w, http.StatusOK, map[string]interface{}{
-						"registered": true,
-					})
-					return
-				}
-
-				JSONResponse(w, http.StatusOK, map[string]interface{}{
-					"registered":         false,
-					"needs_confirmation": true,
-					"guest_name":         fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
-				})
-				return
-			}
-		}
-
-		// #region agent log
-		log.Printf("[DEBUG checkRegistration] Returning user_id_or_name_required. userIDStr=%s, firstName=%s, lastName=%s", userIDStr, firstName, lastName)
-		// #endregion
-		JSONError(w, http.StatusBadRequest, "user_id_or_name_required")
-		return
-	}
-
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid_user_id")
-		return
+	cacheKey := ""
+	switch {
+	case userID > 0:
+		cacheKey = fmt.Sprintf("registration:id:%d", userID)
+	case username != "":
+		cacheKey = fmt.Sprintf("registration:username:%s", username)
 	}
 
 	// Проверяем регистрацию
-	cacheKey := fmt.Sprintf("registration:%d", userID)
-	if cached, ok := cache.GetMemoryCacheValue(cacheKey); ok {
-		if val, ok := cached.(bool); ok {
-			inGroupChat, _ := IsUserInGroupChat(userID)
-			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"registered":    val,
-				"in_group_chat": inGroupChat,
-				"cached":        true,
-			})
-			return
+	if cacheKey != "" {
+		if cached, ok := cache.GetMemoryCacheValue(cacheKey); ok {
+			if val, ok := cached.(bool); ok {
+				resp := map[string]interface{}{
+					"registered": val,
+					"cached":     true,
+				}
+				if userID > 0 {
+					inGroupChat, _ := IsUserInGroupChat(userID)
+					resp["in_group_chat"] = inGroupChat
+				}
+				if username != "" && userID == 0 {
+					resp["auth_mode"] = "username"
+				}
+				JSONResponse(w, http.StatusOK, resp)
+				return
+			}
 		}
 	}
 
-	registered, err := google_sheets.CheckGuestRegistration(ctx, userID)
+	registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, userID, username)
 	if err != nil {
 		log.Printf("Error checking registration: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")
 		return
 	}
-	cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
-	cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
 
-	if registered {
+	if cacheKey != "" {
+		cache.SetMemoryCache(cacheKey, registered, 30*time.Second)
+	}
+
+	resp := map[string]interface{}{
+		"registered": registered,
+	}
+	if userID > 0 {
 		inGroupChat, _ := IsUserInGroupChat(userID)
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"registered":    true,
-			"in_group_chat": inGroupChat,
-		})
-		return
+		resp["in_group_chat"] = inGroupChat
+	}
+	if username != "" && userID == 0 {
+		resp["auth_mode"] = "username"
 	}
 
-	// Проверяем по имени
-	if firstName != "" && lastName != "" {
-		guest, err := google_sheets.FindGuestByName(ctx, firstName, lastName)
-		if err != nil {
-			log.Printf("Error finding guest: %v", err)
-		} else if guest != nil {
-			// Найден по имени - считаем зарегистрированным
-			inGroupChat, _ := IsUserInGroupChat(userID)
-			JSONResponse(w, http.StatusOK, map[string]interface{}{
-				"registered":    true,
-				"in_group_chat": inGroupChat,
-			})
-			return
-		}
-	}
-
-	inGroupChat, _ := IsUserInGroupChat(userID)
-	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"registered":    false,
-		"in_group_chat": inGroupChat,
-	})
+	JSONResponse(w, http.StatusOK, resp)
 }
 
 // registerGuest регистрирует гостя
@@ -192,6 +175,7 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		Side      string `json:"side"`
 		UserID    int    `json:"userId"`
 		InitData  string `json:"initData"`
+		Username  string `json:"username"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -201,25 +185,24 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 
 	// Получаем user_id из initData если не передан напрямую
 	userID := req.UserID
+	manualUsername := google_sheets.NormalizeTelegramUsername(req.Username)
 	// #region agent log
 	log.Printf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
 	// #endregion
-	if userID == 0 && req.InitData != "" {
+	if req.InitData != "" {
 		result, err := ParseInitData(req.InitData)
 		// #region agent log
 		log.Printf("[DEBUG registerGuest] ParseInitData result: err=%v, result=%+v", err, result)
 		// #endregion
 		if err == nil {
-			// Пробуем разные типы для userId
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			} else if uidFloat, ok := result["userId"].(float64); ok {
-				userID = int(uidFloat)
-			} else if uidInt64, ok := result["userId"].(int64); ok {
-				userID = int(uidInt64)
+			if userID == 0 {
+				userID = extractUserIDFromParsedInitData(result)
+			}
+			if manualUsername == "" {
+				manualUsername = extractUsernameFromParsedInitData(result)
 			}
 			// #region agent log
-			log.Printf("[DEBUG registerGuest] Parsed user_id from initData: %d (type check: int=%v, float64=%v, int64=%v)", userID, result["userId"], result["userId"], result["userId"])
+			log.Printf("[DEBUG registerGuest] Parsed auth from initData: user_id=%d, username=%s", userID, manualUsername)
 			// #endregion
 			log.Printf("Parsed user_id from initData: %d", userID)
 		} else {
@@ -227,7 +210,8 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if userID == 0 {
+	// Разрешаем регистрацию без user_id только при наличии username (режим браузера вне Telegram)
+	if userID == 0 && manualUsername == "" {
 		// #region agent log
 		log.Printf("[DEBUG registerGuest] user_id is 0 after all attempts. InitData provided: %v (len=%d), UserID in request: %d, FirstName: %s, LastName: %s", req.InitData != "", len(req.InitData), req.UserID, req.FirstName, req.LastName)
 		// #endregion
@@ -240,8 +224,11 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Идемпотентность: если уже зарегистрирован, возвращаем успех
-	if registered, err := google_sheets.CheckGuestRegistration(ctx, userID); err == nil && registered {
+	// Идемпотентность: если уже зарегистрирован по user_id/username, возвращаем успех
+	if registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, userID, manualUsername); err == nil && registered {
+		for _, key := range registrationCacheKeys(userID, manualUsername) {
+			cache.SetMemoryCache(key, true, 30*time.Second)
+		}
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
 			"success":            true,
 			"already_registered": true,
@@ -264,10 +251,25 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		side = &req.Side
 	}
 
-	if err := google_sheets.AddGuestToSheets(ctx, req.FirstName, req.LastName, age, category, side, &userID); err != nil {
+	// Если userID == 0 (браузерный режим), пишем запись без user_id
+	var userIDPtr *int
+	if userID != 0 {
+		userIDPtr = &userID
+	}
+
+	var usernamePtr *string
+	if manualUsername != "" {
+		usernamePtr = &manualUsername
+	}
+
+	if err := google_sheets.AddGuestToSheets(ctx, req.FirstName, req.LastName, age, category, side, userIDPtr, usernamePtr); err != nil {
 		log.Printf("Error adding guest: %v", err)
 		JSONError(w, http.StatusInternalServerError, "failed to register")
 		return
+	}
+
+	for _, key := range registrationCacheKeys(userID, manualUsername) {
+		cache.SetMemoryCache(key, true, 30*time.Second)
 	}
 
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
@@ -280,6 +282,7 @@ func cancelGuestRegistration(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID   int    `json:"userId"`
 		InitData string `json:"initData"`
+		Username string `json:"username"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -288,58 +291,38 @@ func cancelGuestRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
+	username := google_sheets.NormalizeTelegramUsername(req.Username)
+	if req.InitData != "" {
 		result, err := ParseInitData(req.InitData)
 		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
+			if userID == 0 {
+				userID = extractUserIDFromParsedInitData(result)
+			}
+			if username == "" {
+				username = extractUsernameFromParsedInitData(result)
 			}
 		}
 	}
 
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	if userID == 0 && username == "" {
+		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
 		return
 	}
 
 	ctx := r.Context()
 
-	if err := google_sheets.CancelGuestRegistrationByUserID(ctx, userID); err != nil {
+	if err := google_sheets.CancelGuestRegistrationByIdentifier(ctx, userID, username); err != nil {
 		log.Printf("Error canceling registration: %v", err)
-		JSONError(w, http.StatusInternalServerError, "failed to cancel")
+		if strings.Contains(strings.ToLower(err.Error()), "не найден") {
+			JSONError(w, http.StatusBadRequest, "guest_not_found")
+			return
+		}
+		JSONError(w, http.StatusInternalServerError, "failed_to_cancel")
 		return
 	}
 
-	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-	})
-}
-
-// confirmIdentity подтверждает личность
-func confirmIdentity(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Row    int `json:"row"`
-		UserID int `json:"userId"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-
-	if req.Row == 0 || req.UserID == 0 {
-		JSONError(w, http.StatusBadRequest, "missing_data")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	err := google_sheets.UpdateGuestUserID(ctx, req.Row, req.UserID)
-	if err != nil {
-		log.Printf("Ошибка обновления user_id гостя: %v", err)
-		JSONError(w, http.StatusInternalServerError, "update_failed")
-		return
+	for _, key := range registrationCacheKeys(userID, username) {
+		cache.SetMemoryCache(key, false, 30*time.Second)
 	}
 
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
