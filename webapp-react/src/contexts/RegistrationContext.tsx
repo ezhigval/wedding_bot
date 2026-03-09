@@ -23,11 +23,6 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true)
     try {
-      if (!userId && !manualUsername) {
-        setIsRegistered(false)
-        return
-      }
-
       const attemptCheck = async (): Promise<RegistrationStatus> => {
         return checkRegistration(userId || 0, manualUsername || '')
       }

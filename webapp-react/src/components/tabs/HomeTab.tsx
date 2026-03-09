@@ -12,15 +12,18 @@ import type { Config } from '../../types'
 export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
-  const { userId, manualUsername, setManualUsername } = useUser()
+  const { userId, manualUsername, setManualUsername, refreshUserId } = useUser()
   const [usernameInput, setUsernameInput] = useState(manualUsername ? `@${manualUsername}` : '')
 
   useEffect(() => {
     loadConfig().then(setConfig)
   }, [])
 
-  const handleFormSuccess = () => {
-    refreshRegistration() // Обновляем статус регистрации
+  const handleFormSuccess = async () => {
+    // После успешной отправки формы принудительно переобновляем identity и регистрацию,
+    // чтобы убрать рассинхрон между вкладками и главной.
+    await refreshUserId()
+    await refreshRegistration()
   }
 
   return (

@@ -151,7 +151,11 @@ export interface RegistrationStatus {
  */
 export async function checkRegistration(userId: number, username?: string): Promise<RegistrationStatus> {
   const normalizedUsername = (username || '').trim().replace(/^@/, '').toLowerCase()
-  if (!userId && !normalizedUsername) {
+  const initData = getInitData()
+
+  // Разрешаем проверку только по initData: сервер сам извлечет user_id/username,
+  // если фронт еще не успел получить их локально.
+  if (!userId && !normalizedUsername && !initData) {
     return { registered: false, error: 'no_user_id_or_username' }
   }
 
@@ -175,7 +179,7 @@ export async function checkRegistration(userId: number, username?: string): Prom
       body: JSON.stringify({
         userId,
         username: normalizedUsername,
-        initData: getInitData(),
+        initData,
       }),
     })
     
