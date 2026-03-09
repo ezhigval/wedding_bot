@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,8 +15,20 @@ import (
 	"time"
 
 	"wedding-bot/internal/cache"
+	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
 )
+
+const (
+	authSessionCookieName = "wedding_auth_session"
+	authSessionTTL        = 30 * 24 * time.Hour
+)
+
+type authSessionPayload struct {
+	UserID   int    `json:"user_id,omitempty"`
+	Username string `json:"username,omitempty"`
+	Expires  int64  `json:"exp"`
+}
 
 // parseInitData парсит initData и возвращает user_id
 func parseInitData(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +101,117 @@ func registrationCacheKeys(userID int, username string) []string {
 	}
 
 	return keys
+}
+
+func authSessionSecret() []byte {
+	secret := strings.TrimSpace(config.BotToken)
+	if secret == "" {
+		secret = "wedding-bot-session-secret"
+	}
+	return []byte(secret)
+}
+
+func signAuthSession(body string) string {
+	mac := hmac.New(sha256.New, authSessionSecret())
+	mac.Write([]byte(body))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func encodeAuthSession(userID int, username string) (string, error) {
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	if userID <= 0 && normalizedUsername == "" {
+		return "", fmt.Errorf("empty auth identity")
+	}
+
+	payload := authSessionPayload{
+		UserID:   userID,
+		Username: normalizedUsername,
+		Expires:  time.Now().Add(authSessionTTL).Unix(),
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	body := base64.RawURLEncoding.EncodeToString(raw)
+	signature := signAuthSession(body)
+	return body + "." + signature, nil
+}
+
+func decodeAuthSession(raw string) (int, string, bool) {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 2 {
+		return 0, "", false
+	}
+
+	body := parts[0]
+	signature := parts[1]
+	expectedSignature := signAuthSession(body)
+	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+		return 0, "", false
+	}
+
+	decodedBody, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		return 0, "", false
+	}
+
+	var payload authSessionPayload
+	if err := json.Unmarshal(decodedBody, &payload); err != nil {
+		return 0, "", false
+	}
+
+	if payload.Expires > 0 && time.Now().Unix() > payload.Expires {
+		return 0, "", false
+	}
+
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(payload.Username)
+	if payload.UserID <= 0 && normalizedUsername == "" {
+		return 0, "", false
+	}
+
+	return payload.UserID, normalizedUsername, true
+}
+
+func isHTTPSRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+}
+
+func setAuthSessionCookie(w http.ResponseWriter, r *http.Request, userID int, username string) {
+	sessionValue, err := encodeAuthSession(userID, username)
+	if err != nil {
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     authSessionCookieName,
+		Value:    sessionValue,
+		Path:     "/",
+		MaxAge:   int(authSessionTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   isHTTPSRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func readAuthSessionCookie(r *http.Request) (int, string, bool) {
+	if r == nil {
+		return 0, "", false
+	}
+
+	cookie, err := r.Cookie(authSessionCookieName)
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return 0, "", false
+	}
+
+	return decodeAuthSession(cookie.Value)
 }
 
 func usernameToUserIDCacheKey(username string) string {
@@ -166,6 +292,20 @@ func resolveAuthIdentity(userID int, username, initData string) (int, string) {
 	return resolvedUserID, normalizedUsername
 }
 
+func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initData string) (int, string) {
+	resolvedUserID, resolvedUsername := resolveAuthIdentity(userID, username, initData)
+	if resolvedUserID > 0 || resolvedUsername != "" {
+		return resolvedUserID, resolvedUsername
+	}
+
+	cookieUserID, cookieUsername, ok := readAuthSessionCookie(r)
+	if !ok {
+		return 0, ""
+	}
+
+	return resolveAuthIdentity(cookieUserID, cookieUsername, "")
+}
+
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
@@ -200,12 +340,14 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 		userID = parsedUserID
 	}
 
-	userID, username = resolveAuthIdentity(userID, username, req.InitData)
+	userID, username = resolveAuthIdentityFromRequest(r, userID, username, req.InitData)
 
 	if userID == 0 && username == "" {
 		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
 		return
 	}
+
+	setAuthSessionCookie(w, r, userID, username)
 
 	cacheKeys := registrationCacheKeys(userID, username)
 
@@ -282,7 +424,7 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	// #region agent log
 	log.Printf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
 	// #endregion
-	userID, manualUsername = resolveAuthIdentity(userID, manualUsername, req.InitData)
+	userID, manualUsername = resolveAuthIdentityFromRequest(r, userID, manualUsername, req.InitData)
 	// #region agent log
 	log.Printf("[DEBUG registerGuest] Resolved auth identity: user_id=%d, username=%s", userID, manualUsername)
 	// #endregion
@@ -349,6 +491,8 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		cache.SetMemoryCache(key, true, 30*time.Second)
 	}
 
+	setAuthSessionCookie(w, r, userID, manualUsername)
+
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 	})
@@ -369,12 +513,14 @@ func cancelGuestRegistration(w http.ResponseWriter, r *http.Request) {
 
 	userID := req.UserID
 	username := req.Username
-	userID, username = resolveAuthIdentity(userID, username, req.InitData)
+	userID, username = resolveAuthIdentityFromRequest(r, userID, username, req.InitData)
 
 	if userID == 0 && username == "" {
 		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
 		return
 	}
+
+	setAuthSessionCookie(w, r, userID, username)
 
 	ctx := r.Context()
 
