@@ -40,15 +40,18 @@ func handleAdminBroadcastDM(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	)
 
 	msgText := fmt.Sprintf(
-		"📨 <b>Рассылка в личные сообщения</b>\n\n"+
+		"📨 <b>Создание рассылки</b>\n\n"+
 			"Получателей (по базе гостей): <b>%d</b>\n\n"+
-			"1️⃣ Отправьте текст сообщения, которое получат гости.",
+			"📝 <b>Шаг 1/5: Текст сообщения</b>\n\n"+
+			"Отправьте текст сообщения, которое получат гости.",
 		total,
 	)
 
 	// Устанавливаем начальное состояние
 	SetBroadcastState(userID, &BroadcastState{
-		Text: "",
+		Text:       "",
+		Step:       "text",
+		Recipients: []int64{}, // пустой = всем
 	})
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
@@ -62,25 +65,30 @@ func handleBroadcastText(bot *tgbotapi.BotAPI, message *tgbotapi.Message, text s
 	userID := message.From.ID
 
 	state := GetBroadcastState(userID)
-	if state == nil {
-		// Если состояния нет, создаем новое
-		state = &BroadcastState{}
-		SetBroadcastState(userID, state)
+	if state == nil || state.Step != "text" {
+		// Если состояния нет или не тот шаг, игнорируем
+		return
 	}
 
 	state.Text = text
+	state.Step = "media"
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➡️ Без картинки", "broadcast:no_photo"),
+			tgbotapi.NewInlineKeyboardButtonData("🖼️ Добавить фото", "broadcast:media:photo"),
+			tgbotapi.NewInlineKeyboardButtonData("🎥 Добавить видео", "broadcast:media:video"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➡️ Пропустить", "broadcast:media:skip"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
 		),
 	)
 
-	msgText := "📨 <b>Текст сообщения сохранен</b>\n\n" +
-		"Хотите добавить картинку? Или продолжить без картинки?"
+	msgText := "📨 <b>Шаг 2/5: Медиа-файлы</b>\n\n" +
+		"Текст сообщения сохранен!\n\n" +
+		"Хотите добавить фото или видео к сообщению?"
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
@@ -93,12 +101,13 @@ func handleBroadcastPhoto(bot *tgbotapi.BotAPI, message *tgbotapi.Message, photo
 	userID := message.From.ID
 
 	state := GetBroadcastState(userID)
-	if state == nil {
-		state = &BroadcastState{}
-		SetBroadcastState(userID, state)
+	if state == nil || state.Step != "media" {
+		return
 	}
 
 	state.PhotoID = photoID
+	state.VideoID = "" // очищаем видео если было
+	state.Step = "button"
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -118,7 +127,49 @@ func handleBroadcastPhoto(bot *tgbotapi.BotAPI, message *tgbotapi.Message, photo
 		),
 	)
 
-	msgText := "📨 <b>Картинка добавлена</b>\n\n" +
+	msgText := "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
+		"Фото добавлено!\n\n" +
+		"Хотите добавить кнопку к сообщению?"
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
+}
+
+// handleBroadcastVideo обрабатывает видео для рассылки
+func handleBroadcastVideo(bot *tgbotapi.BotAPI, message *tgbotapi.Message, videoID string) {
+	userID := message.From.ID
+
+	state := GetBroadcastState(userID)
+	if state == nil || state.Step != "media" {
+		return
+	}
+
+	state.VideoID = videoID
+	state.PhotoID = "" // очищаем фото если было
+	state.Step = "button"
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔘 Без кнопки", "broadcast:btn:none"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💒 Открыть мини-эпп", "broadcast:btn:miniapp"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💬 Открыть общий чат", "broadcast:btn:group"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить свою кнопку", "broadcast:btn:custom"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
+		),
+	)
+
+	msgText := "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
+		"Видео добавлено!\n\n" +
 		"Хотите добавить кнопку к сообщению?"
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
@@ -132,7 +183,7 @@ func handleBroadcastButton(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 	userID := callback.From.ID
 
 	state := GetBroadcastState(userID)
-	if state == nil {
+	if state == nil || state.Step != "button" {
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка: состояние рассылки потеряно")
 		bot.Send(msg)
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
@@ -143,16 +194,20 @@ func handleBroadcastButton(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 	case "none":
 		state.ButtonText = ""
 		state.ButtonURL = ""
-		showBroadcastPreview(bot, callback, state)
+		state.Step = "recipients"
+		showRecipientsSelection(bot, callback, state)
 	case "miniapp":
 		state.ButtonText = "💒 Открыть приглашение"
 		state.ButtonURL = config.WebappURL // WebApp URL
-		showBroadcastPreview(bot, callback, state)
+		state.Step = "recipients"
+		showRecipientsSelection(bot, callback, state)
 	case "group":
 		state.ButtonText = "💬 Общий чат"
 		state.ButtonURL = config.GroupLink // URL из config
-		showBroadcastPreview(bot, callback, state)
+		state.Step = "recipients"
+		showRecipientsSelection(bot, callback, state)
 	case "custom":
+		state.Step = "custom_button"
 		msgText := "📨 <b>Добавить свою кнопку</b>\n\n" +
 			"Отправьте текст кнопки в формате:\n" +
 			"<code>Текст кнопки|URL</code>\n\n" +
@@ -168,12 +223,63 @@ func handleBroadcastButton(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 	}
 }
 
+// showRecipientsSelection показывает выбор получателей
+func showRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, state *BroadcastState) {
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌐 Всем гостям", "broadcast:recipients:all"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👥 Выбрать вручную", "broadcast:recipients:select"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
+		),
+	)
+
+	msgText := "📨 <b>Шаг 4/5: Выбор получателей</b>\n\n" +
+		"Кому отправить сообщение?"
+
+	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
+
+	// Если это реальный callback, отвечаем на него
+	if callback.ID != "" {
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	}
+}
+
+// showRecipientsSelectionFromMessage показывает выбор получателей из сообщения (без callback)
+func showRecipientsSelectionFromMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state *BroadcastState) {
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌐 Всем гостям", "broadcast:recipients:all"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👥 Выбрать вручную", "broadcast:recipients:select"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
+		),
+	)
+
+	msgText := "📨 <b>Шаг 4/5: Выбор получателей</b>\n\n" +
+		"Кому отправить сообщение?"
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = &keyboard
+	bot.Send(msg)
+}
+
 // showBroadcastPreview показывает превью рассылки
 func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, state *BroadcastState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recipients, err := GetBroadcastRecipients(ctx)
+	allRecipients, err := GetBroadcastRecipients(ctx)
 	if err != nil {
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка получения получателей")
 		bot.Send(msg)
@@ -181,7 +287,16 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 		return
 	}
 
-	total := len(recipients)
+	// Определяем количество получателей
+	var total int
+	var recipientText string
+	if len(state.Recipients) > 0 {
+		total = len(state.Recipients)
+		recipientText = fmt.Sprintf("%d выбранных получателей", total)
+	} else {
+		total = len(allRecipients)
+		recipientText = fmt.Sprintf("%d гостей из базы", total)
+	}
 
 	// Создаем клавиатуру для превью
 	var previewKeyboard *tgbotapi.InlineKeyboardMarkup
@@ -196,7 +311,16 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 	}
 
 	// Отправляем превью
-	if state.PhotoID != "" {
+	if state.VideoID != "" {
+		video := tgbotapi.NewVideo(callback.Message.Chat.ID, tgbotapi.FileID(state.VideoID))
+		if state.Text != "" {
+			video.Caption = state.Text
+		}
+		if previewKeyboard != nil {
+			video.ReplyMarkup = previewKeyboard
+		}
+		bot.Send(video)
+	} else if state.PhotoID != "" {
 		photo := tgbotapi.NewPhoto(callback.Message.Chat.ID, tgbotapi.FileID(state.PhotoID))
 		if state.Text != "" {
 			photo.Caption = state.Text
@@ -216,7 +340,7 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 	// Отправляем подтверждение
 	confirmKeyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Отправить всем гостям", "broadcast:send:confirm"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Отправить", "broadcast:send:confirm"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
@@ -224,11 +348,10 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 	)
 
 	msgText := fmt.Sprintf(
-		"📨 <b>Проверьте сообщение выше.</b>\n\n"+
-			"Оно будет отправлено в ЛС всем гостям из базы, у кого есть user_id.\n"+
-			"Планируется отправка: <b>%d</b> получателям.\n\n"+
-			"Если всё верно — нажмите «Отправить всем гостям».",
-		total,
+		"📨 <b>Шаг 5/5: Проверка сообщения</b>\n\n"+
+			"Сообщение выше будет отправлено %s.\n\n"+
+			"Если всё верно — нажмите «Отправить».",
+		recipientText,
 	)
 
 	msg := tgbotapi.NewMessage(callback.Message.Chat.ID, msgText)
@@ -260,7 +383,7 @@ func handleBroadcastSendConfirm(bot *tgbotapi.BotAPI, callback *tgbotapi.Callbac
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recipients, err := GetBroadcastRecipients(ctx)
+	allRecipients, err := GetBroadcastRecipients(ctx)
 	if err != nil {
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка получения получателей")
 		bot.Send(msg)
@@ -268,7 +391,14 @@ func handleBroadcastSendConfirm(bot *tgbotapi.BotAPI, callback *tgbotapi.Callbac
 		return
 	}
 
-	total := len(recipients)
+	// Определяем количество получателей
+	var total int
+	if len(state.Recipients) > 0 {
+		total = len(state.Recipients)
+	} else {
+		total = len(allRecipients)
+	}
+
 	if total == 0 {
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "⚠️ В базе гостей пока нет ни одного user_id, рассылать некому.")
 		bot.Send(msg)
@@ -293,7 +423,7 @@ func handleBroadcastSendConfirm(bot *tgbotapi.BotAPI, callback *tgbotapi.Callbac
 	}
 
 	// Отправляем рассылку
-	sent, failed := SendBroadcast(botInstance, state, recipients)
+	sent, failed := SendBroadcast(botInstance, state, allRecipients)
 
 	// Очищаем состояние
 	ClearBroadcastState(userID)

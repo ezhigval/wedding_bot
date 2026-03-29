@@ -14,10 +14,13 @@ import (
 
 // BroadcastState хранит состояние рассылки для пользователя
 type BroadcastState struct {
-	Text      string
-	PhotoID   string
-	ButtonURL string
+	Text       string
+	PhotoID    string
+	VideoID    string
+	ButtonURL  string
 	ButtonText string
+	Recipients []int64 // пустой = всем, иначе список конкретных user_id
+	Step       string  // текущий шаг: "text", "media", "button", "recipients", "preview"
 }
 
 var (
@@ -69,7 +72,15 @@ func GetBroadcastRecipients(ctx context.Context) ([]int64, error) {
 
 // SendBroadcast отправляет рассылку всем получателям
 func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int64) (sent, failed int) {
-	for _, userID := range recipients {
+	// Если указаны конкретные получатели, используем их, иначе всех
+	var targetRecipients []int64
+	if len(state.Recipients) > 0 {
+		targetRecipients = state.Recipients
+	} else {
+		targetRecipients = recipients
+	}
+
+	for _, userID := range targetRecipients {
 		// Создаем клавиатуру если есть кнопка
 		var keyboard *tgbotapi.InlineKeyboardMarkup
 		if state.ButtonText != "" && state.ButtonURL != "" {
@@ -84,7 +95,17 @@ func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int
 
 		// Отправляем сообщение
 		var err error
-		if state.PhotoID != "" {
+		if state.VideoID != "" {
+			// Приоритет видео над фото
+			video := tgbotapi.NewVideo(userID, tgbotapi.FileID(state.VideoID))
+			if state.Text != "" {
+				video.Caption = state.Text
+			}
+			if keyboard != nil {
+				video.ReplyMarkup = keyboard
+			}
+			_, err = bot.Send(video)
+		} else if state.PhotoID != "" {
 			photo := tgbotapi.NewPhoto(userID, tgbotapi.FileID(state.PhotoID))
 			if state.Text != "" {
 				photo.Caption = state.Text

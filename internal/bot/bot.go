@@ -187,6 +187,12 @@ func handleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
+	// Обработка видео
+	if update.Message != nil && update.Message.Video != nil {
+		handleVideoMessage(bot, update.Message)
+		return
+	}
+
 	// Обработка callback queries
 	if update.CallbackQuery != nil {
 		handleCallbackQuery(bot, update.CallbackQuery)
@@ -291,34 +297,57 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		// Проверяем, есть ли активная рассылка
 		state := GetBroadcastState(userID)
 		if state != nil {
-			// Обрабатываем текст/фото/кнопку для рассылки
-			if state.Text == "" {
+			switch state.Step {
+			case "text":
 				// Ожидаем текст
 				handleBroadcastText(bot, message, text)
 				return
-			} else if state.PhotoID == "" && len(message.Photo) > 0 {
-				// Обрабатываем фото
-				photoID := message.Photo[len(message.Photo)-1].FileID
-				handleBroadcastPhoto(bot, message, photoID)
+			case "media":
+				// Ожидаем фото или видео
+				if len(message.Photo) > 0 {
+					photoID := message.Photo[len(message.Photo)-1].FileID
+					handleBroadcastPhoto(bot, message, photoID)
+					return
+				} else if message.Video != nil {
+					handleBroadcastVideo(bot, message, message.Video.FileID)
+					return
+				}
+				// Игнорируем текст на этом шаге
 				return
-			} else if state.PhotoID == "" {
-				// Можем обработать фото или пропустить
-				// Продолжаем к обычной обработке
-			} else if state.ButtonText == "" {
-				// Ожидаем выбор кнопки или текст кнопки
-				// Проверяем, не является ли это текстом кнопки
+			case "custom_button":
+				// Ожидаем текст кастомной кнопки
 				if strings.Contains(text, "|") {
-					// Формат: "Текст|URL"
 					parts := strings.SplitN(text, "|", 2)
 					if len(parts) == 2 {
-						state.ButtonText = strings.TrimSpace(parts[0])
-						state.ButtonURL = strings.TrimSpace(parts[1])
-						// Отправляем сообщение о добавлении кнопки
-						msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кнопка добавлена. Нажмите 'Без картинки' или отправьте фото для завершения настройки.")
-						bot.Send(msg)
+						buttonText := strings.TrimSpace(parts[0])
+						buttonURL := strings.TrimSpace(parts[1])
+
+						// Базовая валидация URL
+						if !strings.HasPrefix(buttonURL, "http://") && !strings.HasPrefix(buttonURL, "https://") {
+							msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный URL. Используйте формат: <code>Текст кнопки|https://example.com</code>")
+							msg.ParseMode = tgbotapi.ModeHTML
+							bot.Send(msg)
+							return
+						}
+
+						if buttonText == "" {
+							msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Текст кнопки не может быть пустым")
+							bot.Send(msg)
+							return
+						}
+
+						state.ButtonText = buttonText
+						state.ButtonURL = buttonURL
+						state.Step = "recipients"
+						showRecipientsSelectionFromMessage(bot, message, state)
 						return
 					}
 				}
+				// Неверный формат
+				msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: <code>Текст кнопки|URL</code>")
+				msg.ParseMode = tgbotapi.ModeHTML
+				bot.Send(msg)
+				return
 			}
 		}
 
@@ -338,7 +367,7 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Проверяем, есть ли активная рассылка
 	if isAdminUser(int(userID)) {
 		state := GetBroadcastState(userID)
-		if state != nil && state.Text != "" && state.PhotoID == "" {
+		if state != nil && state.Step == "media" {
 			// Обрабатываем фото для рассылки
 			photoID := message.Photo[len(message.Photo)-1].FileID
 			handleBroadcastPhoto(bot, message, photoID)
@@ -401,6 +430,29 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Фото сохранено! 📸")
+	bot.Send(msg)
+}
+
+// handleVideoMessage обрабатывает видео
+func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	if message.Video == nil {
+		return
+	}
+
+	userID := message.From.ID
+
+	// Проверяем, есть ли активная рассылка
+	if isAdminUser(int(userID)) {
+		state := GetBroadcastState(userID)
+		if state != nil && state.Step == "media" {
+			// Обрабатываем видео для рассылки
+			handleBroadcastVideo(bot, message, message.Video.FileID)
+			return
+		}
+	}
+
+	// Для обычных пользователей можно добавить обработку видео в будущем
+	msg := tgbotapi.NewMessage(message.Chat.ID, "📹 Видео получено!")
 	bot.Send(msg)
 }
 

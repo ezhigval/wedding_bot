@@ -39,6 +39,8 @@ func handleAdminCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery,
 		handleAdminStatsCallback(bot, callback)
 	case "group":
 		handleAdminGroupCallback(bot, callback)
+	case "broadcast":
+		handleAdminBroadcastCallback(bot, callback)
 	case "back":
 		handleAdminBackCallback(bot, callback)
 	default:
@@ -725,18 +727,26 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 		return
 	}
 
+	userID := callback.From.ID
+	state := GetBroadcastState(userID)
+
 	action := parts[0]
 
 	switch action {
-	case "no_photo":
-		userID := callback.From.ID
-		state := GetBroadcastState(userID)
-		if state == nil {
+	case "cancel":
+		handleBroadcastCancel(bot, callback)
+	case "media":
+		if len(parts) < 2 {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
-		// Пропускаем фото, переходим к кнопке
-		handleBroadcastButton(bot, callback, "none")
+		mediaType := parts[1]
+		if mediaType == "skip" {
+			state.Step = "button"
+			showRecipientsSelection(bot, callback, state)
+		}
+		// фото и видео обрабатываются в основном обработчике сообщений
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "btn":
 		if len(parts) < 2 {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
@@ -744,15 +754,44 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 		}
 		buttonType := parts[1]
 		handleBroadcastButton(bot, callback, buttonType)
+	case "recipients":
+		if len(parts) < 2 {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		recipientsType := parts[1]
+		if recipientsType == "all" {
+			state.Step = "preview"
+			showBroadcastPreview(bot, callback, state)
+		} else if recipientsType == "select" {
+			// TODO: Реализовать выбор получателей вручную
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "📝 <b>Выбор получателей вручную</b>\n\n"+
+				"Эта функция будет реализована в следующей версии.\n\n"+
+				"Пока что можно отправить всем гостям.")
+			msg.ParseMode = tgbotapi.ModeHTML
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		}
 	case "send":
 		if len(parts) > 1 && parts[1] == "confirm" {
 			handleBroadcastSendConfirm(bot, callback)
 		} else {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 		}
-	case "cancel":
-		handleBroadcastCancel(bot, callback)
 	default:
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
+}
+
+// handleAdminBroadcastCallback запускает рассылку из админ-панели
+func handleAdminBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	// Создаем сообщение-заглушку для имитации сообщения от пользователя
+	message := &tgbotapi.Message{
+		From: callback.From,
+		Chat: callback.Message.Chat,
+	}
+
+	// Вызываем существующую функцию обработки рассылки
+	handleAdminBroadcastDM(bot, message)
+	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }

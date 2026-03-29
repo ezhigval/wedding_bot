@@ -13,6 +13,9 @@ func GetAdminRootInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("💬 Группа", "admin:group"),
 			tgbotapi.NewInlineKeyboardButtonData("🤖 Бот", "admin:stats"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📨 Рассылка", "admin:broadcast"),
+		),
 	)
 }
 
