@@ -100,6 +100,7 @@ func GetAdminRootReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
 		},
 		{
 			tgbotapi.NewKeyboardButton("🎮 Игры"),
+			tgbotapi.NewKeyboardButton("📨 Рассылка"),
 		},
 		{
 			tgbotapi.NewKeyboardButton("⬅️ Вернуться"),

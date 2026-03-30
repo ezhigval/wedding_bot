@@ -34,6 +34,8 @@ func handleAdminText(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		handleAdminGroupMenu(bot, message)
 	case "🤖 Бот":
 		handleAdminBotMenu(bot, message)
+	case "📨 Рассылка":
+		handleAdminBroadcastDM(bot, message)
 	case "⬅️ Вернуться":
 		handleAdminBack(bot, message)
 	case "📋 Список гостей":
