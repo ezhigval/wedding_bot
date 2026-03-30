@@ -764,14 +764,64 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 			state.Step = "preview"
 			showBroadcastPreview(bot, callback, state)
 		} else if recipientsType == "select" {
-			// TODO: Реализовать выбор получателей вручную
-			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "📝 <b>Выбор получателей вручную</b>\n\n"+
-				"Эта функция будет реализована в следующей версии.\n\n"+
-				"Пока что можно отправить всем гостям.")
-			msg.ParseMode = tgbotapi.ModeHTML
-			bot.Send(msg)
-			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			// Показываем интерфейс выбора получателей
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			recipients, err := GetBroadcastRecipientsWithInfo(ctx)
+			if err != nil {
+				log.Printf("Ошибка получения получателей: %v", err)
+				msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка получения списка получателей")
+				bot.Send(msg)
+				bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+				return
+			}
+
+			ShowRecipientsSelectionPage(bot, callback, recipients, 0, 0)
 		}
+	case "select", "deselect", "select_all", "deselect_all", "send_selected":
+		if len(parts) < 2 {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+
+		var userID int64
+		if parts[0] == "select" || parts[0] == "deselect" {
+			if len(parts) < 3 {
+				bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+				return
+			}
+			// Парсим user_id из callback data
+			if _, err := fmt.Sscanf(parts[2], "%d", &userID); err != nil {
+				bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+				return
+			}
+		}
+
+		HandleRecipientsSelection(bot, callback, parts[0], userID)
+	case "page":
+		if len(parts) < 2 {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		// Обработка пагинации
+		page := 0
+		if _, err := fmt.Sscanf(parts[1], "%d", &page); err != nil {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		recipients, err := GetBroadcastRecipientsWithInfo(ctx)
+		if err != nil {
+			log.Printf("Ошибка получения получателей: %v", err)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+
+		ShowRecipientsSelectionPage(bot, callback, recipients, page, countSelected(recipients))
 	case "send":
 		if len(parts) > 1 && parts[1] == "confirm" {
 			handleBroadcastSendConfirm(bot, callback)

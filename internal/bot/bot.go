@@ -193,6 +193,12 @@ func handleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
+	// Обработка документов
+	if update.Message != nil && update.Message.Document != nil {
+		handleDocumentMessage(bot, update.Message)
+		return
+	}
+
 	// Обработка callback queries
 	if update.CallbackQuery != nil {
 		handleCallbackQuery(bot, update.CallbackQuery)
@@ -292,6 +298,12 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		return
 	}
 
+	// Если это не админ и не команда админа, пересылаем сообщение админам
+	if !isAdminUser(int(userID)) && !IsAdminCommand(text) {
+		ForwardMessageToAdmins(bot, message)
+		return
+	}
+
 	// Проверяем, является ли пользователь админом для обработки admin команд
 	if isAdminUser(int(userID)) {
 		// Проверяем, есть ли активная рассылка
@@ -363,6 +375,12 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 
 	userID := message.From.ID
+
+	// Если это не админ, пересылаем фото админам
+	if !isAdminUser(int(userID)) {
+		ForwardMessageToAdmins(bot, message)
+		return
+	}
 
 	// Проверяем, есть ли активная рассылка
 	if isAdminUser(int(userID)) {
@@ -441,6 +459,12 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	userID := message.From.ID
 
+	// Если это не админ, пересылаем видео админам
+	if !isAdminUser(int(userID)) {
+		ForwardMessageToAdmins(bot, message)
+		return
+	}
+
 	// Проверяем, есть ли активная рассылка
 	if isAdminUser(int(userID)) {
 		state := GetBroadcastState(userID)
@@ -453,6 +477,25 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	// Для обычных пользователей можно добавить обработку видео в будущем
 	msg := tgbotapi.NewMessage(message.Chat.ID, "📹 Видео получено!")
+	bot.Send(msg)
+}
+
+// handleDocumentMessage обрабатывает документы
+func handleDocumentMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	if message.Document == nil {
+		return
+	}
+
+	userID := message.From.ID
+
+	// Если это не админ, пересылаем документ админам
+	if !isAdminUser(int(userID)) {
+		ForwardMessageToAdmins(bot, message)
+		return
+	}
+
+	// Для админов можно добавить обработку документов в будущем
+	msg := tgbotapi.NewMessage(message.Chat.ID, "📄 Документ получен!")
 	bot.Send(msg)
 }
 
