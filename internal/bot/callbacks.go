@@ -735,6 +735,11 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 	switch action {
 	case "cancel":
 		handleBroadcastCancel(bot, callback)
+	case "test_self":
+		// Устанавливаем получателя только себя
+		state.Recipients = []int64{userID}
+		state.Step = "preview"
+		showBroadcastPreview(bot, callback, state)
 	case "media":
 		if len(parts) < 2 {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))

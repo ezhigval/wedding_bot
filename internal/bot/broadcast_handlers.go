@@ -33,7 +33,26 @@ func handleAdminBroadcastDM(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	total := len(recipients)
 
+	// Проверяем, включен ли админ в список получателей
+	adminInRecipients := false
+	for _, recipientID := range recipients {
+		if recipientID == userID {
+			adminInRecipients = true
+			break
+		}
+	}
+
+	var adminInfo string
+	if adminInRecipients {
+		adminInfo = "\n✅ Вы также получите это сообщение"
+	} else {
+		adminInfo = "\nℹ️ Вы не получите это сообщение (нет в базе гостей)"
+	}
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧪 Тест (только себе)", "broadcast:test_self"),
+		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
 		),
@@ -41,7 +60,9 @@ func handleAdminBroadcastDM(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	msgText := fmt.Sprintf(
 		"📨 <b>Создание рассылки</b>\n\n"+
-			"Получателей (по базе гостей): <b>%d</b>\n\n"+
+			"Получателей (по базе гостей): <b>%d</b>"+
+			adminInfo+
+			"\n\n"+
 			"📝 <b>Шаг 1/5: Текст сообщения</b>\n\n"+
 			"Отправьте текст сообщения, которое получат гости.",
 		total,
