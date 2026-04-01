@@ -71,8 +71,33 @@ func handleBroadcastText(bot *tgbotapi.BotAPI, message *tgbotapi.Message, text s
 	}
 
 	state.Text = text
-	state.Step = "media"
 
+	// Проверяем, есть ли медиа в этом сообщении
+	if len(message.Photo) > 0 {
+		// Автоматически сохраняем фото
+		photoID := message.Photo[len(message.Photo)-1].FileID
+		state.PhotoID = photoID
+		state.VideoID = "" // очищаем видео если было
+
+		// Сразу переходим к шагу кнопок
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, message, state)
+		return
+	}
+
+	if message.Video != nil {
+		// Автоматически сохраняем видео
+		state.VideoID = message.Video.FileID
+		state.PhotoID = "" // очищаем фото если было
+
+		// Сразу переходим к шагу кнопок
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, message, state)
+		return
+	}
+
+	// Если нет медиа, показываем выбор медиа
+	state.Step = "media"
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🖼️ Добавить фото", "broadcast:media:photo"),
@@ -96,19 +121,8 @@ func handleBroadcastText(bot *tgbotapi.BotAPI, message *tgbotapi.Message, text s
 	bot.Send(msg)
 }
 
-// handleBroadcastPhoto обрабатывает фото для рассылки
-func handleBroadcastPhoto(bot *tgbotapi.BotAPI, message *tgbotapi.Message, photoID string) {
-	userID := message.From.ID
-
-	state := GetBroadcastState(userID)
-	if state == nil || state.Step != "media" {
-		return
-	}
-
-	state.PhotoID = photoID
-	state.VideoID = "" // очищаем видео если было
-	state.Step = "button"
-
+// showBroadcastButtonSelection показывает выбор кнопок для рассылки
+func showBroadcastButtonSelection(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state *BroadcastState) {
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔘 Без кнопки", "broadcast:btn:none"),
@@ -127,14 +141,40 @@ func handleBroadcastPhoto(bot *tgbotapi.BotAPI, message *tgbotapi.Message, photo
 		),
 	)
 
-	msgText := "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
-		"Фото добавлено!\n\n" +
-		"Хотите добавить кнопку к сообщению?"
+	var msgText string
+	if state.PhotoID != "" {
+		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
+			"Фото добавлено!\n\n" +
+			"Хотите добавить кнопку к сообщению?"
+	} else if state.VideoID != "" {
+		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
+			"Видео добавлено!\n\n" +
+			"Хотите добавить кнопку к сообщению?"
+	} else {
+		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
+			"Хотите добавить кнопку к сообщению?"
+	}
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
 	msg.ReplyMarkup = &keyboard
 	bot.Send(msg)
+}
+
+// handleBroadcastPhoto обрабатывает фото для рассылки
+func handleBroadcastPhoto(bot *tgbotapi.BotAPI, message *tgbotapi.Message, photoID string) {
+	userID := message.From.ID
+
+	state := GetBroadcastState(userID)
+	if state == nil || state.Step != "media" {
+		return
+	}
+
+	state.PhotoID = photoID
+	state.VideoID = "" // очищаем видео если было
+	state.Step = "button"
+
+	showBroadcastButtonSelection(bot, message, state)
 }
 
 // handleBroadcastVideo обрабатывает видео для рассылки
@@ -150,32 +190,7 @@ func handleBroadcastVideo(bot *tgbotapi.BotAPI, message *tgbotapi.Message, video
 	state.PhotoID = "" // очищаем фото если было
 	state.Step = "button"
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔘 Без кнопки", "broadcast:btn:none"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💒 Открыть мини-эпп", "broadcast:btn:miniapp"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💬 Открыть общий чат", "broadcast:btn:group"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить свою кнопку", "broadcast:btn:custom"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
-		),
-	)
-
-	msgText := "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
-		"Видео добавлено!\n\n" +
-		"Хотите добавить кнопку к сообщению?"
-
-	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.ReplyMarkup = &keyboard
-	bot.Send(msg)
+	showBroadcastButtonSelection(bot, message, state)
 }
 
 // handleBroadcastButton обрабатывает выбор кнопки для рассылки
