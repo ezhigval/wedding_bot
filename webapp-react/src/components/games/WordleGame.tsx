@@ -38,7 +38,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [guessedWords, setGuessedWords] = useState<string[]>([])
   const [alreadyGuessed, setAlreadyGuessed] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
-  const { userId } = useUser()
+  const { userId, manualUsername } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [lastWordDate, setLastWordDate] = useState<string>('')
   const [timeUntilNextWord, setTimeUntilNextWord] = useState<{ hours: number; minutes: number; seconds: number } | null>(null)
@@ -58,15 +58,15 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   }, [])
 
   useEffect(() => {
-    if (!config || !userId) return
+    if (!config) return
 
     const loadGame = async () => {
       setLoading(true)
       try {
 
         // Загружаем состояние игры
-        const state = await getWordleState(userId)
-        const progress = await getWordleProgress(userId)
+        const state = await getWordleState({ userId, username: manualUsername })
+        const progress = await getWordleProgress({ userId, username: manualUsername })
         
         if (state && state.current_word && state.attempts && state.last_word_date) {
           // Восстанавливаем состояние из сохраненного
@@ -130,7 +130,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           startCountdownTimer(state.last_word_date)
         } else {
           // Нет сохраненного состояния - загружаем новое слово
-          const word = await getWordleWord(userId)
+          const word = await getWordleWord({ userId, username: manualUsername })
           
           if (word) {
             setTargetWord(word.toUpperCase())
@@ -158,8 +158,8 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           
           // Сохраняем начальное состояние
           setTimeout(() => {
-            if (userId && word) {
-              saveWordleState(userId, word.toUpperCase(), [], today, '').catch(console.error)
+            if (word) {
+              saveWordleState({ userId, username: manualUsername }, word.toUpperCase(), [], today, '').catch(console.error)
             }
           }, 1000)
         }
@@ -180,7 +180,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     }
     
     loadGame()
-  }, [config, userId])
+  }, [config, userId, manualUsername])
 
   // Функция проверки валидности слова по словарю
   const checkWordValidity = async (word: string): Promise<boolean> => {
@@ -239,7 +239,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
 
   // Функция сохранения состояния игры
   const saveGameState = async () => {
-    if (!userId || !targetWord || !lastWordDate) return
+    if (!targetWord || !lastWordDate) return
     
     // Отменяем предыдущий таймер, если он есть
     if (saveStateTimeoutRef.current) {
@@ -260,7 +260,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           )
         
         // Сохраняем текущий ввод (currentGuess) отдельно
-        await saveWordleState(userId, targetWord, attemptsToSave, lastWordDate, currentGuess)
+        await saveWordleState({ userId, username: manualUsername }, targetWord, attemptsToSave, lastWordDate, currentGuess)
       } catch (error) {
         console.error('Error saving Wordle state:', error)
       }
@@ -269,10 +269,10 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
 
   // Сохраняем состояние при изменении guesses или currentGuess
   useEffect(() => {
-    if (userId && targetWord && !loading) {
+    if (targetWord && !loading) {
       saveGameState()
     }
-  }, [guesses, currentGuess, userId, targetWord, loading])
+  }, [guesses, currentGuess, userId, manualUsername, targetWord, loading])
 
   // Функция для расчета времени до следующего слова
   const calculateTimeUntilNext = (lastDate: string) => {
@@ -323,7 +323,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   // Сохраняем состояние при выходе из компонента
   useEffect(() => {
     return () => {
-      if (userId && targetWord && lastWordDate) {
+      if (targetWord && lastWordDate) {
         // Сохраняем только отправленные попытки
         const attemptsToSave = guesses
           .filter(row => row.some(cell => cell.state !== 'empty' && cell.letter !== ''))
@@ -333,7 +333,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
               state: cell.state
             }))
           )
-        saveWordleState(userId, targetWord, attemptsToSave, lastWordDate, currentGuess).catch(console.error)
+        saveWordleState({ userId, username: manualUsername }, targetWord, attemptsToSave, lastWordDate, currentGuess).catch(console.error)
       }
       if (saveStateTimeoutRef.current) {
         clearTimeout(saveStateTimeoutRef.current)
@@ -342,7 +342,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
         clearInterval(timerIntervalRef.current)
       }
     }
-  }, [userId, targetWord, lastWordDate, guesses, currentGuess])
+  }, [userId, manualUsername, targetWord, lastWordDate, guesses, currentGuess])
 
   const handleSubmit = async () => {
     if (currentGuess.length !== WORD_LENGTH) return
@@ -446,8 +446,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
       setTimeout(() => setShowConfetti(false), 2000)
       
       // Отправляем на сервер для сохранения прогресса и начисления очков (в фоне)
-      if (!userId) return
-      submitWordleGuess(userId, currentGuess).then(result => {
+      submitWordleGuess({ userId, username: manualUsername }, currentGuess).then(result => {
         if (result.success) {
           // Успешно сохранено на сервере
           console.log('Word saved successfully:', result.message)

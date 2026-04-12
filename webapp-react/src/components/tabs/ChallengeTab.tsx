@@ -31,7 +31,7 @@ const ALL_GAMES: Game[] = [
 
 export default function ChallengeTab() {
   const { isRegistered, isLoading } = useRegistration()
-  const { userId } = useUser()
+  const { userId, manualUsername } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [stats, setStats] = useState<GameStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
@@ -57,29 +57,15 @@ export default function ChallengeTab() {
     if (isRegistered && config) {
       loadStats()
     }
-  }, [isRegistered, config, userId])
+  }, [isRegistered, config, userId, manualUsername])
 
   const loadStats = async () => {
     if (!config) return
     
     setLoadingStats(true)
     try {
-      if (userId) {
-        const statsData = await getGameStats(userId)
-        setStats(statsData)
-      } else {
-        // Если нет userId, создаем дефолтную статистику
-        setStats({
-          user_id: 0,
-          first_name: '',
-          last_name: '',
-          total_score: 0,
-          dragon_score: 0,
-          flappy_score: 0,
-          crossword_score: 0,
-          rank: 'Незнакомец',
-        })
-      }
+      const statsData = await getGameStats({ userId, username: manualUsername })
+      setStats(statsData)
     } catch (error) {
       console.error('Error loading stats:', error)
     } finally {
@@ -134,11 +120,6 @@ export default function ChallengeTab() {
   const handleGameScore = async (score: number, gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle') => {
     if (!config) return
 
-    if (!userId) {
-      console.error('Cannot update score: userId not found')
-      return
-    }
-
     // БАЛАНС ОЧКОВ ПО ИГРАМ:
     // - Дракончик (простая): 200 очков в игре = 1 очко в рейтинге
     //   Пример: 200 очков в игре = 1 очко в статистике, 1000 очков = 5 очков
@@ -162,7 +143,7 @@ export default function ChallengeTab() {
     }
 
     try {
-      const result = await updateGameScore(userId, gameType, gamePoints)
+      const result = await updateGameScore({ userId, username: manualUsername }, gameType, gamePoints)
       if (result.success && result.stats) {
         setStats(result.stats)
         hapticFeedback('heavy')
@@ -258,7 +239,7 @@ export default function ChallengeTab() {
   }
   
   if (activeGame === 'wordle') {
-    return <WordleGame onScore={(score) => handleGameScore(score, 'wordle')} onClose={handleGameClose} />
+    return <WordleGame onScore={() => { void loadStats() }} onClose={handleGameClose} />
   }
 
   return (

@@ -129,3 +129,13 @@ func getConfigValue(ctx context.Context, key string) (string, error) {
 	}
 	return entries[key], nil
 }
+
+// GetConfigValue читает значение ключа из листа Config.
+func GetConfigValue(ctx context.Context, key string) (string, error) {
+	return getConfigValue(ctx, key)
+}
+
+// UpsertConfigEntries обновляет или добавляет пары key/value в лист Config.
+func UpsertConfigEntries(ctx context.Context, data map[string]string) error {
+	return upsertConfigEntries(ctx, data)
+}

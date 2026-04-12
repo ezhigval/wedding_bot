@@ -1,193 +1,209 @@
-# Wedding Bot - Telegram Mini App
+# Wedding Bot
 
-Свадебный Telegram бот с веб-приложением для управления гостями, играми и рассадкой.
+Telegram-бот и Telegram Mini App для свадебного приглашения, RSVP, игр, фото, тайминга, рассадки и административного управления гостями.
 
-## 🚀 Технологии
+Проект состоит из одного Go-сервиса, который:
+
+- поднимает HTTP API;
+- обслуживает статический фронтенд Mini App;
+- запускает long polling Telegram-бота;
+- работает с Google Sheets как с основной бизнес-базой данных;
+- использует локальный кэш для снижения нагрузки на внешние источники.
+
+## Что уже умеет проект
+
+- Регистрация гостей через Mini App и через Telegram-бота.
+- Проверка регистрации по `user_id`, `initData`, `username` и сессионной cookie.
+- Отмена регистрации.
+- Публичная часть приглашения: главная, тайминг, дресс-код, меню, пожелания, фото, рассадка.
+- Игры для гостей: `Dragon`, `Flappy Bird`, `Crossword`, `Wordle`.
+- Рейтинг, очки и звания игроков.
+- Сохранение игрового прогресса в Google Sheets.
+- Загрузка фото из Mini App и из бота.
+- Админ-меню в Telegram: гости, рассадка, игры, группа, рассылки.
+- Отправка рассылок в личные сообщения и в группу.
+- Проверка участия пользователя в общем чате гостей.
+- Ежедневный планировщик сброса игровых активностей.
+
+## Технологический стек
 
 ### Backend
-- **Go (Golang)** 1.24.0
-- **Telegram Bot API** (`github.com/go-telegram-bot-api/telegram-bot-api/v5`)
-- **Google Sheets API** - хранение данных
-- **SQLite** - кэширование игровой статистики
-- **Gorilla Mux** - HTTP роутинг
-- **Zerolog** - структурированное логирование
-- **Rate Limiting** - защита от перегрузки
-- **Security Headers** - улучшенная безопасность
+
+- Go `1.24`
+- `gorilla/mux`
+- `go-telegram-bot-api`
+- Google Sheets API
+- SQLite (`modernc.org/sqlite`) для части кэша
+- `zerolog`
+- `tollbooth`
+- `unrolled/secure`
 
 ### Frontend
-- **React.js** 18.2.0
-- **TypeScript**
-- **Vite** - сборка
-- **Tailwind CSS** - стилизация
-- **Framer Motion** - анимации
-- **React Query** - кэширование запросов
-- **Lottie** - анимации
 
-## 📁 Архитектура проекта
+- React `18`
+- TypeScript
+- Vite
+- Tailwind CSS
+- Framer Motion
+- Telegram WebApp SDK
 
-```
-wedding-bot/
-├── cmd/
-│   └── server/          # Точка входа сервера
-├── internal/
-│   ├── api/             # HTTP API handlers
-│   ├── bot/             # Telegram bot handlers
-│   ├── cache/           # Кэширование (SQLite + in-memory)
-│   ├── config/          # Конфигурация
-│   ├── daily_reset/     # Ежедневный сброс игр
-│   ├── google_sheets/   # Работа с Google Sheets
-│   └── keyboards/       # Клавиатуры бота
-├── webapp-react/        # React приложение
-├── res/                 # Ресурсы (фото, анимации)
-├── Dockerfile           # Docker конфигурация
-└── go.mod              # Go зависимости
+## Структура репозитория
+
+```text
+.
+├── cmd/server                # Точка входа Go-сервиса
+├── internal/api              # HTTP API, middleware, Telegram initData/auth
+├── internal/bot              # Telegram-бот и админские сценарии
+├── internal/cache            # In-memory и SQLite-кэш
+├── internal/config           # Конфигурация из env
+├── internal/daily_reset      # Планировщик и ежедневный сброс игровых активностей
+├── internal/google_sheets    # Основная бизнес-логика и доступ к данным
+├── internal/keyboards        # Reply/inline keyboards для бота
+├── webapp-react              # Исходники React Mini App
+├── webapp                    # Собранный фронтенд, который раздаёт Go-сервер
+├── res                       # Медиа-ресурсы
+└── docs                      # Актуальная документация по проекту
 ```
 
-## 🛠 Установка и запуск
+## Документация
 
-### Требования
-- Go 1.24.0+
-- Node.js 18+
-- Google Sheets API credentials
-- Telegram Bot Token
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Правила проекта](docs/RULES.md)
+- [Роадмап](docs/ROADMAP.md)
 
-### 1. Клонирование репозитория
+## Архитектура в одном абзаце
+
+Telegram-бот и Mini App используют общий Go-backend. Backend читает и пишет бизнес-данные в Google Sheets, обслуживает фронтенд из папки `webapp`, хранит часть промежуточных данных в памяти и SQLite, а также синхронизирует игровые механики и административные действия. Google Sheets в этом проекте выполняет роль операционной БД и панели контента одновременно.
+
+## Основные доменные сущности
+
+- Гость: имя, фамилия, сторона, категория, подтверждение участия, идентификатор Telegram.
+- Приглашение: имя, Telegram username, `user_id`, статус отправки.
+- Игровой профиль: очки по играм, общий счёт, звание, дата обновления.
+- Wordle/Crossword прогресс: состояние по каждому игроку.
+- Тайминг: список публичных событий свадьбы.
+- Рассадка: зафиксированный стол и соседи гостя.
+- Фото: метаданные и идентификатор/полезная нагрузка изображения.
+
+## Переменные окружения
+
+Смотри полный шаблон в [.env.example](.env.example).
+
+Ключевые переменные:
+
+- `BOT_TOKEN` — токен Telegram-бота.
+- `GOOGLE_SHEETS_ID` — ID основной таблицы.
+- `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` — credentials сервисного аккаунта.
+- `WEBAPP_URL` — публичный URL Mini App.
+- `WEBAPP_PATH` — путь до собранного фронтенда, по умолчанию `webapp`.
+- `GROUP_ID` и `GROUP_LINK` — общий чат гостей.
+- `WEDDING_DATE`, `GROOM_NAME`, `BRIDE_NAME`, `WEDDING_ADDRESS` — публичные данные мероприятия.
+- `DEBUG` — дев-режим.
+
+## Минимальные требования
+
+- Go `1.24+`
+- Node.js `18+`
+- Доступ сервисного аккаунта Google к таблице
+- Telegram bot token
+
+## Локальный запуск
+
+### 1. Подготовить окружение
+
 ```bash
-git clone <repository-url>
-cd wedding-bot
+cp .env.example .env.local
 ```
 
-### 2. Настройка переменных окружения
+Заполнить переменные в `.env.local`.
 
-Создайте файл `.env` в корне проекта:
+### 2. Установить зависимости
 
-```env
-# Telegram
-BOT_TOKEN=your_telegram_bot_token
-GROUP_ID=your_group_id
-GROUP_LINK=https://t.me/your_group
-
-# Google Sheets
-GOOGLE_SHEETS_ID=your_sheet_id
-GOOGLE_CREDENTIALS_PATH=path/to/credentials.json
-
-# Server
-PORT=8080
-DEBUG=false
-
-# Web App
-WEBAPP_URL=https://your-domain.com
-WEBAPP_PATH=webapp-react/dist
-WEBAPP_PHOTO_PATH=res/welcome_photo.jpeg
-
-# Wedding Info
-GROOM_NAME=Имя жениха
-BRIDE_NAME=Имя невесты
-WEDDING_DATE=2026-06-05
-WEDDING_ADDRESS=Адрес свадьбы
-GROOM_TELEGRAM=@username
-BRIDE_TELEGRAM=@username
-```
-
-### 3. Установка зависимостей
-
-**Backend:**
 ```bash
 go mod download
-```
-
-**Frontend:**
-```bash
 cd webapp-react
 npm install
+cd ..
 ```
 
-### 4. Сборка
+### 3. Собрать фронтенд
 
-**Backend:**
-```bash
-go build ./cmd/server
-```
-
-**Frontend:**
 ```bash
 cd webapp-react
 npm run build
+cd ..
 ```
 
-### 5. Запуск
+Сборка попадёт в папку `webapp/`, которую раздаёт Go-сервер.
 
-**Локально:**
+### 4. Запустить сервис
+
 ```bash
-./server
+go run ./cmd/server
 ```
 
-**Docker:**
+По умолчанию используется порт `10000`, если `PORT` не задан.
+
+## Docker
+
 ```bash
 docker build -t wedding-bot .
-docker run -p 8080:8080 --env-file .env wedding-bot
+docker run --env-file .env.local -p 10000:10000 wedding-bot
 ```
 
-## 📦 Деплой на Render.com
+## Как устроено хранение данных
 
-1. Подключите GitHub репозиторий к Render
-2. Выберите "Web Service"
-3. Настройки:
-   - **Build Command:** `go build ./cmd/server`
-   - **Start Command:** `./server`
-   - **Environment:** Docker
-4. Добавьте все переменные окружения из `.env`
-5. Деплой запустится автоматически
+Основной источник правды — Google Sheets. В проекте используются вкладки:
 
-## 🎮 Функционал
+- `Список гостей`
+- `Пригласительные`
+- `Админ бота`
+- `Публичная План-сетка`
+- `Рассадка`
+- `Рассадка_фикс`
+- `Игры`
+- `Wordle`
+- `Wordle_Прогресс`
+- `Wordle_Состояние`
+- `Кроссворд`
+- `Кроссворд_Прогресс`
+- `Фото`
+- `Config`
 
-### Для гостей
-- Регистрация через Telegram Mini App
-- Просмотр информации о свадьбе
-- Игры: Дракончик, Flappy Bird, Кроссворд, Wordle
-- Система рейтинга и званий
-- Загрузка фотографий
-- Просмотр рассадки и timeline
+Часть этих листов создаётся автоматически через `EnsureRequiredSheets`.
 
-### Для администраторов
-- Управление гостями
-- Рассылка сообщений
-- Управление играми (Wordle, Кроссворд)
-- Просмотр статистики
-- Управление группой
+## API высокого уровня
 
-## 🔒 Безопасность
+Публичные и клиентские endpoint'ы:
 
-- Rate limiting (100 запросов/минуту)
-- Security headers (XSS, clickjacking защита)
-- CORS настройки
-- Валидация Telegram WebApp данных
-- Структурированное логирование
+- `GET /health`
+- `GET /api/config`
+- `POST /api/parse-init-data`
+- `POST /api/check-registration`
+- `POST /api/register`
+- `POST /api/cancel-registration`
+- `GET /api/guests`
+- `GET /api/stats`
+- `GET /api/timeline`
+- `POST /api/upload-photo`
+- `GET /api/game-stats`
+- `POST /api/update-game-score`
+- `GET /api/wordle/*`
+- `POST /api/wordle/*`
+- `GET /api/crossword/*`
+- `POST /api/crossword/*`
+- `GET /api/seating/info`
 
-## 📊 Производительность
+Подробности и потоки есть в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-- In-memory кэширование для частых запросов
-- SQLite кэш для игровой статистики
-- React Query для кэширования на фронтенде
-- Оптимизированные запросы к Google Sheets
+## Текущее состояние проекта
 
-## 📝 API Endpoints
+Проект уже покрывает основной пользовательский сценарий свадебного приглашения и игровой активности, но остаётся зоной активной разработки. Главные технические фокусы сейчас:
 
-- `GET /api/config` - конфигурация
-- `POST /api/register` - регистрация гостя
-- `GET /api/guests` - список гостей
-- `GET /api/game-stats` - статистика игр
-- `POST /api/update-game-score` - обновление счета
-- `GET /api/wordle/word` - текущее слово Wordle
-- `POST /api/wordle/guess` - угадывание слова
-- `GET /api/crossword/data` - данные кроссворда
-- `GET /health` - health check
+- стабилизация identity/auth между Telegram и браузерным режимом;
+- завершение ежедневного сброса игровых сценариев;
+- повышение предсказуемости Google Sheets как хранилища;
+- рост покрытия тестами;
+- формализация правил эксплуатации и разработки.
 
-## 👤 Контакты
-
-- **Telegram:** [@ezhigval](https://t.me/ezhigval)
-- **Email:** smailikin70@yandex.ru
-
-## 📄 Лицензия
-
-Проект создан для личного использования.
+Подробный план зафиксирован в [docs/ROADMAP.md](docs/ROADMAP.md).

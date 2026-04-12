@@ -30,7 +30,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const [wrongWords, setWrongWords] = useState<Set<string>>(new Set()) // Неправильные слова после завершения
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(true)
-  const { userId } = useUser()
+  const { userId, manualUsername } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [crosswordIndex, setCrosswordIndex] = useState<number>(0)
   const [crosswordStartDate, setCrosswordStartDate] = useState<string>('')
@@ -77,13 +77,13 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   }, [])
 
   useEffect(() => {
-    if (!config || !userId) return
+    if (!config) return
 
     const loadGame = async () => {
       setLoading(true)
       try {
         // Загружаем данные кроссворда
-        const data = await getCrosswordData(userId)
+        const data = await getCrosswordData({ userId, username: manualUsername })
         
         if (data.words.length === 0) {
           console.warn('Нет слов для кроссворда')
@@ -235,7 +235,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
 
     loadGame()
-  }, [config, userId])
+  }, [config, userId, manualUsername])
 
   const handleCellClick = (row: number, col: number) => {
     if (!crossword || isCompleted) return // Блокируем клики после завершения
@@ -490,14 +490,12 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     setCells(newCells)
     
     // Сохраняем состояние клеток при изменении
-    if (userId !== null) {
-      saveCrosswordCellState()
-    }
+    saveCrosswordCellState()
   }
   
   // Проверка завершения кроссворда и финальная проверка всех слов
   const checkCompletion = async () => {
-    if (!crossword || !userId) return
+    if (!crossword) return
     
     // Проверяем, все ли клетки заполнены (используем текущее состояние cells)
     const allFilled = crossword.words.every(word => {
@@ -600,11 +598,11 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     })
     
     try {
-      await saveCrosswordProgress(userId, Array.from(newGuessedWords), crosswordIndex, cellLetters, Array.from(newWrongWords), crosswordStartDate)
+      await saveCrosswordProgress({ userId, username: manualUsername }, Array.from(newGuessedWords), crosswordIndex, cellLetters, Array.from(newWrongWords), crosswordStartDate)
       
       // Начисляем очки (1 слово = 1 очко, баланс 5:1)
       const gamePoints = Math.floor(newGuessedWords.size / 5)
-      await updateGameScore(userId, 'crossword', gamePoints)
+      await updateGameScore({ userId, username: manualUsername }, 'crossword', gamePoints)
     } catch (error) {
       console.error('Error saving completed crossword:', error)
     }
@@ -612,7 +610,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
 
   // Функция для сохранения состояния клеток
   const saveCrosswordCellState = async () => {
-    if (!userId || !crossword || isCompleted) return
+    if (!crossword || isCompleted) return
     
     // Собираем текущие буквы в клетках
     const cellLetters: { [key: string]: string } = {}
@@ -626,7 +624,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     
     // Сохраняем прогресс с текущими буквами
     try {
-      await saveCrosswordProgress(userId, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongWords), crosswordStartDate)
+      await saveCrosswordProgress({ userId, username: manualUsername }, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongWords), crosswordStartDate)
     } catch (error) {
       console.error('Error saving crossword cell state:', error)
     }
@@ -681,7 +679,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   // Сохраняем состояние при выходе
   useEffect(() => {
     return () => {
-      if (userId && crossword) {
+      if (crossword) {
         saveCrosswordCellState().catch(console.error)
       }
       if (timerIntervalRef.current) {

@@ -15,15 +15,17 @@ import (
 
 // getGameStatsEndpoint возвращает статистику игрока
 func getGameStatsEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
-	if userIDStr == "" {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid user_id")
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	initData := r.URL.Query().Get("initData")
+
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -86,6 +88,7 @@ func respondGameStats(w http.ResponseWriter, userID int, stats *google_sheets.Ga
 func updateGameScoreEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID   int    `json:"userId"`
+		Username string `json:"username"`
 		GameType string `json:"gameType"`
 		Score    int    `json:"score"`
 		InitData string `json:"initData"`
@@ -96,18 +99,8 @@ func updateGameScoreEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
@@ -131,33 +124,19 @@ func updateGameScoreEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // getWordleWordEndpoint возвращает актуальное слово для Wordle
 func getWordleWordEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
+		return
+	}
+
 	initData := r.URL.Query().Get("initData")
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
 
 	ctx := r.Context()
 
-	var userID int
-	var err error
-
-	if initData != "" {
-		result, err := ParseInitData(initData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 && userIDStr != "" {
-		userID, err = strconv.Atoi(userIDStr)
-		if err != nil {
-			JSONError(w, http.StatusBadRequest, "invalid user_id")
-			return
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -180,33 +159,19 @@ func getWordleWordEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // getWordleProgressEndpoint возвращает прогресс пользователя в Wordle
 func getWordleProgressEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
+		return
+	}
+
 	initData := r.URL.Query().Get("initData")
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
 
 	ctx := r.Context()
 
-	var userID int
-	var err error
-
-	if initData != "" {
-		result, err := ParseInitData(initData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 && userIDStr != "" {
-		userID, err = strconv.Atoi(userIDStr)
-		if err != nil {
-			JSONError(w, http.StatusBadRequest, "invalid user_id")
-			return
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -227,6 +192,7 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Word     string `json:"word"`
 		UserID   int    `json:"userId"`
+		Username string `json:"username"`
 		InitData string `json:"initData"`
 	}
 
@@ -242,18 +208,8 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
@@ -372,33 +328,19 @@ func submitWordleGuessEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // getWordleStateEndpoint возвращает состояние игры Wordle
 func getWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
+		return
+	}
+
 	initData := r.URL.Query().Get("initData")
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
 
 	ctx := r.Context()
 
-	var userID int
-	var err error
-
-	if initData != "" {
-		result, err := ParseInitData(initData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 && userIDStr != "" {
-		userID, err = strconv.Atoi(userIDStr)
-		if err != nil {
-			JSONError(w, http.StatusBadRequest, "invalid user_id")
-			return
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -454,6 +396,7 @@ func checkWordValidityEndpoint(w http.ResponseWriter, r *http.Request) {
 func saveWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID       int                        `json:"userId"`
+		Username     string                     `json:"username"`
 		CurrentWord  string                     `json:"current_word"`
 		Attempts     [][]map[string]interface{} `json:"attempts"`
 		CurrentGuess string                     `json:"current_guess"`
@@ -468,18 +411,8 @@ func saveWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
@@ -496,14 +429,20 @@ func saveWordleStateEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // getCrosswordDataEndpoint возвращает данные кроссворда
 func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
 	crosswordIndexStr := r.URL.Query().Get("crosswordIndex")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
+		return
+	}
+
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	initData := r.URL.Query().Get("initData")
 
 	ctx := r.Context()
 
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid user_id")
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -566,6 +505,7 @@ func getCrosswordDataEndpoint(w http.ResponseWriter, r *http.Request) {
 func saveCrosswordProgressEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID             int               `json:"userId"`
+		Username           string            `json:"username"`
 		GuessedWords       []string          `json:"guessed_words"`
 		CrosswordIndex     int               `json:"crossword_index"`
 		CellLetters        map[string]string `json:"cell_letters"`
@@ -581,18 +521,8 @@ func saveCrosswordProgressEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
@@ -609,15 +539,17 @@ func saveCrosswordProgressEndpoint(w http.ResponseWriter, r *http.Request) {
 
 // getCrosswordStateEndpoint возвращает состояние кроссворда
 func getCrosswordStateEndpoint(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
-	if userIDStr == "" {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid user_id")
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	initData := r.URL.Query().Get("initData")
+
+	userID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
 		return
 	}
 
@@ -638,8 +570,10 @@ func getCrosswordStateEndpoint(w http.ResponseWriter, r *http.Request) {
 // setCrosswordIndexEndpoint устанавливает индекс кроссворда
 func setCrosswordIndexEndpoint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		UserID         int `json:"userId"`
-		CrosswordIndex int `json:"crossword_index"`
+		UserID         int    `json:"userId"`
+		Username       string `json:"username"`
+		CrosswordIndex int    `json:"crossword_index"`
+		InitData       string `json:"initData"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -647,14 +581,14 @@ func setCrosswordIndexEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.UserID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, _, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
 	ctx := r.Context()
 
-	if err := google_sheets.SetCrosswordIndex(ctx, req.UserID, req.CrosswordIndex); err != nil {
+	if err := google_sheets.SetCrosswordIndex(ctx, userID, req.CrosswordIndex); err != nil {
 		log.Printf("Error setting crossword index: %v", err)
 		JSONError(w, http.StatusInternalServerError, "failed to set")
 		return

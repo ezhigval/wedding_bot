@@ -15,16 +15,16 @@ import (
 
 // GameStats представляет статистику игрока
 type GameStats struct {
-	UserID        int
-	FirstName     string
-	LastName      string
-	TotalScore    int
-	DragonScore   int
-	FlappyScore   int
+	UserID         int
+	FirstName      string
+	LastName       string
+	TotalScore     int
+	DragonScore    int
+	FlappyScore    int
 	CrosswordScore int
-	WordleScore   int
-	Rank          string
-	LastUpdated   string
+	WordleScore    int
+	Rank           string
+	LastUpdated    string
 }
 
 // GetRankByScore определяет звание игрока по общему счету
@@ -214,52 +214,27 @@ func GetGameStats(ctx context.Context, userID int) (*GameStats, error) {
 	return nil, nil
 }
 
-// UpdateGameScore обновляет счет игрока в конкретной игре
-func UpdateGameScore(ctx context.Context, userID int, gameType string, score int) error {
-	service, err := GetGoogleSheetsClient()
-	if err != nil {
-		return err
-	}
-
-	spreadsheetID := config.GoogleSheetsID
-	sheetName := "Игры"
-
-	// Получаем имя и фамилию пользователя
+func hydrateMutableGameStats(ctx context.Context, userID int) (*GameStats, error) {
 	firstName, lastName, _ := GetGuestNameByUserID(ctx, userID)
 
-	// Проверяем существование листа
-	if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
-		// Пытаемся создать через EnsureRequiredSheets
-		if err := EnsureRequiredSheets(ctx); err != nil {
-			return fmt.Errorf("ошибка создания листа: %w", err)
-		}
-		// Проверяем еще раз
-		if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
-			return fmt.Errorf("лист все еще не существует: %w", err)
-		}
-	}
-
-	// Получаем текущую статистику
 	stats, err := GetGameStats(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Если статистики нет, создаем новую
 	if stats == nil {
 		stats = &GameStats{
-			UserID:      userID,
-			FirstName:   firstName,
-			LastName:    lastName,
-			TotalScore:  0,
-			DragonScore: 0,
-			FlappyScore: 0,
+			UserID:         userID,
+			FirstName:      firstName,
+			LastName:       lastName,
+			TotalScore:     0,
+			DragonScore:    0,
+			FlappyScore:    0,
 			CrosswordScore: 0,
-			WordleScore: 0,
-			Rank:        "Незнакомец",
+			WordleScore:    0,
+			Rank:           "Незнакомец",
 		}
 	} else {
-		// Обновляем имя и фамилию если они изменились
 		if firstName != "" {
 			stats.FirstName = firstName
 		}
@@ -268,44 +243,44 @@ func UpdateGameScore(ctx context.Context, userID int, gameType string, score int
 		}
 	}
 
-	// Конвертируем игровые очки в рейтинговые по формулам
-	var ratingPoints int
-	switch gameType {
-	case "dragon":
-		ratingPoints = score / 200
-		stats.DragonScore += ratingPoints
-	case "flappy":
-		ratingPoints = score / 2
-		stats.FlappyScore += ratingPoints
-	case "crossword":
-		ratingPoints = score * 25
-		stats.CrosswordScore += ratingPoints
-	case "wordle":
-		ratingPoints = score * 5
-		stats.WordleScore += ratingPoints
-	default:
-		return fmt.Errorf("неизвестный тип игры: %s", gameType)
-	}
+	return stats, nil
+}
 
-	// Пересчитываем общий счет
+func recalculateGameStats(stats *GameStats) {
 	stats.TotalScore = stats.DragonScore + stats.FlappyScore + stats.CrosswordScore + stats.WordleScore
-
-	// Определяем звание
 	stats.Rank = GetRankByScore(stats.TotalScore)
 	stats.LastUpdated = time.Now().Format(time.RFC3339)
+}
 
-	// Обновляем или создаем строку
+func saveGameStats(ctx context.Context, stats *GameStats) error {
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return err
+	}
+
+	spreadsheetID := config.GoogleSheetsID
+	sheetName := "Игры"
+
+	if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
+		if err := EnsureRequiredSheets(ctx); err != nil {
+			return fmt.Errorf("ошибка создания листа: %w", err)
+		}
+		if err := EnsureSheetExists(spreadsheetID, sheetName); err != nil {
+			return fmt.Errorf("лист все еще не существует: %w", err)
+		}
+	}
+
 	readRange := fmt.Sprintf("%s!A:J", sheetName)
 	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
 	if err != nil {
 		return fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	userIDStr := fmt.Sprintf("%d", userID)
+	userIDStr := fmt.Sprintf("%d", stats.UserID)
 	foundRow := -1
 	for i, row := range resp.Values {
 		if i == 0 {
-			continue // Пропускаем заголовок
+			continue
 		}
 		if len(row) > 0 {
 			rowUserID := ""
@@ -333,7 +308,6 @@ func UpdateGameScore(ctx context.Context, userID int, gameType string, score int
 	}
 
 	if foundRow > 0 {
-		// Обновляем существующую строку
 		range_ := fmt.Sprintf("%s!A%d:J%d", sheetName, foundRow, foundRow)
 		valueRange := &sheets.ValueRange{
 			Values: [][]interface{}{rowData},
@@ -344,26 +318,58 @@ func UpdateGameScore(ctx context.Context, userID int, gameType string, score int
 			range_,
 			valueRange,
 		).ValueInputOption("USER_ENTERED").Do()
-
 		if err != nil {
 			return fmt.Errorf("ошибка обновления: %w", err)
 		}
-	} else {
-		// Создаем новую строку
-		valueRange := &sheets.ValueRange{
-			Values: [][]interface{}{rowData},
-		}
+		return nil
+	}
 
-		readRange = fmt.Sprintf("%s!A:Z", sheetName)
-		_, err = service.Spreadsheets.Values.Append(
-			spreadsheetID,
-			readRange,
-			valueRange,
-		).ValueInputOption("USER_ENTERED").Do()
+	valueRange := &sheets.ValueRange{
+		Values: [][]interface{}{rowData},
+	}
 
-		if err != nil {
-			return fmt.Errorf("ошибка добавления: %w", err)
-		}
+	readRange = fmt.Sprintf("%s!A:Z", sheetName)
+	_, err = service.Spreadsheets.Values.Append(
+		spreadsheetID,
+		readRange,
+		valueRange,
+	).ValueInputOption("USER_ENTERED").Do()
+	if err != nil {
+		return fmt.Errorf("ошибка добавления: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateGameScore обновляет счет игрока в конкретной игре
+func UpdateGameScore(ctx context.Context, userID int, gameType string, score int) error {
+	stats, err := hydrateMutableGameStats(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	var ratingPoints int
+	switch gameType {
+	case "dragon":
+		ratingPoints = score / 200
+		stats.DragonScore += ratingPoints
+	case "flappy":
+		ratingPoints = score / 2
+		stats.FlappyScore += ratingPoints
+	case "crossword":
+		ratingPoints = score * 25
+		stats.CrosswordScore += ratingPoints
+	case "wordle":
+		ratingPoints = score * 5
+		stats.WordleScore += ratingPoints
+	default:
+		return fmt.Errorf("неизвестный тип игры: %s", gameType)
+	}
+
+	recalculateGameStats(stats)
+
+	if err := saveGameStats(ctx, stats); err != nil {
+		return err
 	}
 
 	log.Printf("Обновлен счет для user_id=%d (%s %s), игра=%s, счет=%d, звание=%s",
@@ -371,3 +377,37 @@ func UpdateGameScore(ctx context.Context, userID int, gameType string, score int
 	return nil
 }
 
+// AddDirectGamePoints добавляет уже рассчитанные рейтинговые очки без повторной конвертации игровых значений.
+func AddDirectGamePoints(ctx context.Context, userID int, gameType string, points int) error {
+	if points <= 0 {
+		return nil
+	}
+
+	stats, err := hydrateMutableGameStats(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	switch gameType {
+	case "dragon":
+		stats.DragonScore += points
+	case "flappy":
+		stats.FlappyScore += points
+	case "crossword":
+		stats.CrosswordScore += points
+	case "wordle":
+		stats.WordleScore += points
+	default:
+		return fmt.Errorf("неизвестный тип игры: %s", gameType)
+	}
+
+	recalculateGameStats(stats)
+
+	if err := saveGameStats(ctx, stats); err != nil {
+		return err
+	}
+
+	log.Printf("Добавлены прямые очки для user_id=%d (%s %s), игра=%s, points=%d, звание=%s",
+		stats.UserID, stats.FirstName, stats.LastName, gameType, points, stats.Rank)
+	return nil
+}

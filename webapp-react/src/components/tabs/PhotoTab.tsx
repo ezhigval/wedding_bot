@@ -11,7 +11,7 @@ import type { Config } from '../../types'
 
 export default function PhotoTab() {
   const { isRegistered, isLoading } = useRegistration()
-  const { userId } = useUser()
+  const { userId, manualUsername } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -62,8 +62,8 @@ export default function PhotoTab() {
 
     try {
       const initData = getInitData()
-      if (!userId && !initData) {
-        showAlert('Загрузка фото доступна только при открытии приложения в Telegram.')
+      if (!userId && !initData && !manualUsername) {
+        showAlert('Не удалось определить пользователя для загрузки фото.')
         hapticFeedback('heavy')
         return
       }
@@ -74,6 +74,7 @@ export default function PhotoTab() {
         },
         body: JSON.stringify({
           userId: userId || 0,
+          username: manualUsername || '',
           photoData: photoPreview, // base64 строка
           initData,
         }),

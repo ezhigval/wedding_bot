@@ -306,6 +306,34 @@ func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initD
 	return resolveAuthIdentity(cookieUserID, cookieUsername, "")
 }
 
+func parseOptionalUserID(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+
+	return strconv.Atoi(raw)
+}
+
+func resolveAuthIdentityAndRefreshSession(w http.ResponseWriter, r *http.Request, userID int, username, initData string) (int, string) {
+	resolvedUserID, resolvedUsername := resolveAuthIdentityFromRequest(r, userID, username, initData)
+	if resolvedUserID > 0 || resolvedUsername != "" {
+		setAuthSessionCookie(w, r, resolvedUserID, resolvedUsername)
+	}
+
+	return resolvedUserID, resolvedUsername
+}
+
+func requireResolvedAuthUserID(w http.ResponseWriter, r *http.Request, userID int, username, initData string) (int, string, bool) {
+	resolvedUserID, resolvedUsername := resolveAuthIdentityAndRefreshSession(w, r, userID, username, initData)
+	if resolvedUserID == 0 {
+		JSONError(w, http.StatusBadRequest, "user_id required")
+		return 0, "", false
+	}
+
+	return resolvedUserID, resolvedUsername, true
+}
+
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
@@ -331,12 +359,10 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := req.UserID
-	if userIDStr != "" {
-		parsedUserID, err := strconv.Atoi(userIDStr)
-		if err != nil {
-			JSONError(w, http.StatusBadRequest, "invalid_user_id")
-			return
-		}
+	if parsedUserID, err := parseOptionalUserID(userIDStr); err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid_user_id")
+		return
+	} else if parsedUserID > 0 {
 		userID = parsedUserID
 	}
 
@@ -606,29 +632,19 @@ func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := req.UserID
-	if userID == 0 && req.InitData != "" {
-		result, err := ParseInitData(req.InitData)
-		if err == nil {
-			if uid, ok := result["userId"].(int); ok {
-				userID = uid
-			}
-		}
-	}
-
-	if userID == 0 {
-		JSONError(w, http.StatusBadRequest, "user_id required")
+	userID, username, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	if !ok {
 		return
 	}
 
 	ctx := r.Context()
 
-	var username *string
-	if req.Username != "" {
-		username = &req.Username
+	var usernamePtr *string
+	if username != "" {
+		usernamePtr = &username
 	}
 
-	if err := google_sheets.SavePhotoFromWebapp(ctx, userID, username, req.FullName, req.PhotoData); err != nil {
+	if err := google_sheets.SavePhotoFromWebapp(ctx, userID, usernamePtr, req.FullName, req.PhotoData); err != nil {
 		log.Printf("Error saving photo: %v", err)
 		JSONError(w, http.StatusInternalServerError, "failed to save photo")
 		return
@@ -641,21 +657,23 @@ func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 
 // getSeatingInfo возвращает информацию о рассадке
 func getSeatingInfo(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("userId")
-	if userIDStr == "" {
-		JSONError(w, http.StatusBadRequest, "user_id required")
-		return
-	}
-
-	userID, err := strconv.Atoi(userIDStr)
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
 	if err != nil {
 		JSONError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	initData := r.URL.Query().Get("initData")
+
+	resolvedUserID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
+	if !ok {
+		return
+	}
+
 	ctx := r.Context()
 
-	info, err := google_sheets.GetGuestTableAndNeighbors(ctx, userID)
+	info, err := google_sheets.GetGuestTableAndNeighbors(ctx, resolvedUserID)
 	if err != nil {
 		log.Printf("Error getting seating info: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")

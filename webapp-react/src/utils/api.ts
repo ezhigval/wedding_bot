@@ -104,6 +104,95 @@ export async function loadTimeline(): Promise<TimelineItem[]> {
   return []
 }
 
+export interface ApiAuth {
+  userId?: number | null
+  username?: string | null
+  initData?: string
+}
+
+interface ResolvedApiAuth {
+  userId: number
+  username: string
+  initData: string
+}
+
+function normalizeApiUsername(username?: string | null): string {
+  return (username || '').trim().replace(/^@/, '').toLowerCase()
+}
+
+function readStoredUserId(): number {
+  const sessionUserId = sessionStorage.getItem('telegram_user_id_session')
+  if (sessionUserId) {
+    const parsed = parseInt(sessionUserId, 10)
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+
+  const persistentUserId = localStorage.getItem('telegram_user_id')
+  if (persistentUserId) {
+    const parsed = parseInt(persistentUserId, 10)
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+
+  return 0
+}
+
+function readStoredUsername(): string {
+  const sessionUsername = normalizeApiUsername(sessionStorage.getItem('telegram_username_session'))
+  if (sessionUsername) {
+    return sessionUsername
+  }
+
+  const manualUsername = normalizeApiUsername(localStorage.getItem('manual_username'))
+  if (manualUsername) {
+    return manualUsername
+  }
+
+  return normalizeApiUsername(localStorage.getItem('telegram_username'))
+}
+
+function resolveApiAuth(auth?: ApiAuth): ResolvedApiAuth {
+  let userId = auth?.userId && auth.userId > 0 ? auth.userId : 0
+  let username = normalizeApiUsername(auth?.username)
+
+  if (!userId) {
+    userId = readStoredUserId()
+  }
+
+  if (!username) {
+    username = readStoredUsername()
+  }
+
+  return {
+    userId,
+    username,
+    initData: auth?.initData ?? getInitData(),
+  }
+}
+
+function buildAuthQuery(auth?: ApiAuth): URLSearchParams {
+  const resolved = resolveApiAuth(auth)
+  const params = new URLSearchParams()
+
+  if (resolved.userId > 0) {
+    params.set('userId', resolved.userId.toString())
+  }
+
+  if (resolved.username) {
+    params.set('username', resolved.username)
+  }
+
+  return params
+}
+
+function withQuery(baseUrl: string, params: URLSearchParams): string {
+  const query = params.toString()
+  return query ? `${baseUrl}?${query}` : baseUrl
+}
+
 /**
  * Отправляет форму RSVP
  * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
@@ -207,47 +296,10 @@ export interface RegistrationStatus {
  * @param userId - user_id из UserContext (централизованно получен при открытии приложения)
  */
 export async function checkRegistration(userId: number, username?: string): Promise<RegistrationStatus> {
-  const normalizedUsername = (username || '').trim().replace(/^@/, '').toLowerCase()
-  const initData = getInitData()
-
-  // Fallback к стабильным хранилищам (как в старой рабочей логике),
-  // если контекст еще не успел поднять user_id.
-  let effectiveUserId = userId
-  let effectiveUsername = normalizedUsername
-
-  if (!effectiveUserId) {
-    const sessionUserId = sessionStorage.getItem('telegram_user_id_session')
-    if (sessionUserId) {
-      const parsed = parseInt(sessionUserId, 10)
-      if (!isNaN(parsed) && parsed > 0) {
-        effectiveUserId = parsed
-      }
-    }
-  }
-
-  if (!effectiveUserId) {
-    const persistentUserId = localStorage.getItem('telegram_user_id')
-    if (persistentUserId) {
-      const parsed = parseInt(persistentUserId, 10)
-      if (!isNaN(parsed) && parsed > 0) {
-        effectiveUserId = parsed
-      }
-    }
-  }
-
-  if (!effectiveUsername) {
-    const manual = (localStorage.getItem('manual_username') || '').trim().replace(/^@/, '').toLowerCase()
-    if (manual) {
-      effectiveUsername = manual
-    }
-  }
-
-  if (!effectiveUsername) {
-    const persistentUsername = (localStorage.getItem('telegram_username') || '').trim().replace(/^@/, '').toLowerCase()
-    if (persistentUsername) {
-      effectiveUsername = persistentUsername
-    }
-  }
+  const resolvedAuth = resolveApiAuth({ userId, username })
+  const initData = resolvedAuth.initData
+  const effectiveUserId = resolvedAuth.userId
+  const effectiveUsername = resolvedAuth.username
 
   const config = await loadConfig()
   const checkUrl = `${config.apiUrl}/check-registration`
@@ -295,13 +347,15 @@ export interface GameStats {
   dragon_score: number
   flappy_score: number
   crossword_score: number
+  wordle_score: number
   rank: string
 }
 
-export async function getGameStats(userId: number): Promise<GameStats> {
+export async function getGameStats(auth?: ApiAuth): Promise<GameStats> {
   const config = await loadConfig()
+  const resolvedAuth = resolveApiAuth(auth)
   try {
-    const response = await fetch(`${config.apiUrl}/game-stats?userId=${userId}`)
+    const response = await fetch(withQuery(`${config.apiUrl}/game-stats`, buildAuthQuery(auth)))
     if (response.ok) {
       const data = await response.json()
       return data
@@ -311,23 +365,25 @@ export async function getGameStats(userId: number): Promise<GameStats> {
   }
   // Возвращаем дефолтные значения
   return {
-    user_id: userId,
+    user_id: resolvedAuth.userId,
     first_name: '',
     last_name: '',
     total_score: 0,
     dragon_score: 0,
     flappy_score: 0,
     crossword_score: 0,
+    wordle_score: 0,
     rank: 'Незнакомец',
   }
 }
 
 export async function updateGameScore(
-  userId: number,
+  auth: ApiAuth | undefined,
   gameType: 'dragon' | 'flappy' | 'crossword' | 'wordle',
   score: number
 ): Promise<{ success: boolean; stats?: GameStats; error?: string }> {
   const config = await loadConfig()
+  const resolvedAuth = resolveApiAuth(auth)
   try {
     const response = await fetch(`${config.apiUrl}/update-game-score`, {
       method: 'POST',
@@ -335,9 +391,11 @@ export async function updateGameScore(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        userId,
+        userId: resolvedAuth.userId,
+        username: resolvedAuth.username,
         gameType,
         score,
+        initData: resolvedAuth.initData,
       }),
     })
 
@@ -369,10 +427,10 @@ export interface CrosswordData {
   wrong_words?: string[] // Неправильные слова после завершения
 }
 
-export async function getCrosswordData(userId: number): Promise<CrosswordData> {
+export async function getCrosswordData(auth?: ApiAuth): Promise<CrosswordData> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/crossword/data?userId=${userId}`)
+    const response = await fetch(withQuery(`${config.apiUrl}/crossword/data`, buildAuthQuery(auth)))
     if (response.ok) {
       const data = await response.json()
       const normalized: CrosswordData = {
@@ -401,14 +459,10 @@ export async function getCrosswordData(userId: number): Promise<CrosswordData> {
  * Получает слово для Wordle
  * @param userId - user_id из UserContext
  */
-export async function getWordleWord(userId: number): Promise<string | null> {
-  if (!userId) {
-    return null
-  }
-
+export async function getWordleWord(auth?: ApiAuth): Promise<string | null> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/wordle/word?userId=${userId}`)
+    const response = await fetch(withQuery(`${config.apiUrl}/wordle/word`, buildAuthQuery(auth)))
     if (response.ok) {
       const data = await response.json()
       return data.word || null
@@ -426,10 +480,10 @@ export interface WordleState {
   last_word_date: string | null
 }
 
-export async function getWordleState(userId: number): Promise<WordleState | null> {
+export async function getWordleState(auth?: ApiAuth): Promise<WordleState | null> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/wordle/state?userId=${userId}`)
+    const response = await fetch(withQuery(`${config.apiUrl}/wordle/state`, buildAuthQuery(auth)))
     if (response.ok) {
       const data = await response.json()
       return data
@@ -441,13 +495,14 @@ export async function getWordleState(userId: number): Promise<WordleState | null
 }
 
 export async function saveWordleState(
-  userId: number,
+  auth: ApiAuth | undefined,
   currentWord: string,
   attempts: Array<Array<{ letter: string; state: string }>>,
   lastWordDate: string,
   currentGuess: string = ''
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
+  const resolvedAuth = resolveApiAuth(auth)
   try {
     const response = await fetch(`${config.apiUrl}/wordle/state`, {
       method: 'POST',
@@ -455,11 +510,13 @@ export async function saveWordleState(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        userId,
+        userId: resolvedAuth.userId,
+        username: resolvedAuth.username,
         current_word: currentWord,
         attempts,
         current_guess: currentGuess,
         last_word_date: lastWordDate,
+        initData: resolvedAuth.initData,
       }),
     })
 
@@ -480,14 +537,10 @@ export async function saveWordleState(
  * Получает прогресс в Wordle
  * @param userId - user_id из UserContext
  */
-export async function getWordleProgress(userId: number): Promise<string[]> {
-  if (!userId) {
-    return []
-  }
-
+export async function getWordleProgress(auth?: ApiAuth): Promise<string[]> {
   const config = await loadConfig()
   try {
-    const response = await fetch(`${config.apiUrl}/wordle/progress?userId=${userId}`)
+    const response = await fetch(withQuery(`${config.apiUrl}/wordle/progress`, buildAuthQuery(auth)))
     if (response.ok) {
       const data = await response.json()
       return data.guessed_words || []
@@ -504,19 +557,21 @@ export async function getWordleProgress(userId: number): Promise<string[]> {
  * @param word - отгаданное слово
  */
 export async function submitWordleGuess(
-  userId: number,
+  auth: ApiAuth | undefined,
   word: string
 ): Promise<{ success: boolean; message?: string; points?: number; already_guessed?: boolean }> {
-  if (!userId) {
-    return { success: false, message: 'Не удалось получить данные пользователя' }
-  }
-
   const config = await loadConfig()
+  const resolvedAuth = resolveApiAuth(auth)
   try {
     const response = await fetch(`${config.apiUrl}/wordle/guess`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word, userId }),
+      body: JSON.stringify({
+        word,
+        userId: resolvedAuth.userId,
+        username: resolvedAuth.username,
+        initData: resolvedAuth.initData,
+      }),
     })
     
     if (response.ok) {
@@ -533,7 +588,7 @@ export async function submitWordleGuess(
 }
 
 export async function saveCrosswordProgress(
-  userId: number,
+  auth: ApiAuth | undefined,
   guessedWords: string[],
   crosswordIndex: number = 0,
   cellLetters?: { [key: string]: string },
@@ -541,6 +596,7 @@ export async function saveCrosswordProgress(
   startDate?: string
 ): Promise<{ success: boolean; error?: string }> {
   const config = await loadConfig()
+  const resolvedAuth = resolveApiAuth(auth)
   try {
     const response = await fetch(`${config.apiUrl}/crossword/progress`, {
       method: 'POST',
@@ -548,13 +604,14 @@ export async function saveCrosswordProgress(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        userId,
+        userId: resolvedAuth.userId,
+        username: resolvedAuth.username,
         guessed_words: guessedWords,
         crossword_index: crosswordIndex,
         cell_letters: cellLetters,
         wrong_attempts: wrongAttempts,
         crossword_start_date: startDate,
-        initData: getInitData(),
+        initData: resolvedAuth.initData,
       }),
     })
 
