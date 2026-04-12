@@ -30,6 +30,58 @@ type authSessionPayload struct {
 	Expires  int64  `json:"exp"`
 }
 
+type registerGuestCompanionRequest struct {
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Telegram  string `json:"telegram"`
+}
+
+func normalizeRegistrationNamePart(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func buildNormalizedRegistrationFullName(firstName, lastName string) string {
+	return strings.TrimSpace(strings.Join([]string{
+		normalizeRegistrationNamePart(firstName),
+		normalizeRegistrationNamePart(lastName),
+	}, " "))
+}
+
+func sanitizeAdditionalGuests(rawGuests []registerGuestCompanionRequest, ownerFirstName, ownerLastName string) []google_sheets.CompanionGuest {
+	if len(rawGuests) == 0 {
+		return nil
+	}
+
+	ownerFullName := strings.ToLower(buildNormalizedRegistrationFullName(ownerFirstName, ownerLastName))
+	seen := make(map[string]struct{}, len(rawGuests))
+	guests := make([]google_sheets.CompanionGuest, 0, len(rawGuests))
+
+	for _, rawGuest := range rawGuests {
+		firstName := normalizeRegistrationNamePart(rawGuest.FirstName)
+		lastName := normalizeRegistrationNamePart(rawGuest.LastName)
+		fullName := buildNormalizedRegistrationFullName(firstName, lastName)
+		if fullName == "" {
+			continue
+		}
+
+		normalizedKey := strings.ToLower(fullName)
+		if normalizedKey == ownerFullName {
+			continue
+		}
+		if _, ok := seen[normalizedKey]; ok {
+			continue
+		}
+
+		seen[normalizedKey] = struct{}{}
+		guests = append(guests, google_sheets.CompanionGuest{
+			FirstName: firstName,
+			LastName:  lastName,
+		})
+	}
+
+	return guests
+}
+
 // parseInitData парсит initData и возвращает user_id
 func parseInitData(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -429,14 +481,15 @@ func checkRegistration(w http.ResponseWriter, r *http.Request) {
 // registerGuest регистрирует гостя
 func registerGuest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Age       *int   `json:"age"`
-		Category  string `json:"category"`
-		Side      string `json:"side"`
-		UserID    int    `json:"userId"`
-		InitData  string `json:"initData"`
-		Username  string `json:"username"`
+		FirstName string                          `json:"firstName"`
+		LastName  string                          `json:"lastName"`
+		Age       *int                            `json:"age"`
+		Category  string                          `json:"category"`
+		Side      string                          `json:"side"`
+		UserID    int                             `json:"userId"`
+		InitData  string                          `json:"initData"`
+		Username  string                          `json:"username"`
+		Guests    []registerGuestCompanionRequest `json:"guests"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -469,15 +522,23 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Идемпотентность: если уже зарегистрирован по user_id/username, возвращаем успех
-	if registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, userID, manualUsername); err == nil && registered {
-		for _, key := range registrationCacheKeys(userID, manualUsername) {
-			cache.SetMemoryCache(key, true, 30*time.Second)
+	additionalGuests := sanitizeAdditionalGuests(req.Guests, req.FirstName, req.LastName)
+	hasPrimaryGuestData := buildNormalizedRegistrationFullName(req.FirstName, req.LastName) != ""
+	hasAdditionalGuests := len(additionalGuests) > 0
+
+	if !hasPrimaryGuestData && !hasAdditionalGuests {
+		if registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, userID, manualUsername); err == nil && registered {
+			for _, key := range registrationCacheKeys(userID, manualUsername) {
+				cache.SetMemoryCache(key, true, 30*time.Second)
+			}
+			JSONResponse(w, http.StatusOK, map[string]interface{}{
+				"success":            true,
+				"already_registered": true,
+			})
+			return
 		}
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"success":            true,
-			"already_registered": true,
-		})
+
+		JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -507,7 +568,7 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		usernamePtr = &manualUsername
 	}
 
-	if err := google_sheets.AddGuestToSheets(ctx, req.FirstName, req.LastName, age, category, side, userIDPtr, usernamePtr); err != nil {
+	if err := google_sheets.AddGuestGroupToSheets(ctx, req.FirstName, req.LastName, age, category, side, userIDPtr, usernamePtr, additionalGuests); err != nil {
 		log.Printf("Error adding guest: %v", err)
 		JSONError(w, http.StatusInternalServerError, "failed to register")
 		return

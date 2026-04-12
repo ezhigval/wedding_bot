@@ -105,6 +105,29 @@ func isConfirmedValue(value string) bool {
 	return upper == "TRUE" || upper == "ДА" || upper == "✓" || upper == "✔"
 }
 
+func buildGuestFullName(firstName, lastName string) string {
+	return strings.TrimSpace(strings.Join([]string{
+		strings.TrimSpace(firstName),
+		strings.TrimSpace(lastName),
+	}, " "))
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	clean := strings.TrimSpace(*value)
+	return &clean
+}
+
+// CompanionGuest описывает дополнительного гостя,
+// которого основной пользователь добавляет к своей регистрации.
+type CompanionGuest struct {
+	FirstName string
+	LastName  string
+}
+
 // AddGuestToSheets добавляет гостя в Google Sheets
 func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int, category, side *string, userID *int, username *string) error {
 	service, err := GetGoogleSheetsClient()
@@ -122,7 +145,7 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 		return fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	fullName := strings.TrimSpace(fmt.Sprintf("%s %s", firstName, lastName))
+	fullName := buildGuestFullName(firstName, lastName)
 	authUserID := 0
 	if userID != nil {
 		authUserID = *userID
@@ -134,22 +157,10 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	authIdentifier := buildAuthIdentifierForStorage(authUserID, authUsername)
 	values := resp.Values
 
-	// Ищем существующую строку
+	// Сначала ищем по идентификатору (column F): user_id или username.
 	foundRow := -1
 	foundBy := ""
-	for i, row := range values {
-		if len(row) > 0 {
-			existingName := cellToString(row[0])
-			if fullName != "" && strings.EqualFold(existingName, fullName) {
-				foundRow = i + 1 // +1 потому что индексация с 1
-				foundBy = "name"
-				break
-			}
-		}
-	}
-
-	// Дополнительно ищем по идентификатору (column F): user_id или username.
-	if foundRow <= 0 && (authUserID > 0 || authUsername != "") {
+	if authUserID > 0 || authUsername != "" {
 		for i, row := range values {
 			if len(row) <= 5 {
 				continue
@@ -162,6 +173,22 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 		}
 	}
 
+	// Если по идентификатору не нашли, пробуем по имени.
+	if foundRow <= 0 && fullName != "" {
+		for i, row := range values {
+			if len(row) == 0 {
+				continue
+			}
+
+			existingName := cellToString(row[0])
+			if strings.EqualFold(existingName, fullName) {
+				foundRow = i + 1
+				foundBy = "name"
+				break
+			}
+		}
+	}
+
 	if foundRow > 0 {
 		// Обновляем существующую строку
 		updates := []*sheets.ValueRange{
@@ -169,6 +196,17 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 				Range:  fmt.Sprintf("%s!C%d", sheetName, foundRow),
 				Values: [][]interface{}{{true}},
 			},
+		}
+
+		existingName := ""
+		if foundRow-1 >= 0 && foundRow-1 < len(values) && len(values[foundRow-1]) > 0 {
+			existingName = cellToString(values[foundRow-1][0])
+		}
+		if fullName != "" && !strings.EqualFold(existingName, fullName) {
+			updates = append(updates, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!A%d", sheetName, foundRow),
+				Values: [][]interface{}{{fullName}},
+			})
 		}
 
 		if category != nil {
@@ -277,6 +315,237 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	}
 
 	log.Printf("Гость %s добавлен в Google Sheets в строку %d", fullName, emptyRow)
+	return nil
+}
+
+func resolveCompanionMetadata(ctx context.Context, category, side *string, userID *int, username *string) (*string, *string, error) {
+	effectiveCategory := cloneStringPointer(category)
+	effectiveSide := cloneStringPointer(side)
+
+	authUserID := 0
+	if userID != nil {
+		authUserID = *userID
+	}
+
+	authUsername := ""
+	if username != nil {
+		authUsername = *username
+	}
+
+	if effectiveCategory != nil && effectiveSide != nil {
+		return effectiveCategory, effectiveSide, nil
+	}
+
+	existingGuest, err := FindGuestByIdentifier(ctx, authUserID, authUsername)
+	if err != nil {
+		return nil, nil, err
+	}
+	if existingGuest == nil {
+		return effectiveCategory, effectiveSide, nil
+	}
+
+	if effectiveCategory == nil && strings.TrimSpace(existingGuest.Category) != "" {
+		categoryCopy := strings.TrimSpace(existingGuest.Category)
+		effectiveCategory = &categoryCopy
+	}
+
+	if effectiveSide == nil && strings.TrimSpace(existingGuest.Side) != "" {
+		sideCopy := strings.TrimSpace(existingGuest.Side)
+		effectiveSide = &sideCopy
+	}
+
+	return effectiveCategory, effectiveSide, nil
+}
+
+// AddGuestGroupToSheets сохраняет основного гостя и дополнительных гостей одной регистрационной группой.
+func AddGuestGroupToSheets(ctx context.Context, firstName, lastName string, age *int, category, side *string, userID *int, username *string, companions []CompanionGuest) error {
+	hasPrimaryGuest := buildGuestFullName(firstName, lastName) != ""
+
+	authUserID := 0
+	if userID != nil {
+		authUserID = *userID
+	}
+
+	authUsername := ""
+	if username != nil {
+		authUsername = *username
+	}
+
+	existingOwner, err := FindGuestByIdentifier(ctx, authUserID, authUsername)
+	if err != nil {
+		return err
+	}
+
+	if !hasPrimaryGuest && len(companions) > 0 && existingOwner == nil {
+		return fmt.Errorf("основной гость не найден, сначала завершите регистрацию для себя")
+	}
+
+	effectiveCategory, effectiveSide, err := resolveCompanionMetadata(ctx, category, side, userID, username)
+	if err != nil {
+		return err
+	}
+
+	if hasPrimaryGuest {
+		if err := AddGuestToSheets(ctx, firstName, lastName, age, category, side, userID, username); err != nil {
+			return err
+		}
+	}
+
+	for _, companion := range companions {
+		if err := AddAdditionalGuestToSheets(ctx, companion.FirstName, companion.LastName, effectiveCategory, effectiveSide, userID, username); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// AddAdditionalGuestToSheets добавляет или обновляет дополнительного гостя, сохраняя связь с основным владельцем регистрации.
+func AddAdditionalGuestToSheets(ctx context.Context, firstName, lastName string, category, side *string, userID *int, username *string) error {
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return err
+	}
+
+	spreadsheetID := config.GoogleSheetsID
+	sheetName := config.GoogleSheetsSheetName
+
+	fullName := buildGuestFullName(firstName, lastName)
+	if fullName == "" {
+		return nil
+	}
+
+	authUserID := 0
+	if userID != nil {
+		authUserID = *userID
+	}
+
+	authUsername := ""
+	if username != nil {
+		authUsername = *username
+	}
+
+	authIdentifier := buildAuthIdentifierForStorage(authUserID, authUsername)
+	if authIdentifier == "" {
+		return fmt.Errorf("идентификатор владельца регистрации не передан")
+	}
+
+	readRange := fmt.Sprintf("%s!A:F", sheetName)
+	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+	if err != nil {
+		return fmt.Errorf("ошибка чтения значений: %w", err)
+	}
+
+	values := resp.Values
+	foundRow := -1
+
+	for i, row := range values {
+		if len(row) == 0 {
+			continue
+		}
+
+		existingName := cellToString(row[0])
+		if !strings.EqualFold(existingName, fullName) {
+			continue
+		}
+
+		existingIdentifier := ""
+		if len(row) > 5 {
+			existingIdentifier = cellToString(row[5])
+		}
+
+		if existingIdentifier == "" || guestIdentifierMatches(existingIdentifier, authUserID, authUsername) {
+			foundRow = i + 1
+			break
+		}
+	}
+
+	if foundRow > 0 {
+		updates := []*sheets.ValueRange{
+			{
+				Range:  fmt.Sprintf("%s!A%d", sheetName, foundRow),
+				Values: [][]interface{}{{fullName}},
+			},
+			{
+				Range:  fmt.Sprintf("%s!C%d", sheetName, foundRow),
+				Values: [][]interface{}{{true}},
+			},
+		}
+
+		if category != nil {
+			updates = append(updates, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!D%d", sheetName, foundRow),
+				Values: [][]interface{}{{strings.TrimSpace(*category)}},
+			})
+		}
+
+		if side != nil {
+			updates = append(updates, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!E%d", sheetName, foundRow),
+				Values: [][]interface{}{{strings.TrimSpace(*side)}},
+			})
+		}
+
+		existingIdentifier := ""
+		if foundRow-1 >= 0 && foundRow-1 < len(values) && len(values[foundRow-1]) > 5 {
+			existingIdentifier = cellToString(values[foundRow-1][5])
+		}
+
+		if authIdentifier != "" && existingIdentifier != authIdentifier {
+			updates = append(updates, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!F%d", sheetName, foundRow),
+				Values: [][]interface{}{{authIdentifier}},
+			})
+		}
+
+		batchUpdate := &sheets.BatchUpdateValuesRequest{
+			ValueInputOption: "USER_ENTERED",
+			Data:             updates,
+		}
+
+		if _, err := service.Spreadsheets.Values.BatchUpdate(spreadsheetID, batchUpdate).Do(); err != nil {
+			return fmt.Errorf("ошибка обновления дополнительного гостя: %w", err)
+		}
+
+		log.Printf("Дополнительный гость %s обновлён в строке %d", fullName, foundRow)
+		return nil
+	}
+
+	emptyRow := len(values) + 1
+	for i, row := range values {
+		if len(row) == 0 || cellToString(row[0]) == "" {
+			emptyRow = i + 1
+			break
+		}
+	}
+
+	rowData := []interface{}{fullName, "", true}
+	if category != nil {
+		rowData = append(rowData, strings.TrimSpace(*category))
+	} else {
+		rowData = append(rowData, "")
+	}
+	if side != nil {
+		rowData = append(rowData, strings.TrimSpace(*side))
+	} else {
+		rowData = append(rowData, "")
+	}
+	rowData = append(rowData, authIdentifier)
+
+	valueRange := &sheets.ValueRange{
+		Values: [][]interface{}{rowData},
+	}
+
+	range_ := fmt.Sprintf("%s!A%d:F%d", sheetName, emptyRow, emptyRow)
+	if _, err := service.Spreadsheets.Values.Update(
+		spreadsheetID,
+		range_,
+		valueRange,
+	).ValueInputOption("USER_ENTERED").Do(); err != nil {
+		return fmt.Errorf("ошибка добавления дополнительного гостя: %w", err)
+	}
+
+	log.Printf("Дополнительный гость %s добавлен в Google Sheets в строку %d", fullName, emptyRow)
 	return nil
 }
 
@@ -551,45 +820,45 @@ func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, userna
 		return fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	// Ищем строку по user_id/username в колонке F
-	foundRow := -1
+	// Ищем все строки по user_id/username в колонке F.
+	foundRows := make([]int, 0, 2)
 	for i, row := range resp.Values {
 		if len(row) <= 5 {
 			continue
 		}
 		if guestIdentifierMatches(cellToString(row[5]), userID, username) {
-			foundRow = i + 1
-			break
+			foundRows = append(foundRows, i+1)
 		}
 	}
 
-	if foundRow <= 0 {
+	if len(foundRows) == 0 {
 		if userID > 0 {
 			return fmt.Errorf("гость с user_id=%d не найден", userID)
 		}
 		return fmt.Errorf("гость с username=%s не найден", NormalizeTelegramUsername(username))
 	}
 
-	// Снимаем подтверждение в столбце C (checkbox false)
-	valueRange := &sheets.ValueRange{
-		Values: [][]interface{}{{false}},
+	updates := make([]*sheets.ValueRange, 0, len(foundRows))
+	for _, row := range foundRows {
+		updates = append(updates, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!C%d", sheetName, row),
+			Values: [][]interface{}{{false}},
+		})
 	}
 
-	range_ := fmt.Sprintf("%s!C%d", sheetName, foundRow)
-	_, err = service.Spreadsheets.Values.Update(
-		spreadsheetID,
-		range_,
-		valueRange,
-	).ValueInputOption("USER_ENTERED").Do()
+	batchUpdate := &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "USER_ENTERED",
+		Data:             updates,
+	}
 
-	if err != nil {
+	if _, err := service.Spreadsheets.Values.BatchUpdate(spreadsheetID, batchUpdate).Do(); err != nil {
 		return fmt.Errorf("ошибка обновления: %w", err)
 	}
 
 	if userID > 0 {
-		log.Printf("Регистрация гостя с user_id=%d отменена (строка %d)", userID, foundRow)
+		log.Printf("Регистрация гостя с user_id=%d отменена (строк: %d)", userID, len(foundRows))
 	} else {
-		log.Printf("Регистрация гостя с username=%s отменена (строка %d)", NormalizeTelegramUsername(username), foundRow)
+		log.Printf("Регистрация гостя с username=%s отменена (строк: %d)", NormalizeTelegramUsername(username), len(foundRows))
 	}
 	return nil
 }
