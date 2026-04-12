@@ -97,6 +97,14 @@ func main() {
 		log.Println("✅ Структура листа гостей проверена")
 	}
 
+	// Проверяем служебные листы, которыми управляет само приложение
+	log.Println("🔍 Проверка служебных листов...")
+	if err := google_sheets.ValidateCoreSheetsStructure(ctx); err != nil {
+		log.Printf("⚠️ Ошибка проверки служебных листов: %v", err)
+	} else {
+		log.Println("✅ Служебные листы проверены")
+	}
+
 	// Инициализируем API
 	apiRouter, err := api.InitAPI(ctx)
 	if err != nil {
@@ -287,7 +295,7 @@ func serveStaticFiles() http.Handler {
 
 		contentType := getContentType(path)
 		w.Header().Set("Content-Type", contentType)
-		
+
 		// Отключаем кэширование для HTML и JS файлов (чтобы обновления применялись сразу)
 		if strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".mjs") {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -300,7 +308,7 @@ func serveStaticFiles() http.Handler {
 			// Для остальных файлов (изображения и т.д.) - кэшируем дольше
 			w.Header().Set("Cache-Control", "public, max-age=3600") // 1 час
 		}
-		
+
 		http.ServeFile(w, r, filePath)
 	})
 }
