@@ -69,6 +69,7 @@ Telegram-бот и Telegram Mini App для свадебного приглаш�
 ## Документация
 
 - [Архитектура](docs/ARCHITECTURE.md)
+- [Чек-лист деплоя](docs/DEPLOY_CHECKLIST.md)
 - [Правила проекта](docs/RULES.md)
 - [Роадмап](docs/ROADMAP.md)
 
