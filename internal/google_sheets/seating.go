@@ -12,8 +12,8 @@ import (
 
 // SeatingTable представляет стол с гостями
 type SeatingTable struct {
-	Table  string
-	Guests []string
+	Table  string   `json:"table"`
+	Guests []string `json:"guests"`
 }
 
 func readSeatingFromSheet(ctx context.Context, sheetName string) ([]SeatingTable, error) {

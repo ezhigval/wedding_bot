@@ -199,6 +199,11 @@ docker run --env-file .env.local -p 10000:10000 wedding-bot
 - `GET /api/seating/info`
 - `GET /api/seating/personal`
 
+Контракт рассадки для Mini App:
+
+- `/api/seating/info` возвращает `{ visible, published_at, tables }`, где `tables` — массив объектов `{ table, guests }`.
+- `/api/seating/personal` возвращает `{ visible, published_at, table, neighbors, full_name }` для персонального места гостя.
+
 Подробности и потоки есть в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Текущее состояние проекта

@@ -128,6 +128,30 @@ export interface SeatingInfo {
   error?: string
 }
 
+type RawSeatingTable = Partial<SeatingTable> & {
+  Table?: string
+  Guests?: unknown
+}
+
+function parseSeatingGuests(rawGuests: unknown): string[] {
+  if (!Array.isArray(rawGuests)) {
+    return []
+  }
+
+  return rawGuests
+    .map((guest) => (typeof guest === 'string' ? guest.trim() : ''))
+    .filter((guest): guest is string => guest !== '')
+}
+
+function parseSeatingTable(rawTable: unknown): SeatingTable {
+  const typedTable = rawTable as RawSeatingTable | null
+
+  return {
+    table: firstNonEmptyString(typedTable?.table, typedTable?.Table) || '',
+    guests: parseSeatingGuests(Array.isArray(typedTable?.guests) ? typedTable.guests : typedTable?.Guests),
+  }
+}
+
 export async function getSeatingInfo(): Promise<SeatingInfo> {
   const config = await loadConfig()
   try {
@@ -144,15 +168,7 @@ export async function getSeatingInfo(): Promise<SeatingInfo> {
         visible: Boolean(data.visible),
         published_at: data.published_at || '',
         tables: Array.isArray(data.tables)
-          ? data.tables.map((table: unknown) => {
-              const typedTable = table as Partial<SeatingTable> | null
-              return {
-                table: typeof typedTable?.table === 'string' ? typedTable.table : '',
-                guests: Array.isArray(typedTable?.guests)
-                  ? typedTable.guests.filter((guest: unknown): guest is string => typeof guest === 'string')
-                  : [],
-              }
-            })
+          ? data.tables.map((table: unknown) => parseSeatingTable(table))
           : [],
       }
     }
