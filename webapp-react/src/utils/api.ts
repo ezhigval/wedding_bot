@@ -104,6 +104,44 @@ export async function loadTimeline(): Promise<TimelineItem[]> {
   return []
 }
 
+export interface SeatingInfo {
+  visible: boolean
+  table?: string
+  neighbors?: string[]
+  full_name?: string
+  error?: string
+}
+
+export async function getSeatingInfo(auth?: ApiAuth): Promise<SeatingInfo> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(withQuery(`${config.apiUrl}/seating/info`, buildAuthQuery(auth)))
+    const contentType = response.headers.get('content-type') || ''
+
+    if (!contentType.includes('application/json')) {
+      return { visible: false, error: 'Некорректный ответ сервера' }
+    }
+
+    const data = await response.json()
+    if (response.ok) {
+      return {
+        visible: Boolean(data.visible),
+        table: data.table || '',
+        neighbors: Array.isArray(data.neighbors) ? data.neighbors : [],
+        full_name: data.full_name || '',
+      }
+    }
+
+    return {
+      visible: false,
+      error: data.error || 'Не удалось загрузить рассадку',
+    }
+  } catch (error) {
+    console.error('Error loading seating info:', error)
+    return { visible: false, error: 'Ошибка сети' }
+  }
+}
+
 export interface ApiAuth {
   userId?: number | null
   username?: string | null
