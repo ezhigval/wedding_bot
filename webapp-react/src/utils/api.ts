@@ -168,6 +168,48 @@ export async function getSeatingInfo(): Promise<SeatingInfo> {
   }
 }
 
+export interface PersonalSeatingInfo {
+  visible: boolean
+  published_at?: string
+  table?: string
+  neighbors?: string[]
+  full_name?: string
+  error?: string
+}
+
+export async function getPersonalSeatingInfo(auth?: ApiAuth): Promise<PersonalSeatingInfo> {
+  const config = await loadConfig()
+  try {
+    const response = await fetch(withQuery(`${config.apiUrl}/seating/personal`, buildAuthQuery(auth)))
+    const contentType = response.headers.get('content-type') || ''
+
+    if (!contentType.includes('application/json')) {
+      return { visible: false, error: 'Некорректный ответ сервера' }
+    }
+
+    const data = await response.json()
+    if (response.ok) {
+      return {
+        visible: Boolean(data.visible),
+        published_at: data.published_at || '',
+        table: data.table || '',
+        neighbors: Array.isArray(data.neighbors)
+          ? data.neighbors.filter((guest: unknown): guest is string => typeof guest === 'string')
+          : [],
+        full_name: data.full_name || '',
+      }
+    }
+
+    return {
+      visible: false,
+      error: data.error || 'Не удалось загрузить персональную рассадку',
+    }
+  } catch (error) {
+    console.error('Error loading personal seating info:', error)
+    return { visible: false, error: 'Ошибка сети' }
+  }
+}
+
 export interface ApiAuth {
   userId?: number | null
   username?: string | null

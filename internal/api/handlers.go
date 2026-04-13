@@ -759,3 +759,52 @@ func getSeatingInfo(w http.ResponseWriter, r *http.Request) {
 		"tables":       tables,
 	})
 }
+
+// getPersonalSeatingInfo возвращает персональную рассадку гостя из опубликованной версии.
+func getPersonalSeatingInfo(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
+	if err != nil {
+		JSONError(w, http.StatusBadRequest, "invalid_user_id")
+		return
+	}
+
+	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
+	initData := r.URL.Query().Get("initData")
+
+	resolvedUserID, resolvedUsername, ok := requireResolvedAuthIdentity(w, r, userID, username, initData)
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+
+	status, err := google_sheets.GetSeatingLockStatus(ctx)
+	if err != nil {
+		log.Printf("Error getting personal seating status: %v", err)
+		JSONError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+
+	info, err := google_sheets.GetGuestTableAndNeighborsByIdentifier(ctx, resolvedUserID, resolvedUsername)
+	if err != nil {
+		log.Printf("Error getting personal seating info: %v", err)
+		JSONError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+
+	if info == nil {
+		JSONResponse(w, http.StatusOK, map[string]interface{}{
+			"visible":      false,
+			"published_at": status.LockedAt,
+		})
+		return
+	}
+
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"visible":      true,
+		"published_at": status.LockedAt,
+		"table":        info.Table,
+		"neighbors":    info.Neighbors,
+		"full_name":    info.FullName,
+	})
+}

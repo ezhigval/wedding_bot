@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"wedding-bot/internal/config"
@@ -102,7 +103,13 @@ type GuestTableInfo struct {
 }
 
 func normalizeComparableGuestName(value string) string {
-	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+	parts := strings.Fields(strings.ToLower(strings.TrimSpace(value)))
+	if len(parts) == 0 {
+		return ""
+	}
+
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
 }
 
 // GetGuestTableAndNeighbors находит для гостя по user_id стол и соседей
@@ -177,7 +184,8 @@ func GetGuestTableAndNeighborsByIdentifier(ctx context.Context, userID int, user
 			}
 		}
 
-		// Ищем полное совпадение имени в этом столе
+		// Ищем совпадение по набору слов имени, чтобы "Иван Петров"
+		// и "Петров Иван" считались одним и тем же гостем.
 		found := false
 		for _, n := range columnNames {
 			if normalizeComparableGuestName(n) == targetName {

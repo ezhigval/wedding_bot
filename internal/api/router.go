@@ -107,6 +107,7 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 
 	// Seating
 	api.HandleFunc("/seating/info", getSeatingInfo).Methods("GET")
+	api.HandleFunc("/seating/personal", getPersonalSeatingInfo).Methods("GET")
 
 	// Parse init data
 	api.HandleFunc("/parse-init-data", parseInitData).Methods("POST")
