@@ -396,30 +396,24 @@ func handleAdminRefreshSeating(bot *tgbotapi.BotAPI, message *tgbotapi.Message) 
 
 	status, err := google_sheets.LockSeating(ctx)
 	if err != nil {
-		log.Printf("Ошибка обновления/фиксации рассадки: %v", err)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось зафиксировать рассадку. Проверьте доступ к Google Sheets.")
+		log.Printf("Ошибка публикации рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось опубликовать рассадку в Mini App. Проверьте лист 'Рассадка' и доступ к Google Sheets.")
 		bot.Send(msg)
 		return
 	}
 
-	seating, err := google_sheets.GetSeatingFromSheets(ctx)
+	seating, err := google_sheets.GetPublishedSeatingFromSheets(ctx)
 	if err != nil {
-		log.Printf("Ошибка получения рассадки: %v", err)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка зафиксирована, но не удалось вывести список (ошибка чтения).")
-		bot.Send(msg)
-		return
-	}
-
-	if len(seating) == 0 {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка зафиксирована, но лист пуст.")
+		log.Printf("Ошибка чтения опубликованной рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка опубликована для Mini App, но не удалось вывести опубликованную копию.")
 		bot.Send(msg)
 		return
 	}
 
 	var sb strings.Builder
-	sb.WriteString("🍽 <b>Рассадка зафиксирована</b>\n")
+	sb.WriteString("🍽 <b>Рассадка опубликована в Mini App</b>\n")
 	if status != nil && status.LockedAt != "" {
-		sb.WriteString(fmt.Sprintf("⏱ Зафиксировано: <b>%s</b>\n\n", status.LockedAt))
+		sb.WriteString(fmt.Sprintf("⏱ Обновлено: <b>%s</b>\n\n", status.LockedAt))
 	} else {
 		sb.WriteString("\n")
 	}
@@ -589,19 +583,19 @@ func handleAdminLockSeating(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	status, err := google_sheets.LockSeating(ctx)
 	if err != nil {
-		log.Printf("Ошибка закрепления рассадки: %v", err)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка закрепления рассадки.")
+		log.Printf("Ошибка публикации рассадки: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка публикации рассадки в Mini App.")
 		bot.Send(msg)
 		return
 	}
 
 	if status != nil && status.Locked {
-		msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Рассадка закреплена!\nВремя: %s", status.LockedAt))
+		msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Рассадка опубликована в Mini App!\nВремя: %s", status.LockedAt))
 		bot.Send(msg)
 		return
 	}
 
-	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка закреплена!")
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Рассадка опубликована в Mini App!")
 	bot.Send(msg)
 }
 
@@ -793,12 +787,61 @@ func handleAdminResetMe(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 // handleAdminAddAdmin запускает добавление админа
 func handleAdminAddAdmin(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	// TODO: Реализовать FSM для добавления админа
+	SetAdminInputMode(message.From.ID, AdminInputModeAddAdmin)
+
 	msgText := "👤 <b>Добавление администратора</b>\n\n" +
 		"Пришлите @username человека, которого хотите сделать админом.\n" +
-		"Важно: этот пользователь должен хотя бы раз написать боту /start."
+		"Важно: этот пользователь должен хотя бы раз написать боту /start.\n\n" +
+		"Для отмены отправьте <b>отмена</b>."
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	bot.Send(msg)
+}
+
+func handleAdminAddAdminInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	text := strings.TrimSpace(message.Text)
+	if strings.EqualFold(text, "отмена") {
+		ClearAdminInputMode(message.From.ID)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "🚫 Добавление администратора отменено.")
+		bot.Send(msg)
+		return
+	}
+
+	username := google_sheets.NormalizeTelegramUsername(text)
+	if username == "" {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Пришлите Telegram username в формате @username.")
+		bot.Send(msg)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	userID, err := google_sheets.ResolveKnownTelegramUserIDByUsername(ctx, username)
+	if err != nil {
+		log.Printf("Ошибка поиска user_id для администратора @%s: %v", username, err)
+		msg := tgbotapi.NewMessage(
+			message.Chat.ID,
+			fmt.Sprintf("❌ Не удалось определить user_id для @%s.\nПопросите пользователя сначала написать боту /start.", username),
+		)
+		bot.Send(msg)
+		return
+	}
+
+	if err := google_sheets.SaveAdminToSheets(ctx, username, userID); err != nil {
+		log.Printf("Ошибка добавления администратора @%s: %v", username, err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось сохранить администратора в Google Sheets.")
+		bot.Send(msg)
+		return
+	}
+
+	ClearAdminInputMode(message.From.ID)
+
+	msg := tgbotapi.NewMessage(
+		message.Chat.ID,
+		fmt.Sprintf("✅ Администратор <b>@%s</b> сохранён.\nUser ID: <code>%d</code>", username, userID),
+	)
 	msg.ParseMode = tgbotapi.ModeHTML
 	bot.Send(msg)
 }
@@ -874,4 +917,36 @@ func parseGroupID(raw string) (int64, string) {
 	}
 	raw = strings.TrimPrefix(raw, "@")
 	return 0, raw
+}
+
+func removeUserFromConfiguredGroup(bot *tgbotapi.BotAPI, userID int64) error {
+	if strings.TrimSpace(config.GroupID) == "" {
+		return fmt.Errorf("GROUP_ID not configured")
+	}
+
+	chatID, superGroupUsername := parseGroupID(config.GroupID)
+	memberConfig := tgbotapi.ChatMemberConfig{
+		ChatID:             chatID,
+		SuperGroupUsername: superGroupUsername,
+		UserID:             userID,
+	}
+
+	banConfig := tgbotapi.BanChatMemberConfig{
+		ChatMemberConfig: memberConfig,
+		UntilDate:        time.Now().Add(60 * time.Second).Unix(),
+		RevokeMessages:   false,
+	}
+	if _, err := bot.Request(banConfig); err != nil {
+		return fmt.Errorf("ban user from group: %w", err)
+	}
+
+	unbanConfig := tgbotapi.UnbanChatMemberConfig{
+		ChatMemberConfig: memberConfig,
+		OnlyIfBanned:     true,
+	}
+	if _, err := bot.Request(unbanConfig); err != nil {
+		return fmt.Errorf("unban user after kick: %w", err)
+	}
+
+	return nil
 }

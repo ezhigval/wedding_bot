@@ -245,6 +245,9 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		case AdminInputModeGroupBroadcast:
 			handleGroupBroadcastInput(bot, message)
 			return
+		case AdminInputModeAddAdmin:
+			handleAdminAddAdminInput(bot, message)
+			return
 		}
 	}
 

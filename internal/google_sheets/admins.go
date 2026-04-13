@@ -305,3 +305,49 @@ func SaveAdminToSheets(ctx context.Context, username string, userID int) error {
 	return nil
 }
 
+// ResolveKnownTelegramUserIDByUsername пытается найти уже известный проекту user_id по username.
+// Используется для сценариев, где пользователь уже писал боту /start, и его идентификатор успел сохраниться в Sheets.
+func ResolveKnownTelegramUserIDByUsername(ctx context.Context, username string) (int, error) {
+	normalizedUsername := NormalizeTelegramUsername(username)
+	if normalizedUsername == "" {
+		return 0, fmt.Errorf("username is empty")
+	}
+
+	admins, err := GetAdminsList(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, admin := range admins {
+		if NormalizeTelegramUsername(admin.Username) == normalizedUsername && admin.UserID != nil && *admin.UserID > 0 {
+			return *admin.UserID, nil
+		}
+	}
+
+	invitation, err := FindInvitationByTelegramUsername(ctx, normalizedUsername)
+	if err != nil {
+		return 0, err
+	}
+	if invitation != nil {
+		if numericID, ok := normalizeNumericIdentifier(invitation.UserID); ok {
+			parsedID, parseErr := strconv.Atoi(numericID)
+			if parseErr == nil && parsedID > 0 {
+				return parsedID, nil
+			}
+		}
+	}
+
+	guest, err := FindGuestByIdentifier(ctx, 0, normalizedUsername)
+	if err != nil {
+		return 0, err
+	}
+	if guest != nil {
+		if numericID, ok := normalizeNumericIdentifier(guest.UserID); ok {
+			parsedID, parseErr := strconv.Atoi(numericID)
+			if parseErr == nil && parsedID > 0 {
+				return parsedID, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("user_id for @%s not found", normalizedUsername)
+}

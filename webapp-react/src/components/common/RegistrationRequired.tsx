@@ -8,6 +8,7 @@ export default function RegistrationRequired() {
   const { userId, manualUsername, setManualUsername } = useUser()
   const { refreshRegistration } = useRegistration()
   const [username, setUsername] = useState(manualUsername ? `@${manualUsername}` : '')
+  const trimmedUsername = username.trim()
 
   return (
     <div className="min-h-screen px-4 py-4">
@@ -30,10 +31,11 @@ export default function RegistrationRequired() {
                 className="border border-gray-300 rounded-lg px-3 py-2 text-[16.8px] w-56"
               />
               <button
-                className="bg-primary text-white rounded-lg px-4 py-2 font-semibold"
+                disabled={trimmedUsername === ''}
+                className="bg-primary text-white rounded-lg px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={async () => {
-                  setManualUsername(username)
-                  await refreshRegistration()
+                  setManualUsername(trimmedUsername)
+                  await refreshRegistration({ username: trimmedUsername })
                 }}
               >
                 Войти
@@ -45,4 +47,3 @@ export default function RegistrationRequired() {
     </div>
   )
 }
-

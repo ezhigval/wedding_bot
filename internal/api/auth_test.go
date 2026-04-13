@@ -121,6 +121,22 @@ func TestResolveAuthIdentityUsesCachedUsername(t *testing.T) {
 	}
 }
 
+func TestRequireResolvedAuthIdentityAllowsUsernameOnly(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	userID, username, ok := requireResolvedAuthIdentity(rec, req, 0, "@BrowserUser", "")
+	if !ok {
+		t.Fatal("requireResolvedAuthIdentity() returned ok=false for username-only auth")
+	}
+	if userID != 0 {
+		t.Fatalf("requireResolvedAuthIdentity() userID = %d, want 0", userID)
+	}
+	if username != "browseruser" {
+		t.Fatalf("requireResolvedAuthIdentity() username = %q, want %q", username, "browseruser")
+	}
+}
+
 func TestBuildDataCheckStringSortsKeysAndSkipsHash(t *testing.T) {
 	got := buildDataCheckString(map[string]string{
 		"hash":      "ignored",

@@ -13,6 +13,7 @@ const (
 	AdminInputModeWordleAdd      AdminInputMode = "wordle_add"
 	AdminInputModeCrosswordAdd   AdminInputMode = "crossword_add"
 	AdminInputModeGroupBroadcast AdminInputMode = "group_broadcast"
+	AdminInputModeAddAdmin       AdminInputMode = "add_admin"
 )
 
 type GroupBroadcastState struct {

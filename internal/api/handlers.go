@@ -386,6 +386,16 @@ func requireResolvedAuthUserID(w http.ResponseWriter, r *http.Request, userID in
 	return resolvedUserID, resolvedUsername, true
 }
 
+func requireResolvedAuthIdentity(w http.ResponseWriter, r *http.Request, userID int, username, initData string) (int, string, bool) {
+	resolvedUserID, resolvedUsername := resolveAuthIdentityAndRefreshSession(w, r, userID, username, initData)
+	if resolvedUserID == 0 && resolvedUsername == "" {
+		JSONError(w, http.StatusBadRequest, "user_id_or_username_required")
+		return 0, "", false
+	}
+
+	return resolvedUserID, resolvedUsername, true
+}
+
 // checkRegistration проверяет регистрацию пользователя
 func checkRegistration(w http.ResponseWriter, r *http.Request) {
 	// Создаем контекст с таймаутом для защиты от зависаний
@@ -693,7 +703,7 @@ func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, username, ok := requireResolvedAuthUserID(w, r, req.UserID, req.Username, req.InitData)
+	userID, username, ok := requireResolvedAuthIdentity(w, r, req.UserID, req.Username, req.InitData)
 	if !ok {
 		return
 	}
@@ -716,42 +726,36 @@ func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getSeatingInfo возвращает информацию о рассадке
+// getSeatingInfo возвращает опубликованную рассадку для Mini App
 func getSeatingInfo(w http.ResponseWriter, r *http.Request) {
-	userID, err := parseOptionalUserID(r.URL.Query().Get("userId"))
-	if err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid user_id")
-		return
-	}
-
-	username := google_sheets.NormalizeTelegramUsername(r.URL.Query().Get("username"))
-	initData := r.URL.Query().Get("initData")
-
-	resolvedUserID, _, ok := requireResolvedAuthUserID(w, r, userID, username, initData)
-	if !ok {
-		return
-	}
-
 	ctx := r.Context()
 
-	info, err := google_sheets.GetGuestTableAndNeighbors(ctx, resolvedUserID)
+	status, err := google_sheets.GetSeatingLockStatus(ctx)
 	if err != nil {
 		log.Printf("Error getting seating info: %v", err)
 		JSONError(w, http.StatusInternalServerError, "server_error")
 		return
 	}
 
-	if info == nil {
+	tables, err := google_sheets.GetPublishedSeatingFromSheets(ctx)
+	if err != nil {
+		log.Printf("Error getting published seating: %v", err)
+		JSONError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+
+	if len(tables) == 0 {
 		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"visible": false,
+			"visible":      false,
+			"published_at": status.LockedAt,
+			"tables":       []google_sheets.SeatingTable{},
 		})
 		return
 	}
 
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"visible":   true,
-		"table":     info.Table,
-		"neighbors": info.Neighbors,
-		"full_name": info.FullName,
+		"visible":      true,
+		"published_at": status.LockedAt,
+		"tables":       tables,
 	})
 }

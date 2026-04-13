@@ -693,15 +693,29 @@ func handleDeleteGuestCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.Callback
 
 	switch action {
 	case "confirm_group":
-		// Удалить из группы и из списка
-		// TODO: Реализовать удаление из группы
-		err = google_sheets.DeleteGuestFromSheets(ctx, userID)
-		if err != nil {
-			log.Printf("Ошибка удаления гостя: %v", err)
-			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
-			return
+		groupErr := removeUserFromConfiguredGroup(bot, int64(userID))
+		if groupErr != nil {
+			log.Printf("Ошибка удаления гостя %d из группы: %v", userID, groupErr)
 		}
-		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "✅ Гость удален из группы и списка")
+
+		sheetsErr := google_sheets.DeleteGuestFromSheets(ctx, userID)
+		if sheetsErr != nil {
+			log.Printf("Ошибка удаления гостя %d из списка: %v", userID, sheetsErr)
+		}
+
+		var messageText string
+		switch {
+		case groupErr == nil && sheetsErr == nil:
+			messageText = "✅ Гость удалён из группы и списка."
+		case groupErr != nil && sheetsErr == nil:
+			messageText = fmt.Sprintf("⚠️ Гость удалён из списка, но не удалось исключить его из группы: %v", groupErr)
+		case groupErr == nil && sheetsErr != nil:
+			messageText = fmt.Sprintf("⚠️ Гость удалён из группы, но не удалось удалить его из списка: %v", sheetsErr)
+		default:
+			messageText = fmt.Sprintf("❌ Не удалось удалить гостя ни из группы, ни из списка.\nГруппа: %v\nСписок: %v", groupErr, sheetsErr)
+		}
+
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, messageText)
 		bot.Send(msg)
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "confirm_only":

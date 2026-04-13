@@ -19,12 +19,18 @@ export default function HomeTab() {
     loadConfig().then(setConfig)
   }, [])
 
+  useEffect(() => {
+    setUsernameInput(manualUsername ? `@${manualUsername}` : '')
+  }, [manualUsername])
+
   const handleFormSuccess = async () => {
     // После успешной отправки формы принудительно переобновляем identity и регистрацию,
     // чтобы убрать рассинхрон между вкладками и главной.
     await refreshUserId()
     await refreshRegistration()
   }
+
+  const trimmedUsername = usernameInput.trim()
 
   return (
     <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
@@ -130,10 +136,11 @@ export default function HomeTab() {
                     className="border border-gray-300 rounded-lg px-3 py-2 text-[16.8px] w-56"
                   />
                   <button
-                    className="bg-primary text-white rounded-lg px-4 py-2 font-semibold"
+                    disabled={trimmedUsername === ''}
+                    className="bg-primary text-white rounded-lg px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={async () => {
-                      setManualUsername(usernameInput)
-                      await refreshRegistration()
+                      setManualUsername(trimmedUsername)
+                      await refreshRegistration({ username: trimmedUsername })
                     }}
                   >
                     Войти
@@ -155,15 +162,40 @@ export default function HomeTab() {
       <section className="px-4 py-0">
         <SectionCard>
           <SectionTitle>МЕСТО ПРОВЕДЕНИЯ</SectionTitle>
-          <VenueInfo />
+          <VenueInfo address={config?.weddingAddress} />
         </SectionCard>
-        <VenueMap />
+        <VenueMap address={config?.weddingAddress} />
       </section>
     </div>
   )
 }
 
-function VenueInfo() {
+function splitVenueAddress(address?: string) {
+  const normalized = (address || '').trim()
+  if (!normalized) {
+    return {
+      title: 'Место проведения',
+      details: 'Адрес уточняется',
+    }
+  }
+
+  const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) {
+    return {
+      title: normalized,
+      details: normalized,
+    }
+  }
+
+  return {
+    title: parts[0],
+    details: parts.slice(1).join(', ') || normalized,
+  }
+}
+
+function VenueInfo({ address }: { address?: string }) {
+  const venue = splitVenueAddress(address)
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -173,23 +205,21 @@ function VenueInfo() {
       className="text-center mb-3"
     >
       <h3 className="text-2xl md:text-3xl font-secondary font-semibold text-primary mb-1 leading-[1.2]">
-        Санкт-Петербург
+        {venue.title}
       </h3>
-      <p className="text-lg md:text-xl font-main text-gray-700 mb-1 leading-[1.2]">Ресторан Марсала</p>
-      <p className="text-[16.8px] md:text-[19.2px] text-gray-600 leading-[1.2]">
-        Большой проспект Петроградской стороны, 84, Санкт-Петербург
-      </p>
+      {venue.details !== venue.title && (
+        <p className="text-[16.8px] md:text-[19.2px] text-gray-600 leading-[1.2]">
+          {venue.details}
+        </p>
+      )}
     </motion.div>
   )
 }
 
-function VenueMap() {
-  const address = 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург'
-  const query = encodeURIComponent(address)
-  // Координаты дома: Большой проспект П.С., 84 (нужны, чтобы метка всегда была на месте)
-  const lat = 59.9643641
-  const lon = 30.3092636
-  const zoom = 16
+function VenueMap({ address }: { address?: string }) {
+  const normalizedAddress = (address || 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург').trim()
+  const query = encodeURIComponent(normalizedAddress)
+  const mapUrl = `https://yandex.ru/map-widget/v1/?mode=search&text=${query}&z=16`
 
   return (
     <motion.div
@@ -200,7 +230,7 @@ function VenueMap() {
       className="w-full aspect-video rounded-lg overflow-hidden shadow-lg mb-4"
     >
       <iframe
-        src={`https://yandex.ru/map-widget/v1/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat},pm2rdm&mode=search&text=${query}`}
+        src={mapUrl}
         width="100%"
         height="100%"
         frameBorder="0"

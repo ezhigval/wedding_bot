@@ -4,38 +4,85 @@ import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
 import RegistrationRequired from '../common/RegistrationRequired'
 import { useRegistration } from '../../contexts/RegistrationContext'
-import { useUser } from '../../contexts/UserContext'
-import { getSeatingInfo, type SeatingInfo } from '../../utils/api'
+import { getSeatingInfo, type SeatingInfo, type SeatingTable } from '../../utils/api'
+
+function formatPublishedAt(raw?: string): string | null {
+  if (!raw) {
+    return null
+  }
+
+  const normalized = raw.replace(' ', 'T')
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) {
+    return raw
+  }
+
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function SeatingTableCard({ table, index }: { table: SeatingTable; index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.35, delay: index * 0.04 }}
+      className="overflow-hidden rounded-lg border border-primary/15 bg-white/90 shadow-sm"
+    >
+      <div className="bg-gradient-to-r from-primary to-primary-dark px-4 py-3 text-white">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[14px] uppercase tracking-wide text-white/80">Стол</div>
+            <div className="text-[26px] font-secondary font-bold leading-none">{table.table}</div>
+          </div>
+          <div className="rounded-full bg-white/15 px-3 py-1 text-[14px] font-semibold text-white">
+            {table.guests.length} гостей
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 px-4 py-4">
+        {table.guests.map((guest, guestIndex) => (
+          <div
+            key={`${table.table}-${guestIndex}-${guest}`}
+            className="flex items-start gap-3 rounded-lg bg-cream/30 px-3 py-2 text-[18px] text-gray-700"
+          >
+            <span className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[14px] font-semibold text-primary-dark">
+              {guestIndex + 1}
+            </span>
+            <span className="leading-[1.25]">{guest}</span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  )
+}
 
 export default function SeatingTab() {
   const { isRegistered, isLoading } = useRegistration()
-  const { userId, manualUsername } = useUser()
   const [seatingInfo, setSeatingInfo] = useState<SeatingInfo | null>(null)
   const [loadingInfo, setLoadingInfo] = useState(true)
 
+  const loadSeating = async () => {
+    setLoadingInfo(true)
+    const result = await getSeatingInfo()
+    setSeatingInfo(result)
+    setLoadingInfo(false)
+  }
+
   useEffect(() => {
-    if (!isRegistered) {
+    if (isRegistered) {
+      void loadSeating()
+    } else {
+      setSeatingInfo(null)
       setLoadingInfo(false)
-      return
     }
-
-    let isCancelled = false
-
-    const loadSeating = async () => {
-      setLoadingInfo(true)
-      const result = await getSeatingInfo({ userId, username: manualUsername })
-      if (!isCancelled) {
-        setSeatingInfo(result)
-        setLoadingInfo(false)
-      }
-    }
-
-    loadSeating()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [isRegistered, userId, manualUsername])
+  }, [isRegistered])
 
   if (isLoading) {
     return (
@@ -52,12 +99,12 @@ export default function SeatingTab() {
   if (loadingInfo) {
     return (
       <div className="min-h-screen px-4 py-4 flex items-center justify-center">
-        <div className="text-center text-gray-500">Загружаем вашу рассадку...</div>
+        <div className="text-center text-gray-500">Загружаем опубликованную рассадку...</div>
       </div>
     )
   }
 
-  const neighbors = seatingInfo?.neighbors || []
+  const publishedAt = formatPublishedAt(seatingInfo?.published_at)
 
   return (
     <div className="min-h-screen px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
@@ -66,72 +113,36 @@ export default function SeatingTab() {
 
         {seatingInfo?.error ? (
           <div className="text-center py-4">
-            <p className="text-[19.2px] text-red-600 mb-2">Не удалось загрузить данные рассадки.</p>
-            <p className="text-[16.8px] text-gray-500">{seatingInfo.error}</p>
+            <p className="mb-3 text-[19.2px] text-red-600">Не удалось загрузить опубликованную рассадку.</p>
+            <p className="mb-4 text-[16.8px] text-gray-500">{seatingInfo.error}</p>
+            <button
+              onClick={() => void loadSeating()}
+              className="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition-colors hover:bg-primary-dark"
+            >
+              Повторить
+            </button>
           </div>
-        ) : !seatingInfo?.visible ? (
+        ) : !seatingInfo?.visible || seatingInfo.tables.length === 0 ? (
           <div className="text-center py-4">
-            <p className="text-[19.2px] text-gray-700 mb-2">Ваш стол пока не назначен.</p>
+            <p className="mb-2 text-[19.2px] text-gray-700">Рассадка ещё не опубликована.</p>
             <p className="text-[16.8px] text-gray-500">
-              Как только рассадка будет зафиксирована, здесь появится ваш стол и соседи.
+              Когда организаторы нажмут «Обновить рассадку» в админ-панели, список столов появится здесь.
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {seatingInfo.full_name && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.3 }}
-                className="rounded-lg border border-primary/20 bg-cream/40 px-4 py-3 text-center"
-              >
-                <div className="text-[16.8px] uppercase tracking-wide text-primary/80">Гость</div>
-                <div className="text-[24px] font-semibold text-primary-dark">{seatingInfo.full_name}</div>
-              </motion.div>
-            )}
-
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.35 }}
-              className="rounded-lg bg-primary text-white px-4 py-4 text-center shadow-md"
-            >
-              <div className="text-[16.8px] uppercase tracking-wide text-white/80">Ваш стол</div>
-              <div className="mt-1 text-[38px] font-secondary font-bold leading-none">
-                {seatingInfo.table || 'Без номера'}
+          <div className="space-y-4">
+            <div className="rounded-lg border border-primary/15 bg-cream/30 px-4 py-3 text-center text-gray-700">
+              <div className="text-[16.8px] uppercase tracking-wide text-primary/80">Опубликованная версия</div>
+              <div className="mt-1 text-[18px] font-semibold text-primary-dark">
+                {publishedAt ? `Обновлено ${publishedAt}` : 'Актуальная рассадка из админ-панели'}
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4 }}
-              className="rounded-lg border border-primary/15 bg-white/80 px-4 py-4"
-            >
-              <h3 className="mb-3 text-center text-[21.6px] font-semibold text-primary-dark">
-                Соседи по столу
-              </h3>
-
-              {neighbors.length === 0 ? (
-                <p className="text-center text-[16.8px] text-gray-500">
-                  Список соседей появится после финальной фиксации рассадки.
-                </p>
-              ) : (
-                <div className="grid gap-2">
-                  {neighbors.map((neighbor) => (
-                    <div
-                      key={neighbor}
-                      className="rounded-lg bg-cream/40 px-3 py-2 text-center text-[18px] text-gray-700"
-                    >
-                      {neighbor}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
+            <div className="grid gap-3">
+              {seatingInfo.tables.map((table, index) => (
+                <SeatingTableCard key={table.table || `table-${index}`} table={table} index={index} />
+              ))}
+            </div>
           </div>
         )}
       </SectionCard>

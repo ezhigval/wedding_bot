@@ -30,7 +30,7 @@ export default function MenuTab() {
 
     if (result.success) {
       showAlert('Приглашение отменено. Вы можете заполнить форму заново.')
-      refreshRegistration() // Обновляем статус регистрации
+      await refreshRegistration()
     } else {
       showAlert(result.error || 'Ошибка при отмене приглашения')
     }
@@ -82,7 +82,8 @@ export default function MenuTab() {
             />
           )}
         </div>
-      {/* Cancel Invitation Button - только для зарегистрированных */}
+      </SectionCard>
+
       <SectionCard>
         <div className="mt-3 text-center">
           <button
@@ -92,7 +93,6 @@ export default function MenuTab() {
             Отменить приглашение
           </button>
         </div>
-      </SectionCard>
       </SectionCard>
     </div>
   )

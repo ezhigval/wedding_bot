@@ -90,55 +90,81 @@ export async function loadConfig(): Promise<Config> {
   return config
 }
 
-export async function loadTimeline(): Promise<TimelineItem[]> {
+export interface TimelineLoadResult {
+  timeline: TimelineItem[]
+  error?: string
+}
+
+export async function loadTimeline(): Promise<TimelineLoadResult> {
   const config = await loadConfig()
   try {
     const response = await fetch(`${config.apiUrl}/timeline`)
-    if (response.ok) {
-      const data = await response.json()
-      return data.timeline || []
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      return { timeline: [], error: 'Некорректный ответ сервера' }
     }
+
+    const data = await response.json()
+    if (response.ok) {
+      return { timeline: Array.isArray(data.timeline) ? data.timeline : [] }
+    }
+
+    return { timeline: [], error: data.message || data.error || 'Не удалось загрузить план дня' }
   } catch (error) {
     console.error('Error loading timeline:', error)
+    return { timeline: [], error: 'Ошибка сети' }
   }
-  return []
+}
+
+export interface SeatingTable {
+  table: string
+  guests: string[]
 }
 
 export interface SeatingInfo {
   visible: boolean
-  table?: string
-  neighbors?: string[]
-  full_name?: string
+  published_at?: string
+  tables: SeatingTable[]
   error?: string
 }
 
-export async function getSeatingInfo(auth?: ApiAuth): Promise<SeatingInfo> {
+export async function getSeatingInfo(): Promise<SeatingInfo> {
   const config = await loadConfig()
   try {
-    const response = await fetch(withQuery(`${config.apiUrl}/seating/info`, buildAuthQuery(auth)))
+    const response = await fetch(`${config.apiUrl}/seating/info`)
     const contentType = response.headers.get('content-type') || ''
 
     if (!contentType.includes('application/json')) {
-      return { visible: false, error: 'Некорректный ответ сервера' }
+      return { visible: false, tables: [], error: 'Некорректный ответ сервера' }
     }
 
     const data = await response.json()
     if (response.ok) {
       return {
         visible: Boolean(data.visible),
-        table: data.table || '',
-        neighbors: Array.isArray(data.neighbors) ? data.neighbors : [],
-        full_name: data.full_name || '',
+        published_at: data.published_at || '',
+        tables: Array.isArray(data.tables)
+          ? data.tables.map((table: unknown) => {
+              const typedTable = table as Partial<SeatingTable> | null
+              return {
+                table: typeof typedTable?.table === 'string' ? typedTable.table : '',
+                guests: Array.isArray(typedTable?.guests)
+                  ? typedTable.guests.filter((guest: unknown): guest is string => typeof guest === 'string')
+                  : [],
+              }
+            })
+          : [],
       }
     }
 
     return {
       visible: false,
+      tables: [],
       error: data.error || 'Не удалось загрузить рассадку',
     }
   } catch (error) {
     console.error('Error loading seating info:', error)
-    return { visible: false, error: 'Ошибка сети' }
+    return { visible: false, tables: [], error: 'Ошибка сети' }
   }
 }
 

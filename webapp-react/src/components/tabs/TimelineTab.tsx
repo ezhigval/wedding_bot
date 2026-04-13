@@ -28,14 +28,24 @@ function splitEventAndAddress(event: string): { title: string; address?: string 
 export default function TimelineTab() {
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const { isRegistered, isLoading: registrationLoading } = useRegistration()
+
+  const loadTimelineData = async () => {
+    setLoading(true)
+    const result = await loadTimeline()
+    setTimeline(result.timeline)
+    setError(result.error || null)
+    setLoading(false)
+  }
 
   useEffect(() => {
     if (isRegistered) {
-      loadTimeline().then((data) => {
-        setTimeline(data)
-        setLoading(false)
-      })
+      void loadTimelineData()
+    } else {
+      setTimeline([])
+      setError(null)
+      setLoading(false)
     }
   }, [isRegistered])
 
@@ -63,10 +73,23 @@ export default function TimelineTab() {
               className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto"
             />
           </div>
+        ) : error ? (
+          <div className="text-center py-4">
+            <p className="text-[19.2px] text-red-600 mb-3">{error}</p>
+            <button
+              onClick={() => void loadTimelineData()}
+              className="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition-colors hover:bg-primary-dark"
+            >
+              Повторить
+            </button>
+          </div>
         ) : timeline.length === 0 ? (
-          <p className="text-center text-gray-500 py-4 text-[19.2px]">
-            План дня будет добавлен позже
-          </p>
+          <div className="text-center py-4">
+            <p className="text-[19.2px] text-gray-700 mb-2">План дня пока не опубликован.</p>
+            <p className="text-[16.8px] text-gray-500">
+              Когда организаторы зафиксируют расписание, оно появится здесь автоматически.
+            </p>
+          </div>
         ) : (
           <div className="space-y-2">
             {timeline.map((item, index) => (
@@ -102,4 +125,3 @@ export default function TimelineTab() {
     </div>
   )
 }
-

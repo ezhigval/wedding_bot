@@ -86,24 +86,13 @@ func LockSeating(ctx context.Context) (*SeatingLockStatus, error) {
 
 	spreadsheetID := config.GoogleSheetsID
 
-	// Проверяем текущий статус
-	status, err := GetSeatingLockStatus(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if status.Locked {
-		return &SeatingLockStatus{
-			Locked:   true,
-			LockedAt: status.LockedAt,
-			Reason:   "already_locked",
-		}, nil
-	}
-
 	// Читаем текущую рассадку
 	seating, err := GetSeatingFromSheets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка чтения рассадки: %w", err)
+	}
+	if len(seating) == 0 {
+		return nil, fmt.Errorf("лист 'Рассадка' пуст: нечего публиковать")
 	}
 
 	// Создаём/очищаем лист 'Рассадка_фикс'
@@ -131,7 +120,7 @@ func LockSeating(ctx context.Context) (*SeatingLockStatus, error) {
 
 	// Создаем матрицу данных
 	values := make([][]interface{}, maxGuests+1)
-	
+
 	// Заголовок (первая строка)
 	header := []interface{}{""} // Пустая ячейка в столбце A
 	for _, table := range seating {
@@ -173,11 +162,10 @@ func LockSeating(ctx context.Context) (*SeatingLockStatus, error) {
 		return nil, fmt.Errorf("ошибка обновления Config: %w", err)
 	}
 
-	log.Printf("Рассадка закреплена в листе 'Рассадка_фикс' в %s", nowStr)
+	log.Printf("Рассадка опубликована в листе 'Рассадка_фикс' в %s", nowStr)
 	return &SeatingLockStatus{
 		Locked:   true,
 		LockedAt: nowStr,
-		Reason:   "ok",
+		Reason:   "published",
 	}, nil
 }
-
