@@ -302,6 +302,78 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		return
 	}
 
+	// Активная рассылка имеет приоритет над повторной проверкой admin-прав:
+	// состояние уже могло быть создано ранее, и внешняя проверка не должна
+	// ронять пошаговый сценарий на следующем сообщении.
+	if state := GetBroadcastState(userID); state != nil {
+		normalizedText := strings.TrimSpace(strings.ToLower(text))
+		if normalizedText == "отмена" || normalizedText == "/cancel" {
+			ClearBroadcastState(userID)
+			handleAdminPanel(bot, message)
+			return
+		}
+
+		switch state.Step {
+		case "text":
+			handleBroadcastText(bot, message, text)
+			return
+		case "media":
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается фото или видео. Можно нажать «Пропустить» или «Отмена» в предыдущем сообщении.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
+		case "custom_button":
+			if strings.Contains(text, "|") {
+				parts := strings.SplitN(text, "|", 2)
+				if len(parts) == 2 {
+					buttonText := strings.TrimSpace(parts[0])
+					buttonURL := strings.TrimSpace(parts[1])
+
+					if err := validateBroadcastButtonURL(buttonURL); err != nil {
+						msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("❌ %s\nИспользуйте формат: <code>Текст кнопки|https://example.com</code>", err.Error()))
+						msg.ParseMode = tgbotapi.ModeHTML
+						msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+						bot.Send(msg)
+						return
+					}
+
+					if buttonText == "" {
+						msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Текст кнопки не может быть пустым")
+						msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+						bot.Send(msg)
+						return
+					}
+
+					addBroadcastButton(state, buttonText, buttonURL)
+					state.Step = "button"
+					showBroadcastButtonSelection(bot, message, state)
+					return
+				}
+			}
+
+			msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: <code>Текст кнопки|URL</code>")
+			msg.ParseMode = tgbotapi.ModeHTML
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
+		case "button":
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор кнопок через inline-меню ниже. Можно добавить ссылку, перейти к получателям или отменить рассылку.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
+		case "recipients":
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор получателей через inline-меню ниже. Можно выбрать всех, только себя, вручную или отменить рассылку.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
+		case "preview":
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас открыт этап превью. Проверьте сообщение выше и выберите «Отправить» или «Отмена».")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
+		}
+	}
+
 	// Если это не админ и не команда админа, пересылаем сообщение админам
 	if !isAdminUser(int(userID)) && !IsAdminCommand(text) {
 		ForwardMessageToAdmins(bot, message)
@@ -310,89 +382,6 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	// Проверяем, является ли пользователь админом для обработки admin команд
 	if isAdminUser(int(userID)) {
-		// Проверяем, есть ли активная рассылка
-		state := GetBroadcastState(userID)
-		if state != nil {
-			normalizedText := strings.TrimSpace(strings.ToLower(text))
-			if normalizedText == "отмена" || normalizedText == "/cancel" {
-				ClearBroadcastState(userID)
-				handleAdminPanel(bot, message)
-				return
-			}
-
-			switch state.Step {
-			case "text":
-				// Ожидаем текст
-				handleBroadcastText(bot, message, text)
-				return
-			case "media":
-				// Ожидаем фото или видео
-				if len(message.Photo) > 0 {
-					photoID := message.Photo[len(message.Photo)-1].FileID
-					handleBroadcastPhoto(bot, message, photoID)
-					return
-				} else if message.Video != nil {
-					handleBroadcastVideo(bot, message, message.Video.FileID)
-					return
-				}
-				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается фото или видео. Можно нажать «Пропустить» или «Отмена» в предыдущем сообщении.")
-				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-				bot.Send(msg)
-				return
-			case "custom_button":
-				// Ожидаем текст кастомной кнопки
-				if strings.Contains(text, "|") {
-					parts := strings.SplitN(text, "|", 2)
-					if len(parts) == 2 {
-						buttonText := strings.TrimSpace(parts[0])
-						buttonURL := strings.TrimSpace(parts[1])
-
-						// Базовая валидация URL
-						if err := validateBroadcastButtonURL(buttonURL); err != nil {
-							msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("❌ %s\nИспользуйте формат: <code>Текст кнопки|https://example.com</code>", err.Error()))
-							msg.ParseMode = tgbotapi.ModeHTML
-							msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-							bot.Send(msg)
-							return
-						}
-
-						if buttonText == "" {
-							msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Текст кнопки не может быть пустым")
-							msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-							bot.Send(msg)
-							return
-						}
-
-						addBroadcastButton(state, buttonText, buttonURL)
-						state.Step = "button"
-						showBroadcastButtonSelection(bot, message, state)
-						return
-					}
-				}
-				// Неверный формат
-				msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: <code>Текст кнопки|URL</code>")
-				msg.ParseMode = tgbotapi.ModeHTML
-				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-				bot.Send(msg)
-				return
-			case "button":
-				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор кнопок через inline-меню ниже. Можно добавить ссылку, перейти к получателям или отменить рассылку.")
-				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-				bot.Send(msg)
-				return
-			case "recipients":
-				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор получателей через inline-меню ниже. Можно выбрать всех, только себя, вручную или отменить рассылку.")
-				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-				bot.Send(msg)
-				return
-			case "preview":
-				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас открыт этап превью. Проверьте сообщение выше и выберите «Отправить» или «Отмена».")
-				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-				bot.Send(msg)
-				return
-			}
-		}
-
 		handleAdminText(bot, message)
 		return
 	}
@@ -405,31 +394,32 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 
 	userID := message.From.ID
-	isAdmin := isAdminUser(int(userID))
 
 	// Проверяем, есть ли активная рассылка
-	if isAdmin {
-		state := GetBroadcastState(userID)
-		if state != nil {
-			switch state.Step {
-			case "text":
-				if strings.TrimSpace(message.Caption) == "" {
-					msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к фото или сначала отправьте текст сообщения.")
-					msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-					bot.Send(msg)
-					return
-				}
-				state.Text = message.Caption
-				state.PhotoID = message.Photo[len(message.Photo)-1].FileID
-				state.VideoID = ""
-				state.Step = "button"
-				showBroadcastButtonSelection(bot, message, state)
-				return
-			case "media":
-				photoID := message.Photo[len(message.Photo)-1].FileID
-				handleBroadcastPhoto(bot, message, photoID)
+	if state := GetBroadcastState(userID); state != nil {
+		switch state.Step {
+		case "text":
+			if strings.TrimSpace(message.Caption) == "" {
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к фото или сначала отправьте текст сообщения.")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
 				return
 			}
+			state.Text = message.Caption
+			state.PhotoID = message.Photo[len(message.Photo)-1].FileID
+			state.VideoID = ""
+			state.Step = "button"
+			showBroadcastButtonSelection(bot, message, state)
+			return
+		case "media":
+			photoID := message.Photo[len(message.Photo)-1].FileID
+			handleBroadcastPhoto(bot, message, photoID)
+			return
+		default:
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас рассылка ждёт другой шаг. Используйте кнопки в последнем сообщении рассылки или отмените её.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
 		}
 	}
 
@@ -470,7 +460,7 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		return
 	}
 
-	if !isAdmin {
+	if !isAdminUser(int(userID)) {
 		ForwardMessageToAdmins(bot, message)
 	}
 
@@ -486,27 +476,29 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	userID := message.From.ID
 
-	if isAdminUser(int(userID)) {
-		state := GetBroadcastState(userID)
-		if state != nil {
-			switch state.Step {
-			case "text":
-				if strings.TrimSpace(message.Caption) == "" {
-					msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к видео или сначала отправьте текст сообщения.")
-					msg.ReplyMarkup = broadcastCancelInlineKeyboard()
-					bot.Send(msg)
-					return
-				}
-				state.Text = message.Caption
-				state.VideoID = message.Video.FileID
-				state.PhotoID = ""
-				state.Step = "button"
-				showBroadcastButtonSelection(bot, message, state)
-				return
-			case "media":
-				handleBroadcastVideo(bot, message, message.Video.FileID)
+	if state := GetBroadcastState(userID); state != nil {
+		switch state.Step {
+		case "text":
+			if strings.TrimSpace(message.Caption) == "" {
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к видео или сначала отправьте текст сообщения.")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
 				return
 			}
+			state.Text = message.Caption
+			state.VideoID = message.Video.FileID
+			state.PhotoID = ""
+			state.Step = "button"
+			showBroadcastButtonSelection(bot, message, state)
+			return
+		case "media":
+			handleBroadcastVideo(bot, message, message.Video.FileID)
+			return
+		default:
+			msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас рассылка ждёт другой шаг. Используйте кнопки в последнем сообщении рассылки или отмените её.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			return
 		}
 	}
 
