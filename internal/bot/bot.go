@@ -194,6 +194,12 @@ func handleUpdate(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
+	// Обработка кружочков
+	if update.Message != nil && update.Message.VideoNote != nil {
+		handleVideoNoteMessage(bot, update.Message)
+		return
+	}
+
 	// Обработка документов
 	if update.Message != nil && update.Message.Document != nil {
 		handleDocumentMessage(bot, update.Message)
@@ -250,12 +256,6 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			handleAdminAddAdminInput(bot, message)
 			return
 		}
-	}
-
-	// Проверяем фоторежим
-	if text == "📸 Фоторежим ❌" || text == "📸 Фоторежим ✅" {
-		handleTogglePhotoMode(bot, message)
-		return
 	}
 
 	// Открыть приглашение (fallback для кнопки в reply keyboard)
@@ -392,36 +392,8 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		}
 	}
 
-	// Проверяем, включен ли фоторежим
-	if !IsPhotoModeEnabled(userID) {
-		// Проверяем, зарегистрирован ли пользователь
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		username := ""
-		if message.From != nil {
-			username = message.From.UserName
-		}
-
-		registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, int(userID), username)
-		if err != nil {
-			log.Printf("Ошибка проверки регистрации: %v", err)
-		}
-
-		if registered {
-			// Пользователь зарегистрирован, но фоторежим не включен
-			isAdmin := isAdminUser(int(userID))
-			keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
-			msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Чтобы сохранить фото в свадебный альбом, включите фоторежим.\nНажмите кнопку «📸 Фоторежим ❌» в меню.")
-			msg.ReplyMarkup = keyboard
-			bot.Send(msg)
-			return
-		} else {
-			// Пользователь не зарегистрирован
-			msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Для сохранения фото в свадебный альбом необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.")
-			bot.Send(msg)
-			return
-		}
+	if !ensureAlbumMediaUploadAllowed(bot, message, "фото") {
+		return
 	}
 
 	// Сохраняем фото
@@ -473,25 +445,136 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	userID := message.From.ID
 
-	// Если это не админ, пересылаем видео админам
-	if !isAdminUser(int(userID)) {
-		ForwardMessageToAdmins(bot, message)
+	if !ensureAlbumMediaUploadAllowed(bot, message, "видео") {
 		return
 	}
 
-	// Проверяем, есть ли активная рассылка
-	if isAdminUser(int(userID)) {
-		state := GetBroadcastState(userID)
-		if state != nil && state.Step == "media" {
-			// Обрабатываем видео для рассылки
-			handleBroadcastVideo(bot, message, message.Video.FileID)
-			return
-		}
+	displayName := getUserDisplayName(message.From)
+
+	username := ""
+	if message.From.UserName != "" {
+		username = "@" + message.From.UserName
 	}
 
-	// Для обычных пользователей можно добавить обработку видео в будущем
-	msg := tgbotapi.NewMessage(message.Chat.ID, "📹 Видео получено!")
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	content, mimeType, err := downloadTelegramVideo(ctx, bot, message.Video.FileID, message.Video.MimeType)
+	if err != nil {
+		log.Printf("Ошибка скачивания видео из Telegram: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось получить видео из Telegram для сохранения")
+		bot.Send(msg)
+		return
+	}
+
+	if err := google_sheets.SaveVideoFromUser(
+		ctx,
+		int(userID),
+		&username,
+		displayName,
+		message.Video.FileID,
+		mimeType,
+		content,
+		google_sheets.PhotoSourceTelegramVideo,
+	); err != nil {
+		log.Printf("Ошибка сохранения видео: %v", err)
+		errorText := "❌ Ошибка сохранения видео"
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
+		bot.Send(msg)
+		return
+	}
+
+	if !isAdminUser(int(userID)) {
+		ForwardMessageToAdmins(bot, message)
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Видео сохранено! 🎥")
 	bot.Send(msg)
+}
+
+// handleVideoNoteMessage обрабатывает кружочки.
+func handleVideoNoteMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+	if message.VideoNote == nil {
+		return
+	}
+
+	if !ensureAlbumMediaUploadAllowed(bot, message, "кружочек") {
+		return
+	}
+
+	userID := message.From.ID
+	displayName := getUserDisplayName(message.From)
+
+	username := ""
+	if message.From.UserName != "" {
+		username = "@" + message.From.UserName
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	content, mimeType, err := downloadTelegramVideo(ctx, bot, message.VideoNote.FileID, "video/mp4")
+	if err != nil {
+		log.Printf("Ошибка скачивания кружочка из Telegram: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось получить кружочек из Telegram для сохранения")
+		bot.Send(msg)
+		return
+	}
+
+	if err := google_sheets.SaveVideoFromUser(
+		ctx,
+		int(userID),
+		&username,
+		displayName,
+		message.VideoNote.FileID,
+		mimeType,
+		content,
+		google_sheets.PhotoSourceTelegramCircle,
+	); err != nil {
+		log.Printf("Ошибка сохранения кружочка: %v", err)
+		errorText := "❌ Ошибка сохранения кружочка"
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
+		bot.Send(msg)
+		return
+	}
+
+	if !isAdminUser(int(userID)) {
+		ForwardMessageToAdmins(bot, message)
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Кружочек сохранён как видео! 🎬")
+	bot.Send(msg)
+}
+
+func ensureAlbumMediaUploadAllowed(bot *tgbotapi.BotAPI, message *tgbotapi.Message, mediaLabel string) bool {
+	userID := message.From.ID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	username := ""
+	if message.From != nil {
+		username = message.From.UserName
+	}
+
+	registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, int(userID), username)
+	if err != nil {
+		log.Printf("Ошибка проверки регистрации: %v", err)
+	}
+
+	if registered {
+		return true
+	}
+
+	msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("📸 Для сохранения %s в свадебный альбом необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.", mediaLabel))
+	bot.Send(msg)
+	return false
 }
 
 // handleDocumentMessage обрабатывает документы

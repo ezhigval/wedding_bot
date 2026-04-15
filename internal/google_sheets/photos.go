@@ -18,9 +18,13 @@ const photoSheetName = "Фото"
 type PhotoSource string
 
 const (
-	PhotoSourceTelegramChat  PhotoSource = "telegram_chat"
-	PhotoSourceWebappCamera  PhotoSource = "webapp_camera"
-	PhotoSourceWebappGallery PhotoSource = "webapp_gallery"
+	PhotoSourceTelegramChat       PhotoSource = "telegram_chat"
+	PhotoSourceTelegramVideo      PhotoSource = "telegram_video"
+	PhotoSourceTelegramCircle     PhotoSource = "telegram_video_note"
+	PhotoSourceWebappCamera       PhotoSource = "webapp_camera"
+	PhotoSourceWebappGallery      PhotoSource = "webapp_gallery"
+	PhotoSourceWebappCameraVideo  PhotoSource = "webapp_camera_video"
+	PhotoSourceWebappGalleryVideo PhotoSource = "webapp_gallery_video"
 )
 
 type PhotoSaveInput struct {
@@ -38,10 +42,18 @@ func NormalizePhotoSource(raw string) PhotoSource {
 	switch strings.TrimSpace(raw) {
 	case string(PhotoSourceTelegramChat):
 		return PhotoSourceTelegramChat
+	case string(PhotoSourceTelegramVideo):
+		return PhotoSourceTelegramVideo
+	case string(PhotoSourceTelegramCircle):
+		return PhotoSourceTelegramCircle
 	case string(PhotoSourceWebappCamera):
 		return PhotoSourceWebappCamera
 	case string(PhotoSourceWebappGallery):
 		return PhotoSourceWebappGallery
+	case string(PhotoSourceWebappCameraVideo):
+		return PhotoSourceWebappCameraVideo
+	case string(PhotoSourceWebappGalleryVideo):
+		return PhotoSourceWebappGalleryVideo
 	default:
 		return PhotoSourceWebappGallery
 	}
@@ -49,7 +61,7 @@ func NormalizePhotoSource(raw string) PhotoSource {
 
 // SavePhotoFromUser сохраняет фото, присланное гостем в Telegram-чат.
 func SavePhotoFromUser(ctx context.Context, userID int, username *string, fullName, fileID, mimeType string, content []byte) error {
-	return savePhoto(ctx, PhotoSaveInput{
+	return saveMedia(ctx, PhotoSaveInput{
 		UserID:      userID,
 		Username:    username,
 		FullName:    fullName,
@@ -60,32 +72,87 @@ func SavePhotoFromUser(ctx context.Context, userID int, username *string, fullNa
 	})
 }
 
-// SavePhotoFromWebapp сохраняет фото, присланное через Mini App.
-func SavePhotoFromWebapp(ctx context.Context, userID int, username *string, fullName, fileName, mimeType string, content []byte, source PhotoSource) error {
-	return savePhoto(ctx, PhotoSaveInput{
+// SaveVideoFromUser сохраняет видео, присланное гостем в Telegram-чат.
+func SaveVideoFromUser(ctx context.Context, userID int, username *string, fullName, fileID, mimeType string, content []byte, source PhotoSource) error {
+	return saveMedia(ctx, PhotoSaveInput{
 		UserID:      userID,
 		Username:    username,
 		FullName:    fullName,
-		Source:      NormalizePhotoSource(string(source)),
+		Source:      NormalizeMediaSource(string(source), mimeType),
+		OriginalRef: strings.TrimSpace(fileID),
+		MimeType:    mimeType,
+		Content:     content,
+	})
+}
+
+// SavePhotoFromWebapp сохраняет фото, присланное через Mini App.
+func SavePhotoFromWebapp(ctx context.Context, userID int, username *string, fullName, fileName, mimeType string, content []byte, source PhotoSource) error {
+	return SaveMediaFromWebapp(ctx, userID, username, fullName, fileName, mimeType, content, string(source))
+}
+
+// SaveMediaFromWebapp сохраняет фото или видео, присланное через Mini App.
+func SaveMediaFromWebapp(ctx context.Context, userID int, username *string, fullName, fileName, mimeType string, content []byte, source string) error {
+	return saveMedia(ctx, PhotoSaveInput{
+		UserID:      userID,
+		Username:    username,
+		FullName:    fullName,
+		Source:      NormalizeMediaSource(source, mimeType),
 		OriginalRef: strings.TrimSpace(fileName),
 		MimeType:    mimeType,
 		Content:     content,
 	})
 }
 
-func savePhoto(ctx context.Context, input PhotoSaveInput) error {
+// NormalizeMediaSource приводит source к поддерживаемому значению с учетом типа медиа.
+func NormalizeMediaSource(raw, mimeType string) PhotoSource {
+	kind := mediaKindFromMimeType(mimeType)
+
+	switch strings.TrimSpace(raw) {
+	case string(PhotoSourceTelegramChat):
+		if kind == "video" {
+			return PhotoSourceTelegramVideo
+		}
+		return PhotoSourceTelegramChat
+	case string(PhotoSourceTelegramVideo):
+		return PhotoSourceTelegramVideo
+	case string(PhotoSourceTelegramCircle):
+		return PhotoSourceTelegramCircle
+	case string(PhotoSourceWebappCamera):
+		if kind == "video" {
+			return PhotoSourceWebappCameraVideo
+		}
+		return PhotoSourceWebappCamera
+	case string(PhotoSourceWebappGallery):
+		if kind == "video" {
+			return PhotoSourceWebappGalleryVideo
+		}
+		return PhotoSourceWebappGallery
+	case string(PhotoSourceWebappCameraVideo):
+		return PhotoSourceWebappCameraVideo
+	case string(PhotoSourceWebappGalleryVideo):
+		return PhotoSourceWebappGalleryVideo
+	default:
+		if kind == "video" {
+			return PhotoSourceWebappGalleryVideo
+		}
+		return PhotoSourceWebappGallery
+	}
+}
+
+func saveMedia(ctx context.Context, input PhotoSaveInput) error {
 	if err := EnsureRequiredSheets(ctx); err != nil {
 		return err
 	}
 	if len(input.Content) == 0 {
-		return fmt.Errorf("пустое содержимое фото")
+		return fmt.Errorf("пустое содержимое медиафайла")
 	}
 
 	mimeType := strings.TrimSpace(input.MimeType)
 	if mimeType == "" {
 		mimeType = "image/jpeg"
 	}
-	if !strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+	mediaKind := mediaKindFromMimeType(mimeType)
+	if mediaKind == "" {
 		return fmt.Errorf("неподдерживаемый mime type: %s", mimeType)
 	}
 
@@ -93,7 +160,7 @@ func savePhoto(ctx context.Context, input PhotoSaveInput) error {
 	usernameStr := normalizedPhotoUsername(input.Username)
 	resolvedFullName := resolvePhotoFullName(ctx, input.UserID, usernameStr, input.FullName)
 	fileName := buildPhotoFileName(input.Source, input.UserID, mimeType, input.OriginalRef, now)
-	description := buildPhotoDescription(input.Source, input.UserID, usernameStr, resolvedFullName)
+	description := buildPhotoDescription(input.Source, input.UserID, usernameStr, resolvedFullName, mediaKind)
 
 	uploaded, err := UploadPhotoToDrive(ctx, DriveUploadParams{
 		FileName:    fileName,
@@ -122,8 +189,9 @@ func savePhoto(ctx context.Context, input PhotoSaveInput) error {
 	}
 
 	log.Printf(
-		"Сохранено фото: source=%s, user_id=%d, username=%s, drive_file_id=%s",
+		"Сохранен медиафайл: source=%s, mime_type=%s, user_id=%d, username=%s, drive_file_id=%s",
 		input.Source,
+		mimeType,
 		input.UserID,
 		usernameStr,
 		uploaded.FileID,
@@ -209,10 +277,11 @@ func resolvePhotoFullName(ctx context.Context, userID int, username, fallback st
 	return "unknown"
 }
 
-func buildPhotoDescription(source PhotoSource, userID int, username, fullName string) string {
+func buildPhotoDescription(source PhotoSource, userID int, username, fullName, mediaKind string) string {
 	parts := []string{
 		"Свадебный альбом",
 		fmt.Sprintf("source=%s", source),
+		fmt.Sprintf("media_kind=%s", mediaKind),
 	}
 	if userID > 0 {
 		parts = append(parts, fmt.Sprintf("user_id=%d", userID))
@@ -257,6 +326,25 @@ func extensionForMimeType(mimeType string) string {
 		return ".heif"
 	case "image/gif":
 		return ".gif"
+	case "video/mp4":
+		return ".mp4"
+	case "video/quicktime":
+		return ".mov"
+	case "video/x-m4v":
+		return ".m4v"
+	case "video/webm":
+		return ".webm"
+	default:
+		return ""
+	}
+}
+
+func mediaKindFromMimeType(mimeType string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(mimeType)), "image/"):
+		return "image"
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(mimeType)), "video/"):
+		return "video"
 	default:
 		return ""
 	}

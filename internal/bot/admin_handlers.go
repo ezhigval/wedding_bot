@@ -278,7 +278,6 @@ func handleAdminGamesMenu(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 func handleAdminBack(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	userID := message.From.ID
 	isAdmin := isAdminUser(int(userID))
-	photoModeEnabled := IsPhotoModeEnabled(userID)
 
 	nav := GetAdminNav(userID)
 	if nav == AdminNavSub {
@@ -296,7 +295,7 @@ func handleAdminBack(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Иначе возвращаемся в основное меню
 	ClearAdminNav(userID)
 	msgText := "Главное меню:"
-	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, photoModeEnabled)
+	keyboard := keyboards.GetMainReplyKeyboard(isAdmin)
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)

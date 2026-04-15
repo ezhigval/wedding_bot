@@ -48,7 +48,7 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Отправляем приветственное сообщение
 	msgText := fmt.Sprintf("👋 Привет, %s!", displayName)
 
-	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, IsPhotoModeEnabled(user.ID))
+	keyboard := keyboards.GetMainReplyKeyboard(isAdmin)
 
 	// Пытаемся отправить фото
 	if config.PhotoPath != "" {
@@ -94,55 +94,6 @@ func handleMenuCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 // handleAdminCommand обрабатывает команду /admin
 func handleAdminCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	handleAdminPanel(bot, message)
-}
-
-// handleTogglePhotoMode обрабатывает переключение фоторежима
-func handleTogglePhotoMode(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	userID := message.From.ID
-	isAdmin := isAdminUser(int(userID))
-
-	enabled := IsPhotoModeEnabled(userID)
-
-	if enabled {
-		// Выключаем фоторежим
-		SetPhotoModeEnabled(userID, false)
-		keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Фоторежим <b>выключен</b>.\nФото больше не собираются автоматически.")
-		msg.ParseMode = tgbotapi.ModeHTML
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
-	}
-
-	// Включаем фоторежим - проверяем регистрацию
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	username := ""
-	if message.From != nil {
-		username = message.From.UserName
-	}
-
-	registered, err := google_sheets.CheckGuestRegistrationByIdentifier(ctx, int(userID), username)
-	if err != nil {
-		log.Printf("Ошибка проверки регистрации: %v", err)
-		// В случае ошибки разрешаем включить
-	}
-
-	if !registered {
-		keyboard := keyboards.GetMainReplyKeyboard(isAdmin, false)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для использования фоторежима необходимо подтвердить ваше присутствие.\nИспользуйте Mini App для регистрации.")
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
-	}
-
-	SetPhotoModeEnabled(userID, true)
-	keyboard := keyboards.GetMainReplyKeyboard(isAdmin, true)
-	msg := tgbotapi.NewMessage(message.Chat.ID, "📸 Фоторежим <b>включен</b>.\nПросто отправляйте фото в этот чат — я всё соберу в свадебный альбом! 🙌")
-	msg.ParseMode = tgbotapi.ModeHTML
-	msg.ReplyMarkup = keyboard
-	bot.Send(msg)
 }
 
 // handleAdminPanel показывает админ панель

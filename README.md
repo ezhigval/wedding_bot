@@ -20,7 +20,7 @@ Telegram-бот и Telegram Mini App для свадебного приглаш�
 - Игры для гостей: `Dragon`, `Flappy Bird`, `Crossword`, `Wordle`.
 - Рейтинг, очки и звания игроков.
 - Сохранение игрового прогресса в Google Sheets.
-- Загрузка фото из Mini App и из бота.
+- Загрузка фото и видео из Mini App и из бота.
 - Админ-меню в Telegram: гости, рассадка, игры, группа, рассылки.
 - Отправка рассылок в личные сообщения и в группу.
 - Проверка участия пользователя в общем чате гостей.
@@ -87,7 +87,7 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - Wordle/Crossword прогресс: состояние по каждому игроку.
 - Тайминг: список публичных событий свадьбы.
 - Рассадка: опубликованный список столов из `Рассадка_фикс` и персональный поиск стола гостя.
-- Фото: метаданные загрузки и ссылка на файл в Google Drive.
+- Фото и видео: метаданные загрузки и ссылка на файл в Google Drive.
 
 ## Переменные окружения
 
@@ -191,7 +191,7 @@ docker run --env-file .env.local -p 10000:10000 wedding-bot
 - `GET /api/guests`
 - `GET /api/stats`
 - `GET /api/timeline`
-- `POST /api/upload-photo`
+- `POST /api/upload-photo` — загрузка фото и видео из Mini App
 - `GET /api/game-stats`
 - `POST /api/update-game-score`
 - `GET /api/wordle/*`

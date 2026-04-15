@@ -47,18 +47,12 @@ type ReplyKeyboardMarkupWebApp struct {
 }
 
 // GetMainReplyKeyboard возвращает основную пользовательскую клавиатуру (reply)
-func GetMainReplyKeyboard(isAdmin bool, photoModeEnabled bool) interface{} {
-	photoLabel := "📸 Фоторежим ❌"
-	if photoModeEnabled {
-		photoLabel = "📸 Фоторежим ✅"
-	}
-
+func GetMainReplyKeyboard(isAdmin bool) interface{} {
 	var keyboard [][]KeyboardButtonWebApp
 
 	// Первая строка
 	row1 := []KeyboardButtonWebApp{
 		{Text: "💒 Открыть приглашение"},
-		{Text: photoLabel},
 	}
 	// Добавляем web_app на первую кнопку, если указан URL
 	if config.WebappURL != "" {

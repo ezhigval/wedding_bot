@@ -11,11 +11,25 @@ import (
 )
 
 const maxTelegramPhotoSize = 10 * 1024 * 1024
+const maxTelegramVideoSize = 50 * 1024 * 1024
 
 func downloadTelegramPhoto(ctx context.Context, bot *tgbotapi.BotAPI, fileID string) ([]byte, string, error) {
+	return downloadTelegramMedia(ctx, bot, fileID, "image/jpeg", maxTelegramPhotoSize, "image")
+}
+
+func downloadTelegramVideo(ctx context.Context, bot *tgbotapi.BotAPI, fileID, declaredMimeType string) ([]byte, string, error) {
+	fallbackMimeType := strings.ToLower(strings.TrimSpace(declaredMimeType))
+	if !strings.HasPrefix(fallbackMimeType, "video/") {
+		fallbackMimeType = "video/mp4"
+	}
+
+	return downloadTelegramMedia(ctx, bot, fileID, fallbackMimeType, maxTelegramVideoSize, "video")
+}
+
+func downloadTelegramMedia(ctx context.Context, bot *tgbotapi.BotAPI, fileID, fallbackMimeType string, maxSize int64, expectedKind string) ([]byte, string, error) {
 	fileURL, err := bot.GetFileDirectURL(fileID)
 	if err != nil {
-		return nil, "", fmt.Errorf("не удалось получить ссылку на файл Telegram: %w", err)
+		return nil, "", fmt.Errorf("не удалось получить ссылку на медиафайл Telegram: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
@@ -30,7 +44,7 @@ func downloadTelegramPhoto(ctx context.Context, bot *tgbotapi.BotAPI, fileID str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("не удалось скачать фото из Telegram: %w", err)
+		return nil, "", fmt.Errorf("не удалось скачать медиафайл из Telegram: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -38,22 +52,25 @@ func downloadTelegramPhoto(ctx context.Context, bot *tgbotapi.BotAPI, fileID str
 		return nil, "", fmt.Errorf("Telegram вернул неожиданный статус %d", resp.StatusCode)
 	}
 
-	content, err := io.ReadAll(io.LimitReader(resp.Body, maxTelegramPhotoSize+1))
+	content, err := io.ReadAll(io.LimitReader(resp.Body, maxSize+1))
 	if err != nil {
-		return nil, "", fmt.Errorf("не удалось прочитать фото из Telegram: %w", err)
+		return nil, "", fmt.Errorf("не удалось прочитать медиафайл из Telegram: %w", err)
 	}
 	if len(content) == 0 {
-		return nil, "", fmt.Errorf("Telegram вернул пустое фото")
+		return nil, "", fmt.Errorf("Telegram вернул пустой медиафайл")
 	}
-	if len(content) > maxTelegramPhotoSize {
-		return nil, "", fmt.Errorf("размер фото превышает %d байт", maxTelegramPhotoSize)
+	if int64(len(content)) > maxSize {
+		return nil, "", fmt.Errorf("размер медиафайла превышает %d байт", maxSize)
 	}
 
 	mimeType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
-	if !strings.HasPrefix(mimeType, "image/") {
+	if !strings.HasPrefix(mimeType, expectedKind+"/") {
 		mimeType = strings.ToLower(http.DetectContentType(content))
 	}
-	if !strings.HasPrefix(mimeType, "image/") {
+	if !strings.HasPrefix(mimeType, expectedKind+"/") {
+		mimeType = fallbackMimeType
+	}
+	if !strings.HasPrefix(mimeType, expectedKind+"/") {
 		return nil, "", fmt.Errorf("Telegram прислал неподдерживаемый формат: %s", mimeType)
 	}
 

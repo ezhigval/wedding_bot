@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -13,8 +14,10 @@ import (
 )
 
 const (
-	maxPhotoUploadSize    = 10 * 1024 * 1024
-	maxPhotoRequestSize   = 12 * 1024 * 1024
+	maxImageUploadSize    = 10 * 1024 * 1024
+	maxVideoUploadSize    = 50 * 1024 * 1024
+	maxMediaUploadSize    = maxVideoUploadSize
+	maxMediaRequestSize   = 52 * 1024 * 1024
 	multipartMemoryBuffer = 12 * 1024 * 1024
 )
 
@@ -30,11 +33,12 @@ type uploadPhotoRequest struct {
 	FullName  string `json:"fullName"`
 	FileName  string `json:"fileName"`
 	PhotoData string `json:"photoData"`
+	MediaData string `json:"mediaData"`
 	InitData  string `json:"initData"`
 	Source    string `json:"source"`
 }
 
-// uploadPhoto загружает фото из Mini App.
+// uploadPhoto загружает фото или видео из Mini App.
 // Поддерживает multipart/form-data и legacy JSON с data URL/base64.
 func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
@@ -47,7 +51,7 @@ func uploadPhoto(w http.ResponseWriter, r *http.Request) {
 }
 
 func uploadPhotoMultipart(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoRequestSize)
+	r.Body = http.MaxBytesReader(w, r.Body, maxMediaRequestSize)
 	if err := r.ParseMultipartForm(multipartMemoryBuffer); err != nil {
 		JSONError(w, http.StatusBadRequest, "photo_too_large")
 		return
@@ -70,14 +74,14 @@ func uploadPhotoMultipart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("photo")
+	file, header, err := readMultipartMedia(r)
 	if err != nil {
 		JSONError(w, http.StatusBadRequest, "photo_required")
 		return
 	}
 	defer file.Close()
 
-	content, mimeType, err := readUploadedImage(file, header.Header.Get("Content-Type"))
+	content, mimeType, err := readUploadedMedia(file, header.Header.Get("Content-Type"))
 	if err != nil {
 		handlePhotoUploadError(w, err)
 		return
@@ -88,15 +92,20 @@ func uploadPhotoMultipart(w http.ResponseWriter, r *http.Request) {
 		usernamePtr = &username
 	}
 
-	if err := google_sheets.SavePhotoFromWebapp(
+	originalRef := strings.TrimSpace(header.Filename)
+	if originalRef == "" {
+		originalRef = strings.TrimSpace(r.FormValue("fileName"))
+	}
+
+	if err := google_sheets.SaveMediaFromWebapp(
 		r.Context(),
 		userID,
 		usernamePtr,
 		r.FormValue("fullName"),
-		header.Filename,
+		originalRef,
 		mimeType,
 		content,
-		google_sheets.NormalizePhotoSource(r.FormValue("source")),
+		r.FormValue("source"),
 	); err != nil {
 		handlePhotoStorageError(w, err)
 		return
@@ -119,7 +128,7 @@ func uploadPhotoJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, mimeType, err := decodeBase64PhotoData(req.PhotoData)
+	content, mimeType, err := decodeBase64MediaData(firstNonEmptyMediaPayload(req.MediaData, req.PhotoData))
 	if err != nil {
 		handlePhotoUploadError(w, err)
 		return
@@ -130,7 +139,7 @@ func uploadPhotoJSON(w http.ResponseWriter, r *http.Request) {
 		usernamePtr = &username
 	}
 
-	if err := google_sheets.SavePhotoFromWebapp(
+	if err := google_sheets.SaveMediaFromWebapp(
 		r.Context(),
 		userID,
 		usernamePtr,
@@ -138,7 +147,7 @@ func uploadPhotoJSON(w http.ResponseWriter, r *http.Request) {
 		req.FileName,
 		mimeType,
 		content,
-		google_sheets.NormalizePhotoSource(req.Source),
+		req.Source,
 	); err != nil {
 		handlePhotoStorageError(w, err)
 		return
@@ -147,6 +156,24 @@ func uploadPhotoJSON(w http.ResponseWriter, r *http.Request) {
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 	})
+}
+
+func readMultipartMedia(r *http.Request) (multipartFile multipart.File, header *multipart.FileHeader, err error) {
+	file, fileHeader, fileErr := r.FormFile("media")
+	if fileErr == nil {
+		return file, fileHeader, nil
+	}
+
+	return r.FormFile("photo")
+}
+
+func firstNonEmptyMediaPayload(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func handlePhotoUploadError(w http.ResponseWriter, err error) {
@@ -166,28 +193,25 @@ func handlePhotoStorageError(w http.ResponseWriter, err error) {
 		return
 	}
 
-	log.Printf("Error saving photo: %v", err)
+	log.Printf("Error saving media: %v", err)
 	JSONError(w, http.StatusInternalServerError, "failed to save photo")
 }
 
-func readUploadedImage(reader io.Reader, declaredMimeType string) ([]byte, string, error) {
-	limited := io.LimitReader(reader, maxPhotoUploadSize+1)
+func readUploadedMedia(reader io.Reader, declaredMimeType string) ([]byte, string, error) {
+	limited := io.LimitReader(reader, maxMediaUploadSize+1)
 	content, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, "", errInvalidPhoto
 	}
 
-	if len(content) == 0 {
-		return nil, "", errPhotoRequired
-	}
-	if len(content) > maxPhotoUploadSize {
-		return nil, "", errPhotoTooLarge
-	}
-
-	return normalizeImagePayload(content, declaredMimeType)
+	return normalizeMediaPayload(content, declaredMimeType)
 }
 
 func decodeBase64PhotoData(raw string) ([]byte, string, error) {
+	return decodeBase64MediaData(raw)
+}
+
+func decodeBase64MediaData(raw string) ([]byte, string, error) {
 	clean := strings.TrimSpace(raw)
 	if clean == "" {
 		return nil, "", errPhotoRequired
@@ -214,22 +238,17 @@ func decodeBase64PhotoData(raw string) ([]byte, string, error) {
 		return nil, "", errInvalidPhoto
 	}
 
-	if len(decoded) > maxPhotoUploadSize {
-		return nil, "", errPhotoTooLarge
-	}
-
-	return normalizeImagePayload(decoded, mimeType)
+	return normalizeMediaPayload(decoded, mimeType)
 }
 
 func decodeBase64String(raw string) ([]byte, error) {
 	candidates := []struct {
-		name string
-		fn   func(string) ([]byte, error)
+		fn func(string) ([]byte, error)
 	}{
-		{name: "std", fn: base64.StdEncoding.DecodeString},
-		{name: "raw_std", fn: base64.RawStdEncoding.DecodeString},
-		{name: "url", fn: base64.URLEncoding.DecodeString},
-		{name: "raw_url", fn: base64.RawURLEncoding.DecodeString},
+		{fn: base64.StdEncoding.DecodeString},
+		{fn: base64.RawStdEncoding.DecodeString},
+		{fn: base64.URLEncoding.DecodeString},
+		{fn: base64.RawURLEncoding.DecodeString},
 	}
 
 	for _, candidate := range candidates {
@@ -243,22 +262,49 @@ func decodeBase64String(raw string) ([]byte, error) {
 }
 
 func normalizeImagePayload(content []byte, declaredMimeType string) ([]byte, string, error) {
+	return normalizeMediaPayload(content, declaredMimeType)
+}
+
+func normalizeMediaPayload(content []byte, declaredMimeType string) ([]byte, string, error) {
 	if len(content) == 0 {
 		return nil, "", errPhotoRequired
 	}
-	if len(content) > maxPhotoUploadSize {
+	if len(content) > maxMediaUploadSize {
 		return nil, "", errPhotoTooLarge
 	}
 
 	mimeType := strings.ToLower(strings.TrimSpace(declaredMimeType))
 	sniffedMimeType := strings.ToLower(http.DetectContentType(content))
+	resolvedMimeType := resolveMediaMimeType(mimeType, sniffedMimeType)
+	if resolvedMimeType == "" {
+		return nil, "", errInvalidPhoto
+	}
 
+	if len(content) > maxAllowedUploadSize(resolvedMimeType) {
+		return nil, "", errPhotoTooLarge
+	}
+
+	return content, resolvedMimeType, nil
+}
+
+func resolveMediaMimeType(declaredMimeType, sniffedMimeType string) string {
+	switch {
+	case strings.HasPrefix(declaredMimeType, "image/"), strings.HasPrefix(declaredMimeType, "video/"):
+		return declaredMimeType
+	case strings.HasPrefix(sniffedMimeType, "image/"), strings.HasPrefix(sniffedMimeType, "video/"):
+		return sniffedMimeType
+	default:
+		return ""
+	}
+}
+
+func maxAllowedUploadSize(mimeType string) int {
 	switch {
 	case strings.HasPrefix(mimeType, "image/"):
-		return content, mimeType, nil
-	case strings.HasPrefix(sniffedMimeType, "image/"):
-		return content, sniffedMimeType, nil
+		return maxImageUploadSize
+	case strings.HasPrefix(mimeType, "video/"):
+		return maxVideoUploadSize
 	default:
-		return nil, "", errInvalidPhoto
+		return maxImageUploadSize
 	}
 }

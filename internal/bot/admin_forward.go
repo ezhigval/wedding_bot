@@ -71,6 +71,12 @@ func ForwardMessageToAdmins(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			message.Video.MimeType, message.Video.FileID)
 	}
 
+	// Если есть кружочек, добавляем информацию о нем
+	if message.VideoNote != nil {
+		userInfo += fmt.Sprintf("\n\n🎬 <b>Кружочек:</b> длина %d (ID: %s)",
+			message.VideoNote.Length, message.VideoNote.FileID)
+	}
+
 	// Если есть документ, добавляем информацию о нем
 	if message.Document != nil {
 		userInfo += fmt.Sprintf("\n\n📄 <b>Документ:</b> %s (ID: %s)",
@@ -99,6 +105,17 @@ func ForwardMessageToAdmins(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			forwardedVideo.Caption = userInfo
 			forwardedVideo.ParseMode = tgbotapi.ModeHTML
 			bot.Send(forwardedVideo)
+			continue
+		}
+
+		// Если есть кружочек, пересылаем его
+		if message.VideoNote != nil {
+			forwardedVideoNote := tgbotapi.NewVideoNote(adminID, message.VideoNote.Length, tgbotapi.FileID(message.VideoNote.FileID))
+			bot.Send(forwardedVideoNote)
+
+			metaMsg := tgbotapi.NewMessage(adminID, userInfo)
+			metaMsg.ParseMode = tgbotapi.ModeHTML
+			bot.Send(metaMsg)
 			continue
 		}
 
