@@ -24,6 +24,13 @@ const (
 	authSessionTTL        = 30 * 24 * time.Hour
 )
 
+var (
+	resolveKnownTelegramUserIDByUsername = func(ctx context.Context, username string) (int, error) {
+		return google_sheets.ResolveKnownTelegramUserIDByUsername(ctx, username)
+	}
+	resolveTelegramUserIDByUsername = ResolveUserIDByUsername
+)
+
 type authSessionPayload struct {
 	UserID   int    `json:"user_id,omitempty"`
 	Username string `json:"username,omitempty"`
@@ -335,17 +342,50 @@ func resolveAuthIdentity(userID int, username, initData string) (int, string) {
 		if cachedID, ok := getCachedUserIDByUsername(normalizedUsername); ok {
 			return cachedID, normalizedUsername
 		}
-		if resolvedID, err := ResolveUserIDByUsername(normalizedUsername); err == nil && resolvedID > 0 {
-			cacheUsernameToUserID(normalizedUsername, resolvedID)
-			return resolvedID, normalizedUsername
-		}
 	}
 
 	return resolvedUserID, normalizedUsername
 }
 
+func resolveUserIDByUsernameWithFallbacks(r *http.Request, username string) (int, bool) {
+	normalizedUsername := google_sheets.NormalizeTelegramUsername(username)
+	if normalizedUsername == "" {
+		return 0, false
+	}
+
+	if cachedID, ok := getCachedUserIDByUsername(normalizedUsername); ok {
+		return cachedID, true
+	}
+
+	baseCtx := context.Background()
+	if r != nil {
+		baseCtx = r.Context()
+	}
+
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+	defer cancel()
+
+	if resolvedID, err := resolveKnownTelegramUserIDByUsername(ctx, normalizedUsername); err == nil && resolvedID > 0 {
+		cacheUsernameToUserID(normalizedUsername, resolvedID)
+		return resolvedID, true
+	}
+
+	if resolvedID, err := resolveTelegramUserIDByUsername(normalizedUsername); err == nil && resolvedID > 0 {
+		cacheUsernameToUserID(normalizedUsername, resolvedID)
+		return resolvedID, true
+	}
+
+	return 0, false
+}
+
 func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initData string) (int, string) {
 	resolvedUserID, resolvedUsername := resolveAuthIdentity(userID, username, initData)
+	if resolvedUserID == 0 && resolvedUsername != "" {
+		if fallbackUserID, ok := resolveUserIDByUsernameWithFallbacks(r, resolvedUsername); ok {
+			return fallbackUserID, resolvedUsername
+		}
+	}
+
 	if resolvedUserID > 0 || resolvedUsername != "" {
 		return resolvedUserID, resolvedUsername
 	}
@@ -355,7 +395,14 @@ func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initD
 		return 0, ""
 	}
 
-	return resolveAuthIdentity(cookieUserID, cookieUsername, "")
+	resolvedUserID, resolvedUsername = resolveAuthIdentity(cookieUserID, cookieUsername, "")
+	if resolvedUserID == 0 && resolvedUsername != "" {
+		if fallbackUserID, ok := resolveUserIDByUsernameWithFallbacks(r, resolvedUsername); ok {
+			return fallbackUserID, resolvedUsername
+		}
+	}
+
+	return resolvedUserID, resolvedUsername
 }
 
 func parseOptionalUserID(raw string) (int, error) {
@@ -582,6 +629,13 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error adding guest: %v", err)
 		JSONError(w, http.StatusInternalServerError, "failed to register")
 		return
+	}
+
+	if userID > 0 && hasPrimaryGuestData {
+		primaryFullName := buildNormalizedRegistrationFullName(req.FirstName, req.LastName)
+		if err := google_sheets.UpdateInvitationUserID(ctx, primaryFullName, userID, usernamePtr); err != nil {
+			log.Printf("Warning: failed to sync invitation identity for %s: %v", primaryFullName, err)
+		}
 	}
 
 	for _, key := range registrationCacheKeys(userID, manualUsername) {

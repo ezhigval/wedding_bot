@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -134,6 +136,38 @@ func TestRequireResolvedAuthIdentityAllowsUsernameOnly(t *testing.T) {
 	}
 	if username != "browseruser" {
 		t.Fatalf("requireResolvedAuthIdentity() username = %q, want %q", username, "browseruser")
+	}
+}
+
+func TestResolveAuthIdentityFromRequestUsesKnownUsernameResolver(t *testing.T) {
+	cache.InitMemoryCache()
+	cache.ClearMemoryCache()
+
+	previousKnownResolver := resolveKnownTelegramUserIDByUsername
+	previousTelegramResolver := resolveTelegramUserIDByUsername
+	defer func() {
+		resolveKnownTelegramUserIDByUsername = previousKnownResolver
+		resolveTelegramUserIDByUsername = previousTelegramResolver
+	}()
+
+	resolveKnownTelegramUserIDByUsername = func(ctx context.Context, username string) (int, error) {
+		if username != "knownuser" {
+			t.Fatalf("resolveKnownTelegramUserIDByUsername() username = %q, want %q", username, "knownuser")
+		}
+		return 24680, nil
+	}
+	resolveTelegramUserIDByUsername = func(username string) (int, error) {
+		t.Fatalf("resolveTelegramUserIDByUsername() should not be called when known resolver succeeds")
+		return 0, fmt.Errorf("unexpected call")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	userID, username := resolveAuthIdentityFromRequest(req, 0, "@KnownUser", "")
+	if userID != 24680 {
+		t.Fatalf("resolveAuthIdentityFromRequest() userID = %d, want %d", userID, 24680)
+	}
+	if username != "knownuser" {
+		t.Fatalf("resolveAuthIdentityFromRequest() username = %q, want %q", username, "knownuser")
 	}
 }
 

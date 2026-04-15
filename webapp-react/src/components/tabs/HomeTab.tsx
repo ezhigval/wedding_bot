@@ -11,6 +11,8 @@ import type { Config } from '../../types'
 
 const DEFAULT_VENUE_NAME = 'Ресторан "Марсала"'
 const DEFAULT_VENUE_ADDRESS = 'Большой проспект Петроградской стороны, 84, Санкт-Петербург'
+const DEFAULT_VENUE_LAT = 59.9643641
+const DEFAULT_VENUE_LON = 30.3092636
 
 export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
@@ -239,8 +241,12 @@ function VenueInfo({ address }: { address?: string }) {
 function VenueMap({ address }: { address?: string }) {
   const venue = resolveVenue(address)
   const query = encodeURIComponent(venue.mapQuery)
-  const mapUrl = `https://www.google.com/maps?q=${query}&z=17&output=embed`
-  const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${query}`
+  const normalizedQuery = venue.mapQuery.toLowerCase()
+  const isMarsalaVenue = normalizedQuery.includes('марсала')
+  const mapUrl = isMarsalaVenue
+    ? `https://yandex.ru/map-widget/v1/?ll=${DEFAULT_VENUE_LON},${DEFAULT_VENUE_LAT}&z=16&pt=${DEFAULT_VENUE_LON},${DEFAULT_VENUE_LAT},pm2rdm&mode=search&text=${query}`
+    : `https://yandex.ru/map-widget/v1/?mode=search&text=${query}&z=16`
+  const directionsUrl = `https://yandex.ru/maps/?mode=search&text=${query}`
 
   return (
     <motion.div
@@ -269,7 +275,7 @@ function VenueMap({ address }: { address?: string }) {
         rel="noreferrer"
         className="block rounded-lg border border-[#E5C98B] bg-[#FFF7E2] px-4 py-3 text-center text-[16.8px] font-semibold text-primary transition-colors hover:bg-[#FBEBC1]"
       >
-        Открыть маршрут до ресторана
+        Открыть в Яндекс Картах
       </a>
     </motion.div>
   )
