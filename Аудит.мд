@@ -1,0 +1,763 @@
+# Аудит проекта Wedding Bot
+
+Дата фиксации: 2026-04-15
+
+Статус документа:
+- Это фиксация уже проделанного первого аудиторского прохода.
+- Анализ выполнялся по частям, без загрузки всего проекта в контекст одновременно.
+- Покрыт критический контур backend, bot, Google Sheets persistence, frontend core, инфраструктура и документация.
+- Остались зоны для следующего прохода: длинные ветки админского bot-flow, часть UI-табов и менее критичные детали фронтенда.
+
+## 1. Цель и методика
+
+Задача текущего прохода:
+- провести глубокий аудит проекта частями;
+- выделить архитектуру и модули;
+- разобрать точку входа, core и конфигурацию;
+- пройти по основным модулям итеративно;
+- собрать список проблем по приоритетам;
+- сформировать roadmap.
+
+Принцип работы:
+- сначала снималась структура проекта и карта модулей;
+- затем отдельно разбирались точка входа, конфигурация и системное ядро;
+- потом шёл модульный проход по backend, bot, persistence, frontend core;
+- после каждого шарда фиксировались выводы;
+- в конце были выполнены проверки сборки и тестов.
+
+## 2. Что было просмотрено
+
+### 2.1 Верхний уровень проекта
+
+Изучены:
+- `README.md`
+- `docs/ARCHITECTURE.md`
+- `docs/ROADMAP.md`
+- `docs/RULES.md`
+- `docs/DEPLOY_CHECKLIST.md`
+- `.env.example`
+- `Dockerfile`
+- `.github/workflows/ci.yml`
+- `go.mod`
+
+Подтверждено, что проект представляет собой монолитный Go-сервис, который:
+- поднимает HTTP API;
+- обслуживает Telegram-бота;
+- запускает ежедневный планировщик;
+- раздаёт статический frontend bundle;
+- использует Google Sheets как основной persistence-layer.
+
+### 2.2 Backend и служебные модули
+
+Просмотрены:
+- `cmd/server/main.go`
+- `internal/config/config.go`
+- `internal/cache/cache.go`
+- `internal/cache/memory_cache.go`
+- `internal/daily_reset/reset.go`
+- `internal/daily_reset/reset_test.go`
+- все ключевые файлы `internal/api`
+- все ключевые файлы `internal/google_sheets`
+- основные файлы `internal/bot`
+- `internal/keyboards/*`
+
+### 2.3 Frontend core
+
+Просмотрены:
+- `webapp-react/src/main.tsx`
+- `webapp-react/src/App.tsx`
+- `webapp-react/src/utils/api.ts`
+- `webapp-react/src/utils/telegram.ts`
+- `webapp-react/src/contexts/UserContext.tsx`
+- `webapp-react/src/contexts/RegistrationContext.tsx`
+- `webapp-react/src/components/RSVPForm.tsx`
+- `webapp-react/src/components/tabs/ChallengeTab.tsx`
+- `webapp-react/src/components/games/WordleGame.tsx`
+- `webapp-react/src/components/games/CrosswordGame.tsx`
+- `webapp-react/package.json`
+- `webapp-react/vite.config.ts`
+- `webapp-react/CHECK_REPORT.md`
+
+### 2.4 Проверки
+
+Выполнены:
+- `go test ./...`
+- `cd webapp-react && npm run build`
+
+Результат:
+- backend тесты проходят;
+- frontend production build проходит;
+- при сборке фронтенда есть предупреждения по размеру bundle и по использованию `eval` внутри `lottie-web`.
+
+## 3. Архитектурная схема
+
+Краткая схема системы:
+
+1. Пользователь Telegram может взаимодействовать двумя путями:
+- через Telegram-бот;
+- через Telegram Mini App.
+
+2. Оба пути сходятся в один backend:
+- бот использует тот же Go-контур;
+- Mini App ходит в HTTP API этого же сервиса.
+
+3. Основной источник данных:
+- Google Sheets;
+- часть кэша находится в памяти и в SQLite;
+- часть временного состояния живёт в cookie, `sessionStorage`, `localStorage` и в in-memory bot state.
+
+4. Основные внутренние домены:
+- регистрация гостей;
+- identity/auth;
+- игры и рейтинг;
+- рассадка;
+- фото;
+- админские сценарии;
+- фоновые daily reset задачи.
+
+Высокоуровневая зависимость слоёв:
+- `cmd/server` -> инициализирует всё;
+- `internal/api` и `internal/bot` зависят от `internal/google_sheets`;
+- `internal/google_sheets` фактически содержит и persistence, и значимую часть доменной логики;
+- `webapp-react` содержит заметную часть клиентской логики игр и fallback identity.
+
+## 4. Выделенные модули
+
+### 4.1 Системные модули
+
+- `cmd/server` — composition root и lifecycle.
+- `internal/config` — env-конфигурация.
+- `internal/cache` — memory + SQLite cache.
+- `internal/daily_reset` — ежедневный сброс игровых сценариев.
+
+### 4.2 Backend runtime
+
+- `internal/api` — HTTP API, identity/auth, middleware, game/photo/seating endpoints.
+- `internal/bot` — Telegram-бот, админский flow, рассылки, group actions.
+- `internal/keyboards` — reply/inline keyboards.
+
+### 4.3 Persistence и доменная логика
+
+- `internal/google_sheets/client.go` — клиент и доступ к Google Sheets.
+- `internal/google_sheets/guests.go` — регистрация и идентификаторы гостей.
+- `internal/google_sheets/games.go` — рейтинг и игровые очки.
+- `internal/google_sheets/wordle*.go` — Wordle.
+- `internal/google_sheets/crossword*.go` — Crossword.
+- `internal/google_sheets/seating*.go` — рассадка.
+- `internal/google_sheets/admins.go` — админы.
+- `internal/google_sheets/config_kv.go` — key/value конфиг в листе `Config`.
+- `internal/google_sheets/photos.go` — журнал фото.
+
+### 4.4 Frontend
+
+- `webapp-react` — исходники React Mini App.
+- `webapp` — build output, который раздаёт backend.
+
+## 5. Краткие выводы по каждому разобранному модулю
+
+### 5.1 `cmd/server`
+
+Что делает:
+- грузит конфиг;
+- инициализирует кэши;
+- запускает проверки и подготовку Google Sheets;
+- поднимает API;
+- запускает бота;
+- запускает daily reset;
+- поднимает HTTP server и static file serving.
+
+Вывод:
+- модуль перегружен orchestration-логикой;
+- слишком много решений принимается прямо в `main`;
+- graceful shutdown реализован частично, но lifecycle фоновых задач оформлен не до конца корректно.
+
+### 5.2 `internal/config`
+
+Что делает:
+- читает env;
+- задаёт default values;
+- хранит конфиг в глобальных package variables.
+
+Вывод:
+- модуль простой, но слишком опирается на mutable globals;
+- в код зашиты operational defaults, включая реальные ссылки и ID;
+- конфигурация невалидируется жёстко там, где это критично для безопасности.
+
+### 5.3 `internal/cache`
+
+Что делает:
+- даёт memory cache;
+- хранит SQLite cache для game stats.
+
+Вывод:
+- как вспомогательный слой модуль простой и понятный;
+- есть конфигурационная непоследовательность: `DB_PATH` не влияет на фактический путь game stats cache;
+- это не полноценный кэш-контур, а набор локальных оптимизаций.
+
+### 5.4 `internal/daily_reset`
+
+Что делает:
+- ежедневно переключает Wordle/Crossword;
+- начисляет partial rewards;
+- пытается быть идемпотентным через `Config`.
+
+Вывод:
+- логика уже существенно лучше, чем «пустой scheduler»;
+- есть тесты на чистые функции;
+- главная зона риска теперь не в алгоритме наград, а в lifecycle и конкурентной записи в Google Sheets.
+
+### 5.5 `internal/api`
+
+Что делает:
+- маршрутизация;
+- auth/session/initData logic;
+- middleware;
+- registration, seating, games, photo endpoints.
+
+Вывод:
+- это самый рискованный слой проекта;
+- слишком много fallback-веток identity;
+- безопасность частично завязана на договорённость с клиентом, а не на жёсткую серверную модель;
+- часть game endpoints доверяет клиентскому вводу сверх допустимого.
+
+### 5.6 `internal/bot`
+
+Что делает:
+- user flow `/start`, `/menu`, `/admin`;
+- админские действия;
+- рассылки;
+- group operations;
+- photo flow;
+- admin state и broadcast state.
+
+Вывод:
+- функциональность большая;
+- модуль сильно завязан на глобальный mutable in-memory state;
+- конкурентность реализована опасно: хранение map под lock есть, но возвращаемые pointers мутируются уже без lock.
+
+### 5.7 `internal/google_sheets`
+
+Что делает:
+- почти вся бизнес-логика проекта;
+- доступ к данным;
+- доменные операции над гостями, играми, рассадкой, фото, admin data, Config.
+
+Вывод:
+- это фактически и repository layer, и service layer, и доменный слой одновременно;
+- модуль слишком большой и слишком связный;
+- в нём находится основной технический риск проекта;
+- read-modify-write паттерн повсеместен, а защиты от гонок и потери обновлений почти нет.
+
+### 5.8 `webapp-react`
+
+Что делает:
+- Mini App UI;
+- fallback identity;
+- хранение пользовательского состояния;
+- клиентская логика игр и registration flow.
+
+Вывод:
+- UI рабочий, сборка проходит;
+- frontend содержит слишком много бизнес-правил и fallback поведения;
+- scoring и часть game logic продублированы между клиентом и сервером;
+- есть зависимость от local/session storage для identity;
+- bundle уже тяжёлый для Telegram WebView.
+
+## 6. Ключевые архитектурные наблюдения
+
+### 6.1 Главная фактическая БД — Google Sheets
+
+Это не просто контентная таблица, а реальный источник истины по:
+- гостям;
+- регистрации;
+- очкам;
+- daily reset состоянию;
+- seating lock;
+- админам;
+- фото;
+- Wordle/Crossword progress.
+
+Последствия:
+- проект очень быстро разрабатывать;
+- но доменная целостность и конкурентная запись крайне хрупкие;
+- любая ошибка чтения/записи Sheets влияет на весь продуктовый сценарий.
+
+### 6.2 Composition root перегружен
+
+`cmd/server/main.go` инициализирует слишком много подсистем напрямую и сам решает, где продолжать работу при ошибках, а где падать.
+
+Следствие:
+- запуск сложно тестировать;
+- поведение при деградации не всегда детерминировано;
+- эксплуатационная модель размыта.
+
+### 6.3 Identity размазана по слоям
+
+Источники identity сейчас:
+- `initData`;
+- `user_id`;
+- `username`;
+- auth-cookie;
+- `sessionStorage`;
+- `localStorage`;
+- кеш `username -> user_id`.
+
+Следствие:
+- система гибкая;
+- но сложность поведения растёт нелинейно;
+- debugging identity-инцидентов будет дорогим;
+- часть fallback-сценариев создаёт риски безопасности и ложных привязок.
+
+### 6.4 Игровая логика распределена между клиентом, API и Sheets
+
+Сейчас:
+- frontend считает часть очков и игровых переходов;
+- API принимает score и пишет его;
+- backend domain layer пересчитывает игровые поля;
+- daily reset использует отдельные конфиг-ключи в Sheets.
+
+Следствие:
+- дублирование правил;
+- drift между слоями;
+- уязвимость к накрутке очков;
+- трудность изменения игровых правил.
+
+## 7. Список проблем
+
+Ниже фиксируется итог первого прохода с разделением на `HIGH`, `MEDIUM`, `LOW`.
+
+### 7.1 HIGH
+
+#### HIGH-1. Forged auth-session при пустом `BOT_TOKEN`
+
+Где:
+- `internal/api/handlers.go`
+
+Точное место:
+- `authSessionSecret()`
+- fallback secret: `wedding-bot-session-secret`
+
+Описание:
+- если `BOT_TOKEN` отсутствует, подпись auth cookie строится на статическом fallback secret.
+
+Причина:
+- разработческая деградация оформлена как production-capable fallback.
+
+Последствия:
+- cookie можно предсказуемо подделать;
+- можно подложить чужую identity;
+- это прямой security issue.
+
+#### HIGH-2. Логирование куска Google credentials
+
+Где:
+- `internal/google_sheets/client.go`
+
+Точное место:
+- логирование `preview` кандидата credentials.
+
+Описание:
+- при диагностике логируется начало строки credentials.
+
+Причина:
+- отладочная диагностическая логика реализована слишком широко.
+
+Последствия:
+- утечка секрета через runtime logs;
+- компрометация сервисного аккаунта.
+
+#### HIGH-3. Клиент может накручивать игровые очки
+
+Где:
+- `internal/api/game_handlers.go`
+- `internal/google_sheets/games.go`
+- `webapp-react/src/components/tabs/ChallengeTab.tsx`
+
+Описание:
+- frontend сам считает `gamePoints`;
+- backend endpoint принимает score и передаёт его в `UpdateGameScore`;
+- server не верифицирует факт игрового достижения.
+
+Причина:
+- game scoring спроектирован как доверенный клиентский input.
+
+Последствия:
+- накрутка рейтинга;
+- недостоверность stats/rank;
+- подрыв игровой механики.
+
+#### HIGH-4. Wordle допускает ложную победу при проблемах с Sheets
+
+Где:
+- `internal/api/game_handlers.go`
+
+Описание:
+- если backend не может получить текущее слово из Sheets, но слово валидно по словарю, оно принимается как правильное.
+
+Причина:
+- слишком агрессивный fallback на деградации persistence.
+
+Последствия:
+- можно получить очки без реального совпадения с текущим словом;
+- Wordle теряет корректность как daily challenge.
+
+#### HIGH-5. Публикация рассадки может портить лист `Config`
+
+Где:
+- `internal/google_sheets/seating_utils.go`
+- `internal/google_sheets/config_kv.go`
+
+Описание:
+- `LockSeating` пишет `SEATING_LOCKED` и `SEATING_LOCKED_AT` через `UpdateSheetValues(..., "A1", ...)`;
+- это несовместимо с моделью key/value upsert, используемой остальным кодом.
+
+Причина:
+- два разных способа управления одним и тем же листом `Config`.
+
+Последствия:
+- затирание других ключей в Config;
+- поломка `WORDLE_*`, `CROSSWORD_*` и логики daily reset;
+- трудноуловимые инциденты.
+
+#### HIGH-6. Повсеместный read-modify-write без сериализации
+
+Где:
+- `internal/google_sheets/guests.go`
+- `internal/google_sheets/games.go`
+- `internal/google_sheets/config_kv.go`
+- `internal/google_sheets/wordle.go`
+- `internal/google_sheets/crossword.go`
+
+Описание:
+- сначала читается лист;
+- потом вычисляется нужная строка;
+- потом выполняется update/append;
+- никакой защиты от конкурентных write нет.
+
+Причина:
+- Google Sheets используется как operational DB без transaction model.
+
+Последствия:
+- lost update;
+- дубли гостей;
+- race при начислении очков;
+- повреждённый Config;
+- нестабильный progress пользователей.
+
+### 7.2 MEDIUM
+
+#### MEDIUM-1. Bot state небезопасен по конкурентности
+
+Где:
+- `internal/bot/bot.go`
+- `internal/bot/broadcast.go`
+- `internal/bot/broadcast_handlers.go`
+- `internal/bot/admin_state.go`
+
+Описание:
+- `GetBroadcastState` возвращает pointer на mutable state;
+- дальше поля `state.Text`, `state.Step`, `state.PhotoID` и другие меняются уже без lock;
+- updates обрабатываются параллельно через `go handleUpdate`.
+
+Причина:
+- lock защищает только map access, но не lifetime и mutation объекта.
+
+Последствия:
+- race conditions;
+- потеря состояния рассылки;
+- нестабильные админские сценарии.
+
+#### MEDIUM-2. Планировщик daily reset неверно учитывается в lifecycle
+
+Где:
+- `cmd/server/main.go`
+- `internal/daily_reset/reset.go`
+
+Описание:
+- `main` уже запускает отдельную goroutine;
+- внутри `ScheduleDailyReset` запускается ещё одна goroutine.
+
+Причина:
+- двойное оборачивание scheduler runtime.
+
+Последствия:
+- `WaitGroup` не контролирует реальный worker;
+- shutdown формально есть, но жизненный цикл фоновой работы непрозрачен.
+
+#### MEDIUM-3. Реальные operational defaults зашиты в код
+
+Где:
+- `internal/config/config.go`
+
+Описание:
+- в default values зашиты реальные `GROOM_TELEGRAM`, `BRIDE_TELEGRAM`, `GROUP_LINK`, `GOOGLE_SHEETS_ID`.
+
+Причина:
+- конфиг развивался из локального проекта в продукт без полной деперсонализации defaults.
+
+Последствия:
+- сильная связка к одному окружению;
+- риск случайного запуска не на том контуре;
+- плохая переносимость.
+
+#### MEDIUM-4. `DB_PATH` не управляет фактическим SQLite кэшем
+
+Где:
+- `internal/config/config.go`
+- `internal/cache/cache.go`
+
+Описание:
+- конфиг читает `DB_PATH`;
+- фактический path к game stats cache жёстко прописан как `data/game_stats_cache.db`.
+
+Причина:
+- расхождение между конфиг-моделью и реальным использованием.
+
+Последствия:
+- вводящая в заблуждение конфигурация;
+- трудности переноса и тестирования.
+
+#### MEDIUM-5. Правила scoring продублированы и расходятся по слоям
+
+Где:
+- `webapp-react/src/components/tabs/ChallengeTab.tsx`
+- `internal/google_sheets/games.go`
+- `docs/RULES.md`
+
+Описание:
+- правила начисления очков размазаны по клиенту, серверу и документации;
+- местами используются уже конвертированные очки, местами сырые игровые значения.
+
+Причина:
+- отсутствие единого authoritative game rules engine.
+
+Последствия:
+- drift;
+- ошибки при изменении баланса;
+- сложность сопровождения.
+
+#### MEDIUM-6. Frontend identity привязана к `localStorage`
+
+Где:
+- `webapp-react/src/contexts/UserContext.tsx`
+- `webapp-react/src/utils/api.ts`
+
+Описание:
+- `telegram_user_id`, `telegram_username`, `manual_username` сохраняются в storage.
+
+Причина:
+- попытка сделать устойчивый fallback вне Telegram и между перезапусками.
+
+Последствия:
+- перетекание identity между пользователями на одном устройстве;
+- сложные «призрачные» баги регистрации.
+
+#### MEDIUM-7. `GetCrosswordWords` пишет дефолтные данные в продовый лист
+
+Где:
+- `internal/google_sheets/crossword.go`
+
+Описание:
+- если слова не найдены, код может дописать default words в таблицу.
+
+Причина:
+- fallback разработан как самовосстановление, а не как read-only деградация.
+
+Последствия:
+- тихая порча контента;
+- неочевидное изменение продовых данных.
+
+#### MEDIUM-8. Frontend bundle тяжёлый
+
+Где:
+- `webapp-react/package.json`
+- результат `npm run build`
+
+Описание:
+- build выдал chunk около `747.91 kB`;
+- сборка предупреждает про `eval` внутри `lottie-web`.
+
+Причина:
+- отсутствие code-splitting;
+- тяжёлые зависимости;
+- всё попадает в общий стартовый bundle.
+
+Последствия:
+- медленный cold start;
+- хуже UX в Telegram WebView;
+- лишняя память и трафик.
+
+### 7.3 LOW
+
+#### LOW-1. Документация частично устарела
+
+Где:
+- `webapp-react/CHECK_REPORT.md`
+
+Описание:
+- документ утверждает ряд состояний, которые уже не полностью соответствуют реальному состоянию кода;
+- например, `SeatingTab` описан как заглушка, хотя это уже не так.
+
+Последствия:
+- ложное ощущение актуальности;
+- снижение доверия к сопроводительной документации.
+
+#### LOW-2. В репозитории есть устаревший Python-скрипт
+
+Где:
+- `scripts/generate_wordle_words.py`
+
+Описание:
+- скрипт использует другой стек и не соответствует текущему Go persistence-контру.
+
+Последствия:
+- путаница;
+- ложный operational path.
+
+#### LOW-3. `request_id` генерируется предсказуемо
+
+Где:
+- `internal/api/middleware.go`
+
+Описание:
+- генерация через timestamp и `time.Now().UnixNano()%...`.
+
+Причина:
+- вместо настоящего random/uuid используется лёгкая самописная функция.
+
+Последствия:
+- низкая энтропия;
+- не security critical, но плохо для quality/logging discipline.
+
+#### LOW-4. `webapp` хранится как build output в repo
+
+Где:
+- папка `webapp`
+
+Описание:
+- собранный bundle хранится рядом с исходниками.
+
+Последствия:
+- риск рассинхрона с `webapp-react`;
+- лишний шум в репозитории.
+
+## 8. Выводы по качеству кода
+
+### 8.1 Что сделано хорошо
+
+- Репозиторий уже структурирован по доменам.
+- Документация верхнего уровня в целом есть.
+- Есть CI на тесты и сборку.
+- Есть начальное покрытие критичных auth/reset сценариев.
+- Проект реально работоспособен как end-to-end продукт.
+- Для такой предметной области выбран прагматичный монолит без лишней распределённости.
+
+### 8.2 Главные слабые стороны
+
+- отсутствие чёткой границы между доменной логикой и persistence;
+- слишком большая роль Google Sheets в runtime-инвариантах;
+- доверие клиенту там, где нужно доверять только серверу;
+- глобальное mutable state в bot и config;
+- размытая identity-модель с большим количеством fallback-веток;
+- слишком много места для гонок при записи.
+
+## 9. Roadmap
+
+### 9.1 Ближайший этап — исправление критических ошибок
+
+Цель:
+- убрать прямые security и data-integrity риски.
+
+Задачи:
+- убрать fallback secret для auth cookie;
+- отключать/не использовать session cookie без корректного секрета;
+- убрать логирование preview credentials;
+- перевести game scoring на серверно-авторитетную модель;
+- убрать Wordle fallback, который принимает любое валидное слово как правильное;
+- исправить `LockSeating`, чтобы он писал в `Config` через upsert;
+- добавить защиту от конкурентной записи хотя бы на уровне критических операций;
+- расширить тесты на auth/session, scoring, seating publish и Config integrity.
+
+### 9.2 Средний этап — рефакторинг
+
+Цель:
+- снизить связность и сделать систему предсказуемее.
+
+Задачи:
+- выделить сервисный слой поверх `internal/google_sheets`;
+- разрезать persistence и domain logic;
+- централизовать identity resolution;
+- сократить число fallback-источников identity;
+- перевести bot state на безопасную модель хранения;
+- убрать дубли scoring logic между frontend и backend;
+- привести config к нейтральным и безопасным defaults;
+- убрать устаревшие operational artefacts и скрипты.
+
+### 9.3 Дальний этап — развитие платформы
+
+Цель:
+- перейти от «проект работает» к «проект устойчив и масштабируем».
+
+Задачи:
+- вынести критичные доменные данные из Google Sheets в нормальную БД;
+- завести event log по игровым и админским операциям;
+- сделать полноценную anti-cheat модель для игр;
+- ввести метрики и алерты;
+- облегчить frontend bundle и разбить его на lazy chunks;
+- подготовить migration path для постепенного ухода от Sheets как единой operational DB.
+
+## 10. Предлагаемые улучшения
+
+### 10.1 Архитектурные улучшения
+
+- Ввести границу `service -> repository`.
+- Запретить handler’ам и bot-flow напрямую собирать sheet ranges.
+- Сконцентрировать все правила identity в одном модуле.
+- Сделать write-path идемпотентным и сериализованным для критичных сущностей.
+
+### 10.2 Продуктовые улучшения
+
+- Сделать прозрачный статус регистрации и identity для пользователя.
+- Добавить admin health-check по целостности Google Sheets.
+- Ввести журнал игровых событий.
+- Добавить диагностику ошибок пользователя без обращения к логам сервера.
+
+### 10.3 Производительные улучшения
+
+- Сократить число полных чтений листов;
+- вынести горячие read-path в кэш с контролируемой инвалидацией;
+- уменьшить frontend bundle;
+- убрать принудительные `window.location.reload()` в игровых сценариях.
+
+## 11. Проверка качества текущего анализа
+
+Что покрыто хорошо:
+- структура проекта;
+- системная точка входа;
+- конфигурация;
+- backend API;
+- Google Sheets persistence layer;
+- scheduler;
+- bot architecture;
+- frontend core;
+- infra и docs.
+
+Что осталось на следующий проход:
+- детальный разбор длинных веток `internal/bot/admin_handlers.go`;
+- детальный разбор длинных веток `internal/bot/callbacks.go`;
+- полный аудит всех frontend tabs и мелких common-components;
+- уточнение части UX edge-cases вне Telegram;
+- оценка целостности старых бинарников и артефактов в корне (`server`, `wedding-bot`, `wedding-bot-test`).
+
+## 12. Итог первого прохода
+
+Проект уже достиг состояния «рабочий продукт», но пока не достиг состояния «надёжная платформа».
+
+Главный диагноз:
+- слишком много критичных инвариантов держится на Google Sheets;
+- слишком много доверия клиенту в игровом и identity-контуре;
+- слишком много mutable глобального состояния;
+- при этом код уже достаточно зрелый, чтобы следующий этап должен быть не про добавление фич любой ценой, а про стабилизацию ядра.
+
+Ключевой стратегический вывод:
+- ближайший выигрыш даст не косметический рефакторинг, а жёсткое усиление серверной authoritative логики, целостности Config/Sheets и безопасности identity/session.
