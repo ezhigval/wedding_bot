@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"wedding-bot/internal/google_sheets"
@@ -17,7 +18,6 @@ type BroadcastRecipientInfo struct {
 	UserID      int64
 	DisplayName string
 	Username    string
-	Selected    bool
 }
 
 // GetBroadcastRecipientsWithInfo получает список получателей с информацией
@@ -27,28 +27,179 @@ func GetBroadcastRecipientsWithInfo(ctx context.Context) ([]BroadcastRecipientIn
 		return nil, fmt.Errorf("ошибка получения гостей: %w", err)
 	}
 
-	var recipients []BroadcastRecipientInfo
+	return buildBroadcastRecipientsInfo(guests), nil
+}
+
+func buildBroadcastRecipientsInfo(guests []google_sheets.GuestInfo) []BroadcastRecipientInfo {
+	recipientsByID := make(map[int64]BroadcastRecipientInfo, len(guests))
+	order := make([]int64, 0, len(guests))
+
 	for _, guest := range guests {
-		if guest.UserID != "" {
-			userID, err := strconv.ParseInt(guest.UserID, 10, 64)
-			if err == nil {
-				recipients = append(recipients, BroadcastRecipientInfo{
-					UserID:      userID,
-					DisplayName: fmt.Sprintf("%s %s", guest.FirstName, guest.LastName),
-					Username:    guest.Username,
-					Selected:    false,
-				})
-			}
+		if guest.UserID == "" {
+			continue
+		}
+
+		userID, err := strconv.ParseInt(guest.UserID, 10, 64)
+		if err != nil || userID <= 0 {
+			continue
+		}
+
+		recipient, exists := recipientsByID[userID]
+		if !exists {
+			order = append(order, userID)
+			recipient = BroadcastRecipientInfo{UserID: userID}
+		}
+
+		displayName := strings.TrimSpace(fmt.Sprintf("%s %s", guest.FirstName, guest.LastName))
+		if displayName == "" {
+			displayName = guest.Username
+		}
+		if displayName == "" {
+			displayName = fmt.Sprintf("user_id %d", userID)
+		}
+
+		if recipient.DisplayName == "" {
+			recipient.DisplayName = displayName
+		}
+		if recipient.Username == "" {
+			recipient.Username = strings.TrimSpace(guest.Username)
+		}
+
+		recipientsByID[userID] = recipient
+	}
+
+	recipients := make([]BroadcastRecipientInfo, 0, len(order))
+	for _, userID := range order {
+		recipients = append(recipients, recipientsByID[userID])
+	}
+
+	return recipients
+}
+
+func recipientIDsFromInfo(recipients []BroadcastRecipientInfo) []int64 {
+	ids := make([]int64, 0, len(recipients))
+	for _, recipient := range recipients {
+		if recipient.UserID > 0 {
+			ids = append(ids, recipient.UserID)
 		}
 	}
 
-	return recipients, nil
+	return uniqueRecipientIDs(ids)
+}
+
+func uniqueRecipientIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	seen := make(map[int64]struct{}, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
+}
+
+func containsRecipientID(ids []int64, target int64) bool {
+	for _, id := range ids {
+		if id == target {
+			return true
+		}
+	}
+
+	return false
+}
+
+func addRecipientID(ids []int64, target int64) []int64 {
+	if target <= 0 || containsRecipientID(ids, target) {
+		return uniqueRecipientIDs(ids)
+	}
+
+	return append(uniqueRecipientIDs(ids), target)
+}
+
+func removeRecipientID(ids []int64, target int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id != target {
+			result = append(result, id)
+		}
+	}
+
+	return uniqueRecipientIDs(result)
+}
+
+func filterRecipientIDsByAvailable(ids []int64, recipients []BroadcastRecipientInfo) []int64 {
+	if len(ids) == 0 || len(recipients) == 0 {
+		return nil
+	}
+
+	allowed := make(map[int64]struct{}, len(recipients))
+	for _, recipient := range recipients {
+		allowed[recipient.UserID] = struct{}{}
+	}
+
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			result = append(result, id)
+		}
+	}
+
+	return uniqueRecipientIDs(result)
+}
+
+func ensureBroadcastRecipientsLoaded(ctx context.Context, state *BroadcastState) error {
+	if state == nil {
+		return fmt.Errorf("состояние рассылки не найдено")
+	}
+	if len(state.AvailableRecipients) > 0 {
+		return nil
+	}
+
+	recipients, err := GetBroadcastRecipientsWithInfo(ctx)
+	if err != nil {
+		return err
+	}
+
+	state.AvailableRecipients = recipients
+	state.Recipients = filterRecipientIDsByAvailable(state.Recipients, recipients)
+	return nil
 }
 
 // ShowRecipientsSelectionPage показывает страницу выбора получателей
-func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, recipients []BroadcastRecipientInfo, page int, selectedCount int) {
+func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, state *BroadcastState, page int) {
+	recipients := state.AvailableRecipients
 	const itemsPerPage = 8
 	totalPages := (len(recipients) + itemsPerPage - 1) / itemsPerPage
+	if totalPages == 0 {
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "⚠️ В базе гостей пока нет ни одного получателя с user_id.")
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
 
 	start := page * itemsPerPage
 	end := start + itemsPerPage
@@ -61,14 +212,14 @@ func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 		"📝 <b>Выбор получателей вручную</b>\n\n"+
 			"Всего гостей с user_id: <b>%d</b>\n"+
 			"Выбрано: <b>%d</b>\n\n",
-		len(recipients), selectedCount,
+		len(recipients), len(uniqueRecipientIDs(state.Recipients)),
 	)
 
 	// Добавляем список гостей на текущей странице
 	for i := start; i < end; i++ {
 		recipient := recipients[i]
 		status := "⭕"
-		if recipient.Selected {
+		if containsRecipientID(state.Recipients, recipient.UserID) {
 			status = "✅"
 		}
 		msgText += fmt.Sprintf("%s %s", status, recipient.DisplayName)
@@ -93,9 +244,9 @@ func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 			buttonText = buttonText[:17] + "..."
 		}
 
-		callbackData := fmt.Sprintf("broadcast:select:%d", recipient.UserID)
-		if recipient.Selected {
-			callbackData = fmt.Sprintf("broadcast:deselect:%d", recipient.UserID)
+		callbackData := fmt.Sprintf("broadcast:select:%d:%d", recipient.UserID, page)
+		if containsRecipientID(state.Recipients, recipient.UserID) {
+			callbackData = fmt.Sprintf("broadcast:deselect:%d:%d", recipient.UserID, page)
 		}
 
 		rowIndex := len(keyboardRows) - 1
@@ -107,10 +258,10 @@ func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 	var navRow []tgbotapi.InlineKeyboardButton
 
 	// Кнопка "Выбрать всех"
-	if selectedCount < len(recipients) {
-		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("✅ Выбрать всех", "broadcast:select_all"))
+	if len(uniqueRecipientIDs(state.Recipients)) < len(recipients) {
+		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("✅ Выбрать всех", fmt.Sprintf("broadcast:select_all:%d", page)))
 	} else {
-		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("❌ Снять все", "broadcast:deselect_all"))
+		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("❌ Снять все", fmt.Sprintf("broadcast:deselect_all:%d", page)))
 	}
 
 	// Пагинация
@@ -124,7 +275,7 @@ func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 	keyboardRows = append(keyboardRows, navRow)
 
 	// Кнопки действий
-	if selectedCount > 0 {
+	if len(uniqueRecipientIDs(state.Recipients)) > 0 {
 		keyboardRows = append(keyboardRows, []tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📨 Отправить выбранным", "broadcast:send_selected"),
 		})
@@ -153,7 +304,7 @@ func ShowRecipientsSelectionPage(bot *tgbotapi.BotAPI, callback *tgbotapi.Callba
 }
 
 // HandleRecipientsSelection обрабатывает выбор получателей
-func HandleRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, action string, userID int64) {
+func HandleRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, action string, userID int64, page int) {
 	state := GetBroadcastState(callback.From.ID)
 	if state == nil {
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
@@ -163,8 +314,7 @@ func HandleRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.Callback
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recipients, err := GetBroadcastRecipientsWithInfo(ctx)
-	if err != nil {
+	if err := ensureBroadcastRecipientsLoaded(ctx, state); err != nil {
 		log.Printf("Ошибка получения получателей: %v", err)
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка получения списка получателей")
 		bot.Send(msg)
@@ -174,68 +324,36 @@ func HandleRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.Callback
 
 	switch action {
 	case "select":
-		// Выбор конкретного пользователя
-		for i := range recipients {
-			if recipients[i].UserID == userID {
-				recipients[i].Selected = true
-				break
-			}
-		}
-		ShowRecipientsSelectionPage(bot, callback, recipients, 0, countSelected(recipients))
+		state.TestOnly = false
+		state.Recipients = addRecipientID(state.Recipients, userID)
+		ShowRecipientsSelectionPage(bot, callback, state, page)
 
 	case "deselect":
-		// Снятие выбора с пользователя
-		for i := range recipients {
-			if recipients[i].UserID == userID {
-				recipients[i].Selected = false
-				break
-			}
-		}
-		ShowRecipientsSelectionPage(bot, callback, recipients, 0, countSelected(recipients))
+		state.TestOnly = false
+		state.Recipients = removeRecipientID(state.Recipients, userID)
+		ShowRecipientsSelectionPage(bot, callback, state, page)
 
 	case "select_all":
-		// Выбрать всех
-		for i := range recipients {
-			recipients[i].Selected = true
-		}
-		ShowRecipientsSelectionPage(bot, callback, recipients, 0, len(recipients))
+		state.TestOnly = false
+		state.Recipients = recipientIDsFromInfo(state.AvailableRecipients)
+		ShowRecipientsSelectionPage(bot, callback, state, page)
 
 	case "deselect_all":
-		// Снять выбор со всех
-		for i := range recipients {
-			recipients[i].Selected = false
-		}
-		ShowRecipientsSelectionPage(bot, callback, recipients, 0, 0)
+		state.TestOnly = false
+		state.Recipients = nil
+		ShowRecipientsSelectionPage(bot, callback, state, page)
 
 	case "send_selected":
-		// Отправить выбранным
-		var selectedIDs []int64
-		for _, recipient := range recipients {
-			if recipient.Selected {
-				selectedIDs = append(selectedIDs, recipient.UserID)
-			}
-		}
-
-		if len(selectedIDs) == 0 {
+		state.TestOnly = false
+		state.Recipients = filterRecipientIDsByAvailable(state.Recipients, state.AvailableRecipients)
+		if len(state.Recipients) == 0 {
 			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Никто не выбран")
 			bot.Send(msg)
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
 
-		// Сохраняем выбранных получателей в состояние
-		state.Recipients = selectedIDs
 		state.Step = "preview"
 		showBroadcastPreview(bot, callback, state)
 	}
-}
-
-func countSelected(recipients []BroadcastRecipientInfo) int {
-	count := 0
-	for _, recipient := range recipients {
-		if recipient.Selected {
-			count++
-		}
-	}
-	return count
 }

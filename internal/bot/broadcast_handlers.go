@@ -3,7 +3,9 @@ package bot
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -11,6 +13,16 @@ import (
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/keyboards"
 )
+
+func broadcastCancelInlineKeyboard() *tgbotapi.InlineKeyboardMarkup {
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
+		),
+	)
+
+	return &keyboard
+}
 
 // handleAdminBroadcastDM запускает рассылку в ЛС
 func handleAdminBroadcastDM(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
@@ -64,7 +76,8 @@ func handleAdminBroadcastDM(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			adminInfo+
 			"\n\n"+
 			"📝 <b>Шаг 1/5: Текст сообщения</b>\n\n"+
-			"Отправьте текст сообщения, которое получат гости.",
+			"Отправьте текст сообщения, которое получат гости.\n"+
+			"Можно сразу прислать фото или видео с подписью.",
 		total,
 	)
 
@@ -144,37 +157,63 @@ func handleBroadcastText(bot *tgbotapi.BotAPI, message *tgbotapi.Message, text s
 
 // showBroadcastButtonSelection показывает выбор кнопок для рассылки
 func showBroadcastButtonSelection(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state *BroadcastState) {
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔘 Без кнопки", "broadcast:btn:none"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💒 Открыть мини-эпп", "broadcast:btn:miniapp"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💬 Открыть общий чат", "broadcast:btn:group"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("💒 Добавить мини-эпп", "broadcast:btn:miniapp"),
+			tgbotapi.NewInlineKeyboardButtonData("💬 Добавить общий чат", "broadcast:btn:group"),
+		},
+		{
 			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить свою кнопку", "broadcast:btn:custom"),
-		),
+		},
+	}
+
+	if len(state.Buttons) > 0 {
+		rows = append(rows,
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("➡️ К получателям", "broadcast:btn:done"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🗑 Очистить кнопки", "broadcast:btn:clear"),
+			),
+		)
+	} else {
+		rows = append(rows,
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔘 Продолжить без кнопок", "broadcast:btn:none"),
+			),
+		)
+	}
+
+	rows = append(rows,
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "broadcast:cancel"),
 		),
 	)
 
-	var msgText string
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	var statusText string
 	if state.PhotoID != "" {
-		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
-			"Фото добавлено!\n\n" +
-			"Хотите добавить кнопку к сообщению?"
+		statusText = "Фото добавлено."
 	} else if state.VideoID != "" {
-		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
-			"Видео добавлено!\n\n" +
-			"Хотите добавить кнопку к сообщению?"
+		statusText = "Видео добавлено."
 	} else {
-		msgText = "📨 <b>Шаг 3/5: Кнопки</b>\n\n" +
-			"Хотите добавить кнопку к сообщению?"
+		statusText = "Текст сообщения сохранён."
 	}
+
+	buttonsSummary := "Пока без кнопок."
+	if len(state.Buttons) > 0 {
+		lines := make([]string, 0, len(state.Buttons))
+		for idx, button := range state.Buttons {
+			lines = append(lines, fmt.Sprintf("%d. <b>%s</b>", idx+1, html.EscapeString(button.Text)))
+		}
+		buttonsSummary = "Текущие кнопки:\n" + strings.Join(lines, "\n")
+	}
+
+	msgText := "📨 <b>Шаг 3/5: Кнопки и ссылки</b>\n\n" +
+		statusText + "\n\n" +
+		"Здесь можно собрать одну или несколько кнопок для сообщения.\n\n" +
+		buttonsSummary
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	msg.ParseMode = tgbotapi.ModeHTML
@@ -228,29 +267,42 @@ func handleBroadcastButton(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 
 	switch buttonType {
 	case "none":
-		state.ButtonText = ""
-		state.ButtonURL = ""
+		clearBroadcastButtons(state)
 		state.Step = "recipients"
 		showRecipientsSelection(bot, callback, state)
 	case "miniapp":
-		state.ButtonText = "💒 Открыть приглашение"
-		state.ButtonURL = config.WebappURL // WebApp URL
-		state.Step = "recipients"
-		showRecipientsSelection(bot, callback, state)
+		if err := validateBroadcastButtonURL(config.WebappURL); err != nil {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		addBroadcastButton(state, "💒 Открыть приглашение", config.WebappURL)
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, callback.Message, state)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "group":
-		state.ButtonText = "💬 Общий чат"
-		state.ButtonURL = config.GroupLink // URL из config
-		state.Step = "recipients"
-		showRecipientsSelection(bot, callback, state)
+		if err := validateBroadcastButtonURL(config.GroupLink); err != nil {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		addBroadcastButton(state, "💬 Общий чат", config.GroupLink)
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, callback.Message, state)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "custom":
 		state.Step = "custom_button"
-		msgText := "📨 <b>Добавить свою кнопку</b>\n\n" +
-			"Отправьте текст кнопки в формате:\n" +
-			"<code>Текст кнопки|URL</code>\n\n" +
-			"Пример: <code>Открыть сайт|https://example.com</code>"
-		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, msgText)
-		msg.ParseMode = tgbotapi.ModeHTML
-		bot.Send(msg)
+		promptCustomBroadcastButton(bot, callback.Message.Chat.ID)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	case "done":
+		state.Step = "recipients"
+		showRecipientsSelection(bot, callback, state)
+	case "clear":
+		clearBroadcastButtons(state)
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, callback.Message, state)
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	default:
 		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Неизвестный тип кнопки")
@@ -264,6 +316,9 @@ func showRecipientsSelection(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🌐 Всем гостям", "broadcast:recipients:all"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧪 Только себе", "broadcast:recipients:self"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Выбрать вручную", "broadcast:recipients:select"),
@@ -292,6 +347,9 @@ func showRecipientsSelectionFromMessage(bot *tgbotapi.BotAPI, message *tgbotapi.
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🌐 Всем гостям", "broadcast:recipients:all"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧪 Только себе", "broadcast:recipients:self"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Выбрать вручную", "broadcast:recipients:select"),
@@ -326,8 +384,11 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 	// Определяем количество получателей
 	var total int
 	var recipientText string
-	if len(state.Recipients) > 0 {
-		total = len(state.Recipients)
+	if state.TestOnly {
+		total = 1
+		recipientText = "только вам (тестовый режим)"
+	} else if len(state.Recipients) > 0 {
+		total = len(uniqueRecipientIDs(state.Recipients))
 		recipientText = fmt.Sprintf("%d выбранных получателей", total)
 	} else {
 		total = len(allRecipients)
@@ -335,16 +396,7 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 	}
 
 	// Создаем клавиатуру для превью
-	var previewKeyboard *tgbotapi.InlineKeyboardMarkup
-	if state.ButtonText != "" {
-		previewKeyboard = &tgbotapi.InlineKeyboardMarkup{
-			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-				{
-					tgbotapi.NewInlineKeyboardButtonURL(state.ButtonText, state.ButtonURL),
-				},
-			},
-		}
-	}
+	previewKeyboard := broadcastReplyMarkup(state)
 
 	// Отправляем превью
 	if state.VideoID != "" {
@@ -429,8 +481,11 @@ func handleBroadcastSendConfirm(bot *tgbotapi.BotAPI, callback *tgbotapi.Callbac
 
 	// Определяем количество получателей
 	var total int
-	if len(state.Recipients) > 0 {
-		total = len(state.Recipients)
+	if state.TestOnly {
+		state.Recipients = []int64{userID}
+		total = 1
+	} else if len(state.Recipients) > 0 {
+		total = len(uniqueRecipientIDs(state.Recipients))
 	} else {
 		total = len(allRecipients)
 	}
@@ -493,4 +548,29 @@ func handleBroadcastCancel(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 	editMsg.ReplyMarkup = &keyboard
 	bot.Send(editMsg)
 	bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+}
+
+func promptCustomBroadcastButton(bot *tgbotapi.BotAPI, chatID int64) {
+	msgText := "📨 <b>Добавить свою кнопку</b>\n\n" +
+		"Отправьте одну кнопку в формате:\n" +
+		"<code>Текст кнопки|URL</code>\n\n" +
+		"Пример: <code>Открыть сайт|https://example.com</code>\n\n" +
+		"После добавления можно будет прикрепить ещё кнопки или перейти к выбору получателей."
+
+	msg := tgbotapi.NewMessage(chatID, msgText)
+	msg.ParseMode = tgbotapi.ModeHTML
+	msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+	bot.Send(msg)
+}
+
+func validateBroadcastButtonURL(buttonURL string) error {
+	cleanURL := strings.TrimSpace(buttonURL)
+	if cleanURL == "" {
+		return fmt.Errorf("ссылка для кнопки не настроена")
+	}
+	if !strings.HasPrefix(cleanURL, "http://") && !strings.HasPrefix(cleanURL, "https://") {
+		return fmt.Errorf("ссылка для кнопки должна начинаться с http:// или https://")
+	}
+
+	return nil
 }

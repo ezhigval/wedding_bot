@@ -745,13 +745,25 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 	state := GetBroadcastState(userID)
 
 	action := parts[0]
+	if action != "cancel" && state == nil {
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка: состояние рассылки потеряно")
+		bot.Send(msg)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
 
 	switch action {
 	case "cancel":
 		handleBroadcastCancel(bot, callback)
 	case "test_self":
-		// Устанавливаем получателя только себя
+		state.TestOnly = true
 		state.Recipients = []int64{userID}
+		if state.Step == "text" {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "🧪 Тестовый режим включён. Сообщение будет отправлено только вам. Теперь отправьте текст сообщения.")
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
 		state.Step = "preview"
 		showBroadcastPreview(bot, callback, state)
 	case "media":
@@ -762,9 +774,27 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 		mediaType := parts[1]
 		if mediaType == "skip" {
 			state.Step = "button"
-			showRecipientsSelection(bot, callback, state)
+			message := &tgbotapi.Message{
+				Chat: callback.Message.Chat,
+			}
+			showBroadcastButtonSelection(bot, message, state)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
 		}
-		// фото и видео обрабатываются в основном обработчике сообщений
+		if mediaType == "photo" {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "🖼️ Отправьте фото для рассылки. Подпись можно не добавлять: текст уже сохранён.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		if mediaType == "video" {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "🎥 Отправьте видео для рассылки. Подпись можно не добавлять: текст уже сохранён.")
+			msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	case "btn":
 		if len(parts) < 2 {
@@ -780,6 +810,13 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 		}
 		recipientsType := parts[1]
 		if recipientsType == "all" {
+			state.TestOnly = false
+			state.Recipients = nil
+			state.Step = "preview"
+			showBroadcastPreview(bot, callback, state)
+		} else if recipientsType == "self" {
+			state.TestOnly = true
+			state.Recipients = []int64{userID}
 			state.Step = "preview"
 			showBroadcastPreview(bot, callback, state)
 		} else if recipientsType == "select" {
@@ -787,8 +824,8 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			recipients, err := GetBroadcastRecipientsWithInfo(ctx)
-			if err != nil {
+			state.TestOnly = false
+			if err := ensureBroadcastRecipientsLoaded(ctx, state); err != nil {
 				log.Printf("Ошибка получения получателей: %v", err)
 				msg := tgbotapi.NewMessage(callback.Message.Chat.ID, "❌ Ошибка получения списка получателей")
 				bot.Send(msg)
@@ -796,28 +833,37 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 				return
 			}
 
-			ShowRecipientsSelectionPage(bot, callback, recipients, 0, 0)
+			state.Recipients = filterRecipientIDsByAvailable(state.Recipients, state.AvailableRecipients)
+			ShowRecipientsSelectionPage(bot, callback, state, 0)
 		}
 	case "select", "deselect", "select_all", "deselect_all", "send_selected":
+		page := 0
+		if (action == "select_all" || action == "deselect_all") && len(parts) > 1 {
+			if _, err := fmt.Sscanf(parts[1], "%d", &page); err != nil {
+				page = 0
+			}
+		}
+		if action == "send_selected" || action == "select_all" || action == "deselect_all" {
+			HandleRecipientsSelection(bot, callback, action, 0, page)
+			return
+		}
 		if len(parts) < 2 {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
 
-		var userID int64
-		if parts[0] == "select" || parts[0] == "deselect" {
-			if len(parts) < 3 {
-				bot.Request(tgbotapi.NewCallback(callback.ID, ""))
-				return
-			}
-			// Парсим user_id из callback data
-			if _, err := fmt.Sscanf(parts[2], "%d", &userID); err != nil {
-				bot.Request(tgbotapi.NewCallback(callback.ID, ""))
-				return
+		var selectedUserID int64
+		if _, err := fmt.Sscanf(parts[1], "%d", &selectedUserID); err != nil {
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		if len(parts) > 2 {
+			if _, err := fmt.Sscanf(parts[2], "%d", &page); err != nil {
+				page = 0
 			}
 		}
 
-		HandleRecipientsSelection(bot, callback, parts[0], userID)
+		HandleRecipientsSelection(bot, callback, parts[0], selectedUserID, page)
 	case "page":
 		if len(parts) < 2 {
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
@@ -833,14 +879,13 @@ func handleBroadcastCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQu
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		recipients, err := GetBroadcastRecipientsWithInfo(ctx)
-		if err != nil {
+		if err := ensureBroadcastRecipientsLoaded(ctx, state); err != nil {
 			log.Printf("Ошибка получения получателей: %v", err)
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
 
-		ShowRecipientsSelectionPage(bot, callback, recipients, page, countSelected(recipients))
+		ShowRecipientsSelectionPage(bot, callback, state, page)
 	case "send":
 		if len(parts) > 1 && parts[1] == "confirm" {
 			handleBroadcastSendConfirm(bot, callback)

@@ -2,25 +2,25 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
-	"wedding-bot/internal/google_sheets"
 )
 
 // BroadcastState хранит состояние рассылки для пользователя
 type BroadcastState struct {
-	Text       string
-	PhotoID    string
-	VideoID    string
-	ButtonURL  string
-	ButtonText string
-	Recipients []int64 // пустой = всем, иначе список конкретных user_id
-	Step       string  // текущий шаг: "text", "media", "button", "recipients", "preview"
+	Text                string
+	PhotoID             string
+	VideoID             string
+	ButtonURL           string
+	ButtonText          string
+	Buttons             []tgbotapi.InlineKeyboardButton
+	Recipients          []int64 // пустой = всем, иначе список конкретных user_id
+	AvailableRecipients []BroadcastRecipientInfo
+	Step                string // текущий шаг: "text", "media", "button", "recipients", "preview"
+	TestOnly            bool
 }
 
 var (
@@ -51,23 +51,12 @@ func ClearBroadcastState(userID int64) {
 
 // GetBroadcastRecipients получает список получателей для рассылки
 func GetBroadcastRecipients(ctx context.Context) ([]int64, error) {
-	guests, err := google_sheets.GetAllGuestsFromSheets(ctx)
+	recipients, err := GetBroadcastRecipientsWithInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var recipients []int64
-	for _, guest := range guests {
-		if guest.UserID != "" {
-			// Парсим user_id из строки
-			var userID int64
-			if _, err := fmt.Sscanf(guest.UserID, "%d", &userID); err == nil {
-				recipients = append(recipients, userID)
-			}
-		}
-	}
-
-	return recipients, nil
+	return recipientIDsFromInfo(recipients), nil
 }
 
 // SendBroadcast отправляет рассылку всем получателям
@@ -75,23 +64,14 @@ func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int
 	// Если указаны конкретные получатели, используем их, иначе всех
 	var targetRecipients []int64
 	if len(state.Recipients) > 0 {
-		targetRecipients = state.Recipients
+		targetRecipients = uniqueRecipientIDs(state.Recipients)
 	} else {
-		targetRecipients = recipients
+		targetRecipients = uniqueRecipientIDs(recipients)
 	}
 
 	for _, userID := range targetRecipients {
 		// Создаем клавиатуру если есть кнопка
-		var keyboard *tgbotapi.InlineKeyboardMarkup
-		if state.ButtonText != "" && state.ButtonURL != "" {
-			keyboard = &tgbotapi.InlineKeyboardMarkup{
-				InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-					{
-						tgbotapi.NewInlineKeyboardButtonURL(state.ButtonText, state.ButtonURL),
-					},
-				},
-			}
-		}
+		keyboard := broadcastReplyMarkup(state)
 
 		// Отправляем сообщение
 		var err error
@@ -134,4 +114,77 @@ func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int
 	}
 
 	return sent, failed
+}
+
+func broadcastReplyMarkup(state *BroadcastState) *tgbotapi.InlineKeyboardMarkup {
+	if state == nil {
+		return nil
+	}
+
+	buttons := state.Buttons
+	if len(buttons) == 0 && state.ButtonText != "" && state.ButtonURL != "" {
+		buttons = []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonURL(state.ButtonText, state.ButtonURL),
+		}
+	}
+	if len(buttons) == 0 {
+		return nil
+	}
+
+	replyMarkup := tgbotapi.NewInlineKeyboardMarkup(broadcastButtonRows(buttons)...)
+	return &replyMarkup
+}
+
+func broadcastButtonRows(buttons []tgbotapi.InlineKeyboardButton) [][]tgbotapi.InlineKeyboardButton {
+	if len(buttons) == 0 {
+		return nil
+	}
+
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, (len(buttons)+1)/2)
+	for i := 0; i < len(buttons); i += 2 {
+		end := i + 2
+		if end > len(buttons) {
+			end = len(buttons)
+		}
+
+		row := make([]tgbotapi.InlineKeyboardButton, 0, end-i)
+		row = append(row, buttons[i:end]...)
+		rows = append(rows, row)
+	}
+
+	return rows
+}
+
+func clearBroadcastButtons(state *BroadcastState) {
+	if state == nil {
+		return
+	}
+
+	state.ButtonText = ""
+	state.ButtonURL = ""
+	state.Buttons = nil
+}
+
+func addBroadcastButton(state *BroadcastState, buttonText string, buttonURL string) {
+	if state == nil || buttonText == "" || buttonURL == "" {
+		return
+	}
+
+	for _, existing := range state.Buttons {
+		if existing.Text == buttonText && broadcastButtonURL(existing) == buttonURL {
+			return
+		}
+	}
+
+	state.Buttons = append(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL(buttonText, buttonURL))
+	state.ButtonText = ""
+	state.ButtonURL = ""
+}
+
+func broadcastButtonURL(button tgbotapi.InlineKeyboardButton) string {
+	if button.URL == nil {
+		return ""
+	}
+
+	return *button.URL
 }

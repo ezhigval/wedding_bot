@@ -313,6 +313,13 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		// Проверяем, есть ли активная рассылка
 		state := GetBroadcastState(userID)
 		if state != nil {
+			normalizedText := strings.TrimSpace(strings.ToLower(text))
+			if normalizedText == "отмена" || normalizedText == "/cancel" {
+				ClearBroadcastState(userID)
+				handleAdminPanel(bot, message)
+				return
+			}
+
 			switch state.Step {
 			case "text":
 				// Ожидаем текст
@@ -328,7 +335,9 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 					handleBroadcastVideo(bot, message, message.Video.FileID)
 					return
 				}
-				// Игнорируем текст на этом шаге
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается фото или видео. Можно нажать «Пропустить» или «Отмена» в предыдущем сообщении.")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
 				return
 			case "custom_button":
 				// Ожидаем текст кастомной кнопки
@@ -339,29 +348,46 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 						buttonURL := strings.TrimSpace(parts[1])
 
 						// Базовая валидация URL
-						if !strings.HasPrefix(buttonURL, "http://") && !strings.HasPrefix(buttonURL, "https://") {
-							msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный URL. Используйте формат: <code>Текст кнопки|https://example.com</code>")
+						if err := validateBroadcastButtonURL(buttonURL); err != nil {
+							msg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("❌ %s\nИспользуйте формат: <code>Текст кнопки|https://example.com</code>", err.Error()))
 							msg.ParseMode = tgbotapi.ModeHTML
+							msg.ReplyMarkup = broadcastCancelInlineKeyboard()
 							bot.Send(msg)
 							return
 						}
 
 						if buttonText == "" {
 							msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Текст кнопки не может быть пустым")
+							msg.ReplyMarkup = broadcastCancelInlineKeyboard()
 							bot.Send(msg)
 							return
 						}
 
-						state.ButtonText = buttonText
-						state.ButtonURL = buttonURL
-						state.Step = "recipients"
-						showRecipientsSelectionFromMessage(bot, message, state)
+						addBroadcastButton(state, buttonText, buttonURL)
+						state.Step = "button"
+						showBroadcastButtonSelection(bot, message, state)
 						return
 					}
 				}
 				// Неверный формат
 				msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: <code>Текст кнопки|URL</code>")
 				msg.ParseMode = tgbotapi.ModeHTML
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
+				return
+			case "button":
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор кнопок через inline-меню ниже. Можно добавить ссылку, перейти к получателям или отменить рассылку.")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
+				return
+			case "recipients":
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас ожидается выбор получателей через inline-меню ниже. Можно выбрать всех, только себя, вручную или отменить рассылку.")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+				bot.Send(msg)
+				return
+			case "preview":
+				msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Сейчас открыт этап превью. Проверьте сообщение выше и выберите «Отправить» или «Отмена».")
+				msg.ReplyMarkup = broadcastCancelInlineKeyboard()
 				bot.Send(msg)
 				return
 			}
@@ -384,11 +410,26 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Проверяем, есть ли активная рассылка
 	if isAdmin {
 		state := GetBroadcastState(userID)
-		if state != nil && state.Step == "media" {
-			// Обрабатываем фото для рассылки
-			photoID := message.Photo[len(message.Photo)-1].FileID
-			handleBroadcastPhoto(bot, message, photoID)
-			return
+		if state != nil {
+			switch state.Step {
+			case "text":
+				if strings.TrimSpace(message.Caption) == "" {
+					msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к фото или сначала отправьте текст сообщения.")
+					msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+					bot.Send(msg)
+					return
+				}
+				state.Text = message.Caption
+				state.PhotoID = message.Photo[len(message.Photo)-1].FileID
+				state.VideoID = ""
+				state.Step = "button"
+				showBroadcastButtonSelection(bot, message, state)
+				return
+			case "media":
+				photoID := message.Photo[len(message.Photo)-1].FileID
+				handleBroadcastPhoto(bot, message, photoID)
+				return
+			}
 		}
 	}
 
@@ -444,6 +485,30 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 
 	userID := message.From.ID
+
+	if isAdminUser(int(userID)) {
+		state := GetBroadcastState(userID)
+		if state != nil {
+			switch state.Step {
+			case "text":
+				if strings.TrimSpace(message.Caption) == "" {
+					msg := tgbotapi.NewMessage(message.Chat.ID, "⚠️ Для рассылки добавьте подпись к видео или сначала отправьте текст сообщения.")
+					msg.ReplyMarkup = broadcastCancelInlineKeyboard()
+					bot.Send(msg)
+					return
+				}
+				state.Text = message.Caption
+				state.VideoID = message.Video.FileID
+				state.PhotoID = ""
+				state.Step = "button"
+				showBroadcastButtonSelection(bot, message, state)
+				return
+			case "media":
+				handleBroadcastVideo(bot, message, message.Video.FileID)
+				return
+			}
+		}
+	}
 
 	if !ensureAlbumMediaUploadAllowed(bot, message, "видео") {
 		return
