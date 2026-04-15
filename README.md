@@ -1,44 +1,30 @@
 # Wedding Bot
 
-Telegram-бот и Telegram Mini App для свадебного приглашения, RSVP, игр, фото, тайминга, рассадки и административного управления гостями.
+`Wedding Bot` — единый Go-сервис для Telegram-бота и Telegram Mini App. Приложение обслуживает приглашение на свадьбу, RSVP, игровые активности, тайминг, рассадку, фото/видео и административные сценарии, используя Google Sheets как основной операционный storage.
 
-Проект состоит из одного Go-сервиса, который:
+## Возможности
 
-- поднимает HTTP API;
-- обслуживает статический фронтенд Mini App;
-- запускает long polling Telegram-бота;
-- работает с Google Sheets как с основной бизнес-базой данных;
-- использует локальный кэш для снижения нагрузки на внешние источники.
+- Telegram-бот с пользовательскими и админскими сценариями.
+- Telegram Mini App с вкладками приглашения, RSVP, фото, играми, таймингом и рассадкой.
+- Регистрация гостей с поддержкой дополнительных гостей.
+- Проверка регистрации по `user_id`, `initData`, `username` и подписанной cookie-сессии.
+- Загрузка фото и видео в Google Drive с записью метаданных в Google Sheets.
+- Игры `Wordle`, `Crossword`, `Flappy Bird`, `Dragon` с рейтингом и прогрессом.
+- Публикация общей и персональной рассадки.
+- Ежедневный scheduler для reset игровых сценариев.
 
-## Что уже умеет проект
-
-- Регистрация гостей через Mini App и через Telegram-бота.
-- Добавление дополнительных гостей в рамках одной регистрации.
-- Проверка регистрации по `user_id`, `initData`, `username` и сессионной cookie.
-- Отмена регистрации.
-- Публичная часть приглашения: главная, тайминг, дресс-код, меню, пожелания, фото, рассадка.
-- Игры для гостей: `Dragon`, `Flappy Bird`, `Crossword`, `Wordle`.
-- Рейтинг, очки и звания игроков.
-- Сохранение игрового прогресса в Google Sheets.
-- Загрузка фото и видео из Mini App и из бота.
-- Админ-меню в Telegram: гости, рассадка, игры, группа, рассылки.
-- Отправка рассылок в личные сообщения и в группу.
-- Проверка участия пользователя в общем чате гостей.
-- Ежедневный планировщик сброса игровых активностей.
-- Базовый GitHub Actions CI для backend и frontend.
-
-## Технологический стек
+## Стек
 
 ### Backend
 
 - Go `1.24`
 - `gorilla/mux`
 - `go-telegram-bot-api`
-- Google Sheets API
-- SQLite (`modernc.org/sqlite`) для части кэша
+- Google Sheets API / Google Drive API
 - `zerolog`
 - `tollbooth`
 - `unrolled/secure`
+- SQLite (`modernc.org/sqlite`) для локального кэша
 
 ### Frontend
 
@@ -47,135 +33,110 @@ Telegram-бот и Telegram Mini App для свадебного приглаш�
 - Vite
 - Tailwind CSS
 - Framer Motion
-- Telegram WebApp SDK
+- `@tanstack/react-query`
 
 ## Структура репозитория
 
 ```text
 .
-├── cmd/server                # Точка входа Go-сервиса
-├── internal/api              # HTTP API, middleware, Telegram initData/auth
-├── internal/bot              # Telegram-бот и админские сценарии
-├── internal/cache            # In-memory и SQLite-кэш
-├── internal/config           # Конфигурация из env
-├── internal/daily_reset      # Планировщик и ежедневный сброс игровых активностей
-├── internal/google_sheets    # Основная бизнес-логика и доступ к данным
-├── internal/keyboards        # Reply/inline keyboards для бота
-├── webapp-react              # Исходники React Mini App
-├── webapp                    # Собранный фронтенд, который раздаёт Go-сервер
-├── res                       # Медиа-ресурсы
-└── docs                      # Актуальная документация по проекту
+├── cmd/
+│   ├── server               # основной entrypoint сервиса
+│   └── google_drive_oauth   # helper для получения Google Drive refresh token
+├── internal/
+│   ├── api                  # HTTP API, auth/initData, middleware
+│   ├── bot                  # Telegram bot и admin flows
+│   ├── cache                # memory/SQLite cache
+│   ├── config               # загрузка env и runtime config
+│   ├── daily_reset          # scheduler ежедневного reset
+│   ├── google_sheets        # доменная логика и доступ к Google Sheets/Drive
+│   └── keyboards            # Telegram keyboards
+├── docs                     # актуальная эксплуатационная документация
+├── res                      # runtime ресурсы
+├── webapp                   # собранный frontend bundle, который раздаёт Go-сервер
+├── webapp-react             # исходники frontend
+├── Dockerfile
+└── Makefile
 ```
 
-## Документация
-
-- [Архитектура](docs/ARCHITECTURE.md)
-- [Чек-лист деплоя](docs/DEPLOY_CHECKLIST.md)
-- [Правила проекта](docs/RULES.md)
-- [Роадмап](docs/ROADMAP.md)
-
-## Архитектура в одном абзаце
-
-Telegram-бот и Mini App используют общий Go-backend. Backend читает и пишет бизнес-данные в Google Sheets, обслуживает фронтенд из папки `webapp`, хранит часть промежуточных данных в памяти и SQLite, а также синхронизирует игровые механики и административные действия. Google Sheets в этом проекте выполняет роль операционной БД и панели контента одновременно.
-
-## Основные доменные сущности
-
-- Гость: имя, фамилия, сторона, категория, подтверждение участия, идентификатор Telegram.
-- Дополнительный гость: отдельная строка в `Список гостей`, привязанная к владельцу основной регистрации.
-- Приглашение: имя, Telegram username, `user_id`, статус отправки.
-- Игровой профиль: очки по играм, общий счёт, звание, дата обновления.
-- Wordle/Crossword прогресс: состояние по каждому игроку.
-- Тайминг: список публичных событий свадьбы.
-- Рассадка: опубликованный список столов из `Рассадка_фикс` и персональный поиск стола гостя.
-- Фото и видео: метаданные загрузки и ссылка на файл в Google Drive.
-
-## Переменные окружения
-
-Смотри полный шаблон в [.env.example](.env.example).
-
-Ключевые переменные:
-
-- `BOT_TOKEN` — токен Telegram-бота.
-- `GOOGLE_SHEETS_ID` — ID основной таблицы.
-- `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` — credentials сервисного аккаунта для Google Sheets.
-- `GOOGLE_DRIVE_FOLDER_ID` — ID папки Google Drive или полная ссылка на папку, куда складываются все загруженные фото.
-- `GOOGLE_DRIVE_OAUTH_CLIENT_ID`, `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`, `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` — OAuth-параметры обычного Google-аккаунта для загрузки файлов в личный Drive.
-- `WEBAPP_URL` — публичный URL Mini App.
-- `WEBAPP_PATH` — путь до собранного фронтенда, по умолчанию `webapp`.
-- `GROUP_ID` и `GROUP_LINK` — общий чат гостей.
-- `WEDDING_DATE`, `GROOM_NAME`, `BRIDE_NAME`, `WEDDING_ADDRESS` — публичные данные мероприятия.
-- `DEBUG` — дев-режим.
-
-## Минимальные требования
+## Требования
 
 - Go `1.24+`
-- Node.js `18+`
-- Доступ сервисного аккаунта Google к таблице
-- Включённый Google Drive API
-- Для загрузки в личный Google Drive: OAuth client id/secret и refresh token пользователя
+- Node.js `20.19+` или `22+`
+- npm `10+`
+- Доступ сервисного аккаунта Google к рабочей таблице
+- Включённые Google Sheets API и Google Drive API
 - Telegram bot token
 
-## Как получить Google Drive refresh token
+## Быстрый старт
 
-Если хотите проверять загрузку фото и видео в личный Google Drive через OAuth, проект умеет получить `refresh token` локально.
-
-1. Создайте OAuth client в Google Cloud.
-   Для локальной проверки проще всего использовать тип `Desktop app`.
-   Если используете тип `Web application`, добавьте redirect URI `http://127.0.0.1:8787/oauth2callback`.
-2. Заполните в `.env.local`:
-   `GOOGLE_DRIVE_OAUTH_CLIENT_ID`
-   `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`
-3. Запустите helper:
-
-```bash
-go run ./cmd/google_drive_oauth
-```
-
-4. Откройте URL из терминала, подтвердите доступ к Google Drive и дождитесь callback.
-5. Утилита напечатает готовое значение:
-
-```bash
-GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN=...
-```
-
-Если Google не вернул `refresh token`, значит он уже был выдан раньше для этой пары `client/user`. В этом случае отзовите доступ приложению в Google Account permissions и повторите запуск helper заново.
-
-## Локальный запуск
-
-### 1. Подготовить окружение
+### 1. Подготовить env
 
 ```bash
 cp .env.example .env.local
 ```
 
-Заполнить переменные в `.env.local`.
+Заполните `.env.local` рабочими значениями. Файл `.env.local` специально не должен попадать в Git.
 
 ### 2. Установить зависимости
 
 ```bash
-go mod download
-cd webapp-react
-npm install
-cd ..
+make deps
 ```
 
-### 3. Собрать фронтенд
+Альтернатива без `make`:
 
 ```bash
-cd webapp-react
-npm run build
-cd ..
+go mod download
+cd webapp-react && npm ci
 ```
 
-Сборка попадёт в папку `webapp/`, которую раздаёт Go-сервер.
+### 3. Собрать и проверить проект
+
+```bash
+make verify
+```
+
+Команда выполнит:
+
+- `go vet ./...`
+- `go test ./...`
+- `go build ./cmd/server`
+- `cd webapp-react && npm run lint`
+- `cd webapp-react && npm run build`
 
 ### 4. Запустить сервис
 
 ```bash
-go run ./cmd/server
+make run
 ```
 
-По умолчанию используется порт `10000`, если `PORT` не задан.
+По умолчанию сервис стартует на `http://localhost:10000`.
+
+## Переменные окружения
+
+Полный шаблон находится в [.env.example](.env.example).
+
+Ключевые переменные:
+
+- `BOT_TOKEN` — Telegram bot token.
+- `WEBAPP_URL` — публичный URL Mini App.
+- `GOOGLE_SHEETS_ID` — основная Google Sheets таблица.
+- `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` — credentials сервисного аккаунта.
+- `GOOGLE_DRIVE_FOLDER_ID` — папка Google Drive для фото и видео.
+- `GOOGLE_DRIVE_OAUTH_CLIENT_ID`, `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`, `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN` — опциональный OAuth контур для загрузки в личный Google Drive.
+- `GROUP_ID`, `GROUP_LINK` — настройки общего чата гостей.
+- `SEATING_API_TOKEN` — токен для защищённых операций с рассадкой.
+- `DEBUG=false` — production-default, включает verbose logging только в debug.
+
+## Получение Google Drive refresh token
+
+Если нужен OAuth-контур для загрузки в личный Google Drive:
+
+```bash
+go run ./cmd/google_drive_oauth
+```
+
+Helper поднимет локальный callback server, выведет auth URL и напечатает готовый `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN`.
 
 ## Docker
 
@@ -184,65 +145,25 @@ docker build -t wedding-bot .
 docker run --env-file .env.local -p 10000:10000 wedding-bot
 ```
 
-## Как устроено хранение данных
+Контейнер запускает только runtime-необходимые артефакты: бинарник, `webapp/`, `res/` и каталог `data/`.
 
-Основной источник правды — Google Sheets. В проекте используются вкладки:
+## Проверка качества
 
-- `Список гостей`
-- `Пригласительные`
-- `Админ бота`
-- `Публичная План-сетка`
-- `Рассадка`
-- `Рассадка_фикс`
-- `Игры`
-- `Wordle`
-- `Wordle_Прогресс`
-- `Wordle_Состояние`
-- `Кроссворд`
-- `Кроссворд_Прогресс`
-- `Фото`
-- `Config`
+Локально подтверждены:
 
-Часть этих листов создаётся автоматически через `EnsureRequiredSheets`.
+- `go test ./cmd/... ./internal/...`
+- `go test -race ./cmd/... ./internal/...`
+- `go vet ./cmd/... ./internal/...`
+- `go build ./cmd/server`
+- `cd webapp-react && npm run lint`
+- `cd webapp-react && npm run build`
+- `cd webapp-react && npm audit --omit=dev`
 
-## API высокого уровня
+## Документация
 
-Публичные и клиентские endpoint'ы:
-
-- `GET /health`
-- `GET /api/config`
-- `POST /api/parse-init-data`
-- `POST /api/check-registration`
-- `POST /api/register`
-- `POST /api/cancel-registration`
-- `GET /api/guests`
-- `GET /api/stats`
-- `GET /api/timeline`
-- `POST /api/upload-photo` — загрузка фото и видео из Mini App
-- `GET /api/game-stats`
-- `POST /api/update-game-score`
-- `GET /api/wordle/*`
-- `POST /api/wordle/*`
-- `GET /api/crossword/*`
-- `POST /api/crossword/*`
-- `GET /api/seating/info`
-- `GET /api/seating/personal`
-
-Контракт рассадки для Mini App:
-
-- `/api/seating/info` возвращает `{ visible, published_at, tables }`, где `tables` — массив объектов `{ table, guests }`.
-- `/api/seating/personal` возвращает `{ visible, published_at, table, neighbors, full_name }` для персонального места гостя.
-
-Подробности и потоки есть в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Текущее состояние проекта
-
-Проект уже покрывает основной пользовательский сценарий свадебного приглашения и игровой активности, но остаётся зоной активной разработки. Главные технические фокусы сейчас:
-
-- стабилизация identity/auth между Telegram и браузерным режимом;
-- завершение ежедневного сброса игровых сценариев;
-- повышение предсказуемости Google Sheets как хранилища;
-- рост покрытия тестами;
-- формализация правил эксплуатации и разработки.
-
-Подробный план зафиксирован в [docs/ROADMAP.md](docs/ROADMAP.md).
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [docs/RULES.md](docs/RULES.md)
