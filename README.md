@@ -87,7 +87,7 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - Wordle/Crossword прогресс: состояние по каждому игроку.
 - Тайминг: список публичных событий свадьбы.
 - Рассадка: опубликованный список столов из `Рассадка_фикс` и персональный поиск стола гостя.
-- Фото: метаданные и идентификатор/полезная нагрузка изображения.
+- Фото: метаданные загрузки и ссылка на файл в Google Drive.
 
 ## Переменные окружения
 
@@ -98,6 +98,7 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - `BOT_TOKEN` — токен Telegram-бота.
 - `GOOGLE_SHEETS_ID` — ID основной таблицы.
 - `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` — credentials сервисного аккаунта.
+- `GOOGLE_DRIVE_FOLDER_ID` — ID папки Google Drive, куда складываются все загруженные фото.
 - `WEBAPP_URL` — публичный URL Mini App.
 - `WEBAPP_PATH` — путь до собранного фронтенда, по умолчанию `webapp`.
 - `GROUP_ID` и `GROUP_LINK` — общий чат гостей.
@@ -109,6 +110,7 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - Go `1.24+`
 - Node.js `18+`
 - Доступ сервисного аккаунта Google к таблице
+- Включённый Google Drive API и доступ сервисного аккаунта к папке Drive
 - Telegram bot token
 
 ## Локальный запуск

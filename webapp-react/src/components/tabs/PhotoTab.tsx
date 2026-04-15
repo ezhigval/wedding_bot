@@ -9,53 +9,75 @@ import { showAlert, hapticFeedback, getInitData } from '../../utils/telegram'
 import { useUser } from '../../contexts/UserContext'
 import type { Config } from '../../types'
 
+type PhotoSource = 'webapp_camera' | 'webapp_gallery'
+
 export default function PhotoTab() {
   const { isRegistered, isLoading } = useRegistration()
   const { userId, manualUsername } = useUser()
   const [config, setConfig] = useState<Config | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedSource, setSelectedSource] = useState<PhotoSource>('webapp_gallery')
   const [isUploading, setIsUploading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadConfig().then(setConfig)
   }, [])
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const resetSelectedPhoto = () => {
+    setPhotoPreview(null)
+    setSelectedFile(null)
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = ''
+    }
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = ''
+    }
+  }
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>, source: PhotoSource) => {
+    const file = event.target.files?.[0]
     if (!file) return
 
-    // Проверяем тип файла
     if (!file.type.startsWith('image/')) {
       showAlert('Пожалуйста, выберите изображение')
       hapticFeedback('medium')
+      event.target.value = ''
       return
     }
 
-    // Проверяем размер (макс 10MB)
     if (file.size > 10 * 1024 * 1024) {
       showAlert('Размер файла не должен превышать 10MB')
       hapticFeedback('medium')
+      event.target.value = ''
       return
     }
 
-    // Создаем превью
     const reader = new FileReader()
-    reader.onload = (event) => {
-      setPhotoPreview(event.target?.result as string)
+    reader.onload = (loadEvent) => {
+      setSelectedFile(file)
+      setSelectedSource(source)
+      setPhotoPreview(loadEvent.target?.result as string)
       hapticFeedback('light')
     }
     reader.readAsDataURL(file)
   }
 
-  const handleCapture = () => {
-    fileInputRef.current?.click()
+  const openCamera = () => {
+    cameraInputRef.current?.click()
+    hapticFeedback('light')
+  }
+
+  const openGallery = () => {
+    galleryInputRef.current?.click()
     hapticFeedback('light')
   }
 
   const handleUpload = async () => {
-    if (!photoPreview) return
+    if (!selectedFile) return
 
     setIsUploading(true)
     hapticFeedback('medium')
@@ -67,38 +89,41 @@ export default function PhotoTab() {
         hapticFeedback('heavy')
         return
       }
+
+      const formData = new FormData()
+      formData.append('photo', selectedFile)
+      formData.append('source', selectedSource)
+      if (selectedFile.name) {
+        formData.append('fileName', selectedFile.name)
+      }
+      if (userId) {
+        formData.append('userId', String(userId))
+      }
+      if (manualUsername) {
+        formData.append('username', manualUsername)
+      }
+      if (initData) {
+        formData.append('initData', initData)
+      }
+
       const response = await fetch(`${config?.apiUrl || '/api'}/upload-photo`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: userId || 0,
-          username: manualUsername || '',
-          photoData: photoPreview, // base64 строка
-          initData,
-        }),
+        body: formData,
       })
 
       const data = await response.json()
 
       if (response.ok && data.success) {
         setIsSuccess(true)
-        setPhotoPreview(null)
+        resetSelectedPhoto()
         hapticFeedback('heavy')
         showAlert('📸 Фото успешно сохранено в свадебный альбом! 🙌')
-        
-        // Сбрасываем input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''
-        }
-        
-        // Через 3 секунды скрываем сообщение об успехе
+
         setTimeout(() => {
           setIsSuccess(false)
         }, 3000)
       } else {
-        showAlert(data.error || 'Не удалось загрузить фото. Попробуйте еще раз.')
+        showAlert(data.message || data.error || 'Не удалось загрузить фото. Попробуйте еще раз.')
         hapticFeedback('heavy')
       }
     } catch (error) {
@@ -111,10 +136,7 @@ export default function PhotoTab() {
   }
 
   const handleRetake = () => {
-    setPhotoPreview(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    resetSelectedPhoto()
     hapticFeedback('light')
   }
 
@@ -134,7 +156,7 @@ export default function PhotoTab() {
     <div className="min-h-screen px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+112px)]">
       <SectionCard>
         <SectionTitle>СДЕЛАТЬ ФОТО</SectionTitle>
-        
+
         <AnimatePresence mode="wait">
           {isSuccess ? (
             <motion.div
@@ -165,14 +187,14 @@ export default function PhotoTab() {
                   className="w-full h-auto max-h-[60vh] object-contain"
                 />
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={handleRetake}
                   disabled={isUploading}
                   className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
                 >
-                  Переснять
+                  Выбрать другое
                 </button>
                 <button
                   onClick={handleUpload}
@@ -191,28 +213,46 @@ export default function PhotoTab() {
               className="space-y-6 py-8"
             >
               <p className="text-center text-gray-600 mb-6 leading-[1.2] text-[19.2px]">
-                Сделайте фото и добавьте его в наш свадебный альбом!
+                Сделайте фото или выберите его из галереи и добавьте в наш свадебный альбом.
               </p>
-              
+
               <input
-                ref={fileInputRef}
+                ref={cameraInputRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={handleFileSelect}
+                onChange={(event) => handleFileSelect(event, 'webapp_camera')}
                 className="hidden"
               />
-              
-              <motion.button
-                onClick={handleCapture}
-                whileTap={{ scale: 0.95 }}
-                className="w-full py-6 bg-[#FFE9AD] text-primary-dark rounded-lg font-bold text-xl shadow-lg hover:shadow-xl transition-all"
-              >
-                📸 Сделать фото
-              </motion.button>
-              
+
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) => handleFileSelect(event, 'webapp_gallery')}
+                className="hidden"
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <motion.button
+                  onClick={openCamera}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full py-6 bg-[#FFE9AD] text-primary-dark rounded-lg font-bold text-xl shadow-lg hover:shadow-xl transition-all"
+                >
+                  📸 Сделать фото
+                </motion.button>
+
+                <motion.button
+                  onClick={openGallery}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full py-6 bg-white text-primary-dark border-2 border-[#FFE9AD] rounded-lg font-bold text-xl shadow-lg hover:shadow-xl transition-all"
+                >
+                  🖼️ Выбрать из галереи
+                </motion.button>
+              </div>
+
               <p className="text-center text-gray-500 text-sm">
-                Или выберите фото из галереи
+                Максимальный размер файла — 10 MB
               </p>
             </motion.div>
           )}

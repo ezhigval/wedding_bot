@@ -43,14 +43,9 @@ func getCredentialsJSON() ([]byte, error) {
 			log.Printf("⚠️ Кандидат %d пустой", i)
 			continue
 		}
-		
-		// Логируем длину (первые 50 символов для безопасности)
-		preview := cand
-		if len(preview) > 50 {
-			preview = preview[:50] + "..."
-		}
-		log.Printf("📝 Кандидат %d: длина=%d, начало=%s", i, len(cand), preview)
-		
+
+		log.Printf("📝 Кандидат %d: длина=%d", i, len(cand))
+
 		variants = append(variants, cand)
 
 		trimmed := strings.Trim(cand, `"'`)
@@ -72,7 +67,7 @@ func getCredentialsJSON() ([]byte, error) {
 	// Пробуем как JSON или base64 (std/raw/url)
 	for i, val := range variants {
 		log.Printf("🔄 Попытка %d: проверка как JSON (длина=%d)", i+1, len(val))
-		
+
 		if json.Valid([]byte(val)) {
 			log.Printf("✅ Найден валидный JSON (попытка %d)", i+1)
 			return []byte(val), nil
@@ -87,7 +82,7 @@ func getCredentialsJSON() ([]byte, error) {
 			{"URLEncoding", base64.URLEncoding},
 			{"RawURLEncoding", base64.RawURLEncoding},
 		}
-		
+
 		for _, decoder := range decoders {
 			decoded, err := decoder.enc.DecodeString(val)
 			if err != nil {
@@ -117,7 +112,7 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 	}
 
 	log.Printf("🔧 Создание нового клиента Google Sheets...")
-	
+
 	credsJSON, err := getCredentialsJSON()
 	if err != nil {
 		log.Printf("❌ GOOGLE_SHEETS_CREDENTIALS не установлен или испорчен: %v", err)
@@ -125,7 +120,7 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 	}
 
 	log.Printf("✅ Credentials JSON получен (длина=%d байт)", len(credsJSON))
-	
+
 	// Парсим JSON для логирования email (безопасно)
 	var credsMap map[string]interface{}
 	if err := json.Unmarshal(credsJSON, &credsMap); err == nil {
@@ -171,7 +166,7 @@ func GetGoogleSheetsClient() (*sheets.Service, error) {
 // GetSpreadsheet получает таблицу по ID
 func GetSpreadsheet(spreadsheetID string) (*sheets.Spreadsheet, error) {
 	log.Printf("📊 Получение таблицы: %s", spreadsheetID)
-	
+
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
 		log.Printf("❌ Ошибка получения клиента: %v", err)

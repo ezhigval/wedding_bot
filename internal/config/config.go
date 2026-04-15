@@ -69,6 +69,7 @@ var (
 	GoogleSheetsAdminsSheetName      string
 	GoogleSheetsTimelineSheetName    string
 	GoogleSheetsRulesSheetName       string
+	GoogleDriveFolderID              string
 
 	// SeatingAPIToken - токен для защищённых вызовов рассадки
 	SeatingAPIToken string
@@ -220,6 +221,8 @@ func LoadConfig() error {
 	if GoogleSheetsRulesSheetName == "" {
 		GoogleSheetsRulesSheetName = "Правила ИИ"
 	}
+
+	GoogleDriveFolderID = strings.TrimSpace(os.Getenv("GOOGLE_DRIVE_FOLDER_ID"))
 
 	// Токен для рассадки
 	SeatingAPIToken = strings.TrimSpace(os.Getenv("SEATING_API_TOKEN"))

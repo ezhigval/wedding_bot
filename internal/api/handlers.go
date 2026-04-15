@@ -688,44 +688,6 @@ func getTimelineEndpoint(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// uploadPhoto загружает фото
-func uploadPhoto(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		UserID    int    `json:"userId"`
-		Username  string `json:"username"`
-		FullName  string `json:"fullName"`
-		PhotoData string `json:"photoData"`
-		InitData  string `json:"initData"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		JSONError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-
-	userID, username, ok := requireResolvedAuthIdentity(w, r, req.UserID, req.Username, req.InitData)
-	if !ok {
-		return
-	}
-
-	ctx := r.Context()
-
-	var usernamePtr *string
-	if username != "" {
-		usernamePtr = &username
-	}
-
-	if err := google_sheets.SavePhotoFromWebapp(ctx, userID, usernamePtr, req.FullName, req.PhotoData); err != nil {
-		log.Printf("Error saving photo: %v", err)
-		JSONError(w, http.StatusInternalServerError, "failed to save photo")
-		return
-	}
-
-	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-	})
-}
-
 // getSeatingInfo возвращает опубликованную рассадку для Mini App
 func getSeatingInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

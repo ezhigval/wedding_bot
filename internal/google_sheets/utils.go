@@ -63,7 +63,7 @@ func EnsureRequiredSheets(ctx context.Context) error {
 			Headers: []string{"user_id", "first_name", "last_name", "total_score", "dragon_score", "flappy_score", "crossword_score", "wordle_score", "rank", "last_updated"},
 		},
 		"Фото": {
-			Headers: []string{"timestamp", "user_id", "username", "full_name", "photo_data"},
+			Headers: []string{"timestamp", "user_id", "username", "full_name", "source", "drive_file_id", "drive_url", "file_name", "mime_type", "file_size", "original_ref"},
 		},
 	}
 
@@ -122,4 +122,3 @@ type SheetConfig struct {
 	Headers     []string
 	DefaultData [][]interface{}
 }
-

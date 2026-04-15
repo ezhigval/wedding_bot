@@ -221,6 +221,14 @@ func humanizeError(code string) string {
 		return "Некорректный запрос"
 	case "invalid_user_id":
 		return "Неверный user_id"
+	case "photo_required":
+		return "Нужно приложить фото"
+	case "photo_too_large":
+		return "Фото слишком большое. Максимум 10 MB"
+	case "invalid_photo":
+		return "Не удалось распознать изображение"
+	case "photo_storage_not_configured":
+		return "Хранилище фото ещё не настроено"
 	case "user_id required":
 		return "Требуется user_id"
 	case "user_id_or_username_required":

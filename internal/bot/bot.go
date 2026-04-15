@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -378,15 +379,10 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 
 	userID := message.From.ID
-
-	// Если это не админ, пересылаем фото админам
-	if !isAdminUser(int(userID)) {
-		ForwardMessageToAdmins(bot, message)
-		return
-	}
+	isAdmin := isAdminUser(int(userID))
 
 	// Проверяем, есть ли активная рассылка
-	if isAdminUser(int(userID)) {
+	if isAdmin {
 		state := GetBroadcastState(userID)
 		if state != nil && state.Step == "media" {
 			// Обрабатываем фото для рассылки
@@ -442,12 +438,27 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Берем самое большое фото
 	photo := message.Photo[len(message.Photo)-1]
 	fileID := photo.FileID
-
-	if err := google_sheets.SavePhotoFromUser(ctx, int(userID), &username, displayName, fileID); err != nil {
-		log.Printf("Ошибка сохранения фото: %v", err)
-		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка сохранения фото")
+	content, mimeType, err := downloadTelegramPhoto(ctx, bot, fileID)
+	if err != nil {
+		log.Printf("Ошибка скачивания фото из Telegram: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Не удалось получить фото из Telegram для сохранения")
 		bot.Send(msg)
 		return
+	}
+
+	if err := google_sheets.SavePhotoFromUser(ctx, int(userID), &username, displayName, fileID, mimeType, content); err != nil {
+		log.Printf("Ошибка сохранения фото: %v", err)
+		errorText := "❌ Ошибка сохранения фото"
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		}
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
+		bot.Send(msg)
+		return
+	}
+
+	if !isAdmin {
+		ForwardMessageToAdmins(bot, message)
 	}
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, "✅ Фото сохранено! 📸")
