@@ -20,17 +20,37 @@ interface ExtractedIdentity {
 
 const SESSION_USER_ID_KEY = 'telegram_user_id_session'
 const SESSION_USERNAME_KEY = 'telegram_username_session'
-const LEGACY_PERSISTENT_USER_ID_KEY = 'telegram_user_id'
-const LEGACY_PERSISTENT_USERNAME_KEY = 'telegram_username'
+const PERSISTENT_USER_ID_KEY = 'telegram_user_id'
+const PERSISTENT_USERNAME_KEY = 'telegram_username'
 
 function normalizeUsername(username?: string | null): string | null {
   const normalized = (username || '').trim().replace(/^@/, '').toLowerCase()
   return normalized || null
 }
 
-function clearLegacyTelegramIdentity() {
-  localStorage.removeItem(LEGACY_PERSISTENT_USER_ID_KEY)
-  localStorage.removeItem(LEGACY_PERSISTENT_USERNAME_KEY)
+function readPersistentTelegramIdentity(preferredUsername?: string | null, allowUnsafeRestore = false): ExtractedIdentity {
+  const storedUserId = localStorage.getItem(PERSISTENT_USER_ID_KEY)
+  const storedUsername = normalizeUsername(localStorage.getItem(PERSISTENT_USERNAME_KEY))
+
+  if (!storedUserId) {
+    return { userId: null, username: storedUsername }
+  }
+
+  const parsedId = parseInt(storedUserId, 10)
+  if (isNaN(parsedId) || parsedId <= 0) {
+    return { userId: null, username: storedUsername }
+  }
+
+  if (allowUnsafeRestore) {
+    return { userId: parsedId, username: storedUsername }
+  }
+
+  const normalizedPreferredUsername = normalizeUsername(preferredUsername)
+  if (normalizedPreferredUsername && storedUsername && normalizedPreferredUsername === storedUsername) {
+    return { userId: parsedId, username: storedUsername }
+  }
+
+  return { userId: null, username: storedUsername }
 }
 
 function parseIdentityFromInitData(initData: string): ExtractedIdentity {
@@ -147,9 +167,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Способ 5: Ручной username (для режима вне Telegram)
+    // Способ 5: Проверенный persistent fallback.
     const savedManualUsername = normalizeUsername(localStorage.getItem('manual_username'))
-    return { userId: null, username: savedManualUsername }
+    const persistentIdentity = readPersistentTelegramIdentity(savedManualUsername, Boolean(tg))
+    if (persistentIdentity.userId) {
+      console.log('[UserContext] Got user_id from persistent storage:', persistentIdentity.userId)
+      return {
+        userId: persistentIdentity.userId,
+        username: persistentIdentity.username || savedManualUsername,
+      }
+    }
+
+    // Способ 6: Ручной username (для режима вне Telegram)
+    return {
+      userId: null,
+      username: savedManualUsername || (tg ? persistentIdentity.username : null),
+    }
   }, [])
 
   const refreshUserId = useCallback(async () => {
@@ -180,18 +213,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       if (identity.userId) {
         setUserId(identity.userId)
-        clearLegacyTelegramIdentity()
         sessionStorage.setItem(SESSION_USER_ID_KEY, identity.userId.toString())
+        localStorage.setItem(PERSISTENT_USER_ID_KEY, identity.userId.toString())
         if (identity.username) {
           sessionStorage.setItem(SESSION_USERNAME_KEY, identity.username)
+          localStorage.setItem(PERSISTENT_USERNAME_KEY, identity.username)
           setManualUsernameState(identity.username)
         } else {
           sessionStorage.removeItem(SESSION_USERNAME_KEY)
+          localStorage.removeItem(PERSISTENT_USERNAME_KEY)
         }
         setError(null)
       } else {
         setUserId(null)
-        clearLegacyTelegramIdentity()
         sessionStorage.removeItem(SESSION_USER_ID_KEY)
         if (!identity.username) {
           setError('user_id_not_found')

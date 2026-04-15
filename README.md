@@ -115,6 +115,31 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - Для загрузки в личный Google Drive: OAuth client id/secret и refresh token пользователя
 - Telegram bot token
 
+## Как получить Google Drive refresh token
+
+Если хотите проверять загрузку фото и видео в личный Google Drive через OAuth, проект умеет получить `refresh token` локально.
+
+1. Создайте OAuth client в Google Cloud.
+   Для локальной проверки проще всего использовать тип `Desktop app`.
+   Если используете тип `Web application`, добавьте redirect URI `http://127.0.0.1:8787/oauth2callback`.
+2. Заполните в `.env.local`:
+   `GOOGLE_DRIVE_OAUTH_CLIENT_ID`
+   `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`
+3. Запустите helper:
+
+```bash
+go run ./cmd/google_drive_oauth
+```
+
+4. Откройте URL из терминала, подтвердите доступ к Google Drive и дождитесь callback.
+5. Утилита напечатает готовое значение:
+
+```bash
+GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN=...
+```
+
+Если Google не вернул `refresh token`, значит он уже был выдан раньше для этой пары `client/user`. В этом случае отзовите доступ приложению в Google Account permissions и повторите запуск helper заново.
+
 ## Локальный запуск
 
 ### 1. Подготовить окружение

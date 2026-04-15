@@ -108,6 +108,60 @@ func TestResolveAuthIdentityFromRequestUsesCookieFallback(t *testing.T) {
 	}
 }
 
+func TestResolveAuthIdentityFromRequestUsesMatchingCookieWithUsernameOnlyInput(t *testing.T) {
+	previousToken := config.BotToken
+	config.BotToken = "test-bot-token"
+	defer func() {
+		config.BotToken = previousToken
+	}()
+
+	rawSession, err := encodeAuthSession(555123, "@CookieUser")
+	if err != nil {
+		t.Fatalf("encodeAuthSession() error = %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  authSessionCookieName,
+		Value: rawSession,
+	})
+
+	userID, username := resolveAuthIdentityFromRequest(req, 0, "@CookieUser", "")
+	if userID != 555123 {
+		t.Fatalf("resolveAuthIdentityFromRequest() userID = %d, want %d", userID, 555123)
+	}
+	if username != "cookieuser" {
+		t.Fatalf("resolveAuthIdentityFromRequest() username = %q, want %q", username, "cookieuser")
+	}
+}
+
+func TestResolveAuthIdentityFromRequestIgnoresMismatchedCookieForUsernameOnlyInput(t *testing.T) {
+	previousToken := config.BotToken
+	config.BotToken = "test-bot-token"
+	defer func() {
+		config.BotToken = previousToken
+	}()
+
+	rawSession, err := encodeAuthSession(555123, "@CookieUser")
+	if err != nil {
+		t.Fatalf("encodeAuthSession() error = %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  authSessionCookieName,
+		Value: rawSession,
+	})
+
+	userID, username := resolveAuthIdentityFromRequest(req, 0, "@AnotherUser", "")
+	if userID != 0 {
+		t.Fatalf("resolveAuthIdentityFromRequest() userID = %d, want 0", userID)
+	}
+	if username != "anotheruser" {
+		t.Fatalf("resolveAuthIdentityFromRequest() username = %q, want %q", username, "anotheruser")
+	}
+}
+
 func TestResolveAuthIdentityUsesCachedUsername(t *testing.T) {
 	cache.InitMemoryCache()
 	cache.ClearMemoryCache()

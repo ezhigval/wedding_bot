@@ -242,13 +242,41 @@ function normalizeApiUsername(username?: string | null): string {
   return (username || '').trim().replace(/^@/, '').toLowerCase()
 }
 
-function readStoredUserId(): number {
+function isTelegramWebAppAvailable(): boolean {
+  return Boolean(window.Telegram?.WebApp)
+}
+
+function readPersistentStoredUsername(): string {
+  return normalizeApiUsername(localStorage.getItem('telegram_username'))
+}
+
+function readStoredUserId(preferredUsername?: string): number {
   const sessionUserId = sessionStorage.getItem('telegram_user_id_session')
   if (sessionUserId) {
     const parsed = parseInt(sessionUserId, 10)
     if (!isNaN(parsed) && parsed > 0) {
       return parsed
     }
+  }
+
+  const persistentUserId = localStorage.getItem('telegram_user_id')
+  if (!persistentUserId) {
+    return 0
+  }
+
+  const parsed = parseInt(persistentUserId, 10)
+  if (isNaN(parsed) || parsed <= 0) {
+    return 0
+  }
+
+  if (isTelegramWebAppAvailable()) {
+    return parsed
+  }
+
+  const normalizedPreferredUsername = normalizeApiUsername(preferredUsername)
+  const persistentUsername = readPersistentStoredUsername()
+  if (normalizedPreferredUsername && persistentUsername && normalizedPreferredUsername === persistentUsername) {
+    return parsed
   }
 
   return 0
@@ -265,19 +293,22 @@ function readStoredUsername(): string {
     return manualUsername
   }
 
+  if (isTelegramWebAppAvailable()) {
+    return readPersistentStoredUsername()
+  }
+
   return ''
 }
 
 function resolveApiAuth(auth?: ApiAuth): ResolvedApiAuth {
-  let userId = auth?.userId && auth.userId > 0 ? auth.userId : 0
   let username = normalizeApiUsername(auth?.username)
-
-  if (!userId) {
-    userId = readStoredUserId()
-  }
-
   if (!username) {
     username = readStoredUsername()
+  }
+
+  let userId = auth?.userId && auth.userId > 0 ? auth.userId : 0
+  if (!userId) {
+    userId = readStoredUserId(username)
   }
 
   return {

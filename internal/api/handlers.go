@@ -389,8 +389,38 @@ func resolveUserIDByUsernameWithFallbacks(r *http.Request, username string) (int
 	return 0, false
 }
 
+func mergeResolvedAuthIdentity(primaryUserID int, primaryUsername string, fallbackUserID int, fallbackUsername string) (int, string) {
+	resolvedUserID := primaryUserID
+	resolvedUsername := google_sheets.NormalizeTelegramUsername(primaryUsername)
+	normalizedFallbackUsername := google_sheets.NormalizeTelegramUsername(fallbackUsername)
+
+	if resolvedUsername == "" {
+		resolvedUsername = normalizedFallbackUsername
+	}
+
+	// Чужую cookie не используем поверх явно введённого username.
+	canUseFallbackUserID := resolvedUsername == "" || (normalizedFallbackUsername != "" && resolvedUsername == normalizedFallbackUsername)
+	if resolvedUserID == 0 && fallbackUserID > 0 && canUseFallbackUserID {
+		resolvedUserID = fallbackUserID
+	}
+
+	return resolvedUserID, resolvedUsername
+}
+
 func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initData string) (int, string) {
 	resolvedUserID, resolvedUsername := resolveAuthIdentity(userID, username, initData)
+	if resolvedUserID == 0 && resolvedUsername != "" {
+		if fallbackUserID, ok := resolveUserIDByUsernameWithFallbacks(r, resolvedUsername); ok {
+			return fallbackUserID, resolvedUsername
+		}
+	}
+
+	cookieUserID, cookieUsername, ok := readAuthSessionCookie(r)
+	if ok {
+		cookieUserID, cookieUsername = resolveAuthIdentity(cookieUserID, cookieUsername, "")
+		resolvedUserID, resolvedUsername = mergeResolvedAuthIdentity(resolvedUserID, resolvedUsername, cookieUserID, cookieUsername)
+	}
+
 	if resolvedUserID == 0 && resolvedUsername != "" {
 		if fallbackUserID, ok := resolveUserIDByUsernameWithFallbacks(r, resolvedUsername); ok {
 			return fallbackUserID, resolvedUsername
@@ -401,16 +431,8 @@ func resolveAuthIdentityFromRequest(r *http.Request, userID int, username, initD
 		return resolvedUserID, resolvedUsername
 	}
 
-	cookieUserID, cookieUsername, ok := readAuthSessionCookie(r)
 	if !ok {
 		return 0, ""
-	}
-
-	resolvedUserID, resolvedUsername = resolveAuthIdentity(cookieUserID, cookieUsername, "")
-	if resolvedUserID == 0 && resolvedUsername != "" {
-		if fallbackUserID, ok := resolveUserIDByUsernameWithFallbacks(r, resolvedUsername); ok {
-			return fallbackUserID, resolvedUsername
-		}
 	}
 
 	return resolvedUserID, resolvedUsername
