@@ -9,17 +9,17 @@ interface BottomNavbarProps {
 }
 
 // Все кнопки в одном массиве для сетки 4xN
-// Первый ряд: Главная, Испытание, Фотоаппарат, Меню
-// Второй ряд: План-сетка, Дресс-код, Рассадка, Пожелания
+// Первый ряд: Главная, План-сетка, Дресс-код, Рассадка
+// Второй ряд: Пожелания, Фотоаппарат, Испытание, Меню
 const allNavItems: Array<{ id: TabName; label: string; isSpecial?: boolean }> = [
   { id: 'home', label: 'Главная' },
-  { id: 'challenge', label: 'Испытание' },
-  { id: 'photo', label: 'Фотоаппарат' },
-  { id: 'menu', label: 'Меню' },
   { id: 'timeline', label: 'План-сетка' },
   { id: 'dresscode', label: 'Дресс-Код' },
   { id: 'seating', label: 'Рассадка' },
   { id: 'wishes', label: 'Пожелания' },
+  { id: 'photo', label: 'Фотоаппарат' },
+  { id: 'challenge', label: 'Испытание' },
+  { id: 'menu', label: 'Меню' },
 ]
 
 export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarProps) {
@@ -79,4 +79,3 @@ export default function BottomNavbar({ activeTab, onTabChange }: BottomNavbarPro
     </nav>
   )
 }
-
