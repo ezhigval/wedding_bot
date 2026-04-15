@@ -188,7 +188,7 @@ func handlePhotoUploadError(w http.ResponseWriter, err error) {
 }
 
 func handlePhotoStorageError(w http.ResponseWriter, err error) {
-	if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
+	if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) || errors.Is(err, google_sheets.ErrGoogleDriveOAuthIncomplete) {
 		JSONError(w, http.StatusServiceUnavailable, "photo_storage_not_configured")
 		return
 	}

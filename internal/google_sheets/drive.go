@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -20,6 +21,7 @@ import (
 var driveService *drive.Service
 
 var ErrGoogleDriveNotConfigured = errors.New("google drive folder is not configured")
+var ErrGoogleDriveOAuthIncomplete = errors.New("google drive oauth is configured incompletely")
 
 type DriveUploadParams struct {
 	FileName    string
@@ -42,32 +44,101 @@ func GetGoogleDriveClient() (*drive.Service, error) {
 		return driveService, nil
 	}
 
+	service, err := newGoogleDriveService(context.Background())
+	if err != nil {
+		driveService = nil
+		return nil, err
+	}
+
+	driveService = service
+	return driveService, nil
+}
+
+func newGoogleDriveService(ctx context.Context) (*drive.Service, error) {
+	if hasCompleteGoogleDriveOAuthConfig() {
+		return newGoogleDriveServiceFromOAuth(ctx)
+	}
+
+	if hasPartialGoogleDriveOAuthConfig() {
+		return nil, fmt.Errorf("%w: заполните %s", ErrGoogleDriveOAuthIncomplete, strings.Join(missingGoogleDriveOAuthFields(), ", "))
+	}
+
+	return newGoogleDriveServiceFromServiceAccount(ctx)
+}
+
+func newGoogleDriveServiceFromOAuth(ctx context.Context) (*drive.Service, error) {
+	tokenSource := (&oauth2.Config{
+		ClientID:     config.GoogleDriveOAuthClientID,
+		ClientSecret: config.GoogleDriveOAuthClientSecret,
+		Endpoint:     google.Endpoint,
+		Scopes:       []string{drive.DriveScope},
+	}).TokenSource(ctx, &oauth2.Token{
+		RefreshToken: config.GoogleDriveOAuthRefreshToken,
+	})
+
+	service, err := drive.NewService(
+		ctx,
+		option.WithTokenSource(tokenSource),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания OAuth-сервиса Google Drive: %w", err)
+	}
+
+	log.Printf("✅ Google Drive инициализирован через OAuth пользователя")
+	return service, nil
+}
+
+func newGoogleDriveServiceFromServiceAccount(ctx context.Context) (*drive.Service, error) {
 	credsJSON, err := getCredentialsJSON()
 	if err != nil {
 		return nil, fmt.Errorf("credentials не установлены: %w", err)
 	}
 
 	creds, err := google.CredentialsFromJSON(
-		context.Background(),
+		ctx,
 		credsJSON,
 		drive.DriveScope,
 	)
 	if err != nil {
-		driveService = nil
 		return nil, fmt.Errorf("ошибка создания Drive credentials: %w", err)
 	}
 
 	service, err := drive.NewService(
-		context.Background(),
+		ctx,
 		option.WithCredentials(creds),
 	)
 	if err != nil {
-		driveService = nil
 		return nil, fmt.Errorf("ошибка создания сервиса Google Drive: %w", err)
 	}
 
-	driveService = service
-	return driveService, nil
+	log.Printf("✅ Google Drive инициализирован через service account")
+	return service, nil
+}
+
+func hasCompleteGoogleDriveOAuthConfig() bool {
+	return config.GoogleDriveOAuthClientID != "" &&
+		config.GoogleDriveOAuthClientSecret != "" &&
+		config.GoogleDriveOAuthRefreshToken != ""
+}
+
+func hasPartialGoogleDriveOAuthConfig() bool {
+	return config.GoogleDriveOAuthClientID != "" ||
+		config.GoogleDriveOAuthClientSecret != "" ||
+		config.GoogleDriveOAuthRefreshToken != ""
+}
+
+func missingGoogleDriveOAuthFields() []string {
+	missing := make([]string, 0, 3)
+	if config.GoogleDriveOAuthClientID == "" {
+		missing = append(missing, "GOOGLE_DRIVE_OAUTH_CLIENT_ID")
+	}
+	if config.GoogleDriveOAuthClientSecret == "" {
+		missing = append(missing, "GOOGLE_DRIVE_OAUTH_CLIENT_SECRET")
+	}
+	if config.GoogleDriveOAuthRefreshToken == "" {
+		missing = append(missing, "GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN")
+	}
+	return missing
 }
 
 // UploadPhotoToDrive загружает фото в заранее настроенную папку Google Drive.

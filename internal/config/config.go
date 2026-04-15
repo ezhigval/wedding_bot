@@ -70,6 +70,9 @@ var (
 	GoogleSheetsTimelineSheetName    string
 	GoogleSheetsRulesSheetName       string
 	GoogleDriveFolderID              string
+	GoogleDriveOAuthClientID         string
+	GoogleDriveOAuthClientSecret     string
+	GoogleDriveOAuthRefreshToken     string
 
 	// SeatingAPIToken - токен для защищённых вызовов рассадки
 	SeatingAPIToken string
@@ -223,6 +226,16 @@ func LoadConfig() error {
 	}
 
 	GoogleDriveFolderID = strings.TrimSpace(os.Getenv("GOOGLE_DRIVE_FOLDER_ID"))
+	GoogleDriveFolderID = strings.Trim(GoogleDriveFolderID, `"'`)
+
+	GoogleDriveOAuthClientID = strings.TrimSpace(os.Getenv("GOOGLE_DRIVE_OAUTH_CLIENT_ID"))
+	GoogleDriveOAuthClientID = strings.Trim(GoogleDriveOAuthClientID, `"'`)
+
+	GoogleDriveOAuthClientSecret = strings.TrimSpace(os.Getenv("GOOGLE_DRIVE_OAUTH_CLIENT_SECRET"))
+	GoogleDriveOAuthClientSecret = strings.Trim(GoogleDriveOAuthClientSecret, `"'`)
+
+	GoogleDriveOAuthRefreshToken = strings.TrimSpace(os.Getenv("GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN"))
+	GoogleDriveOAuthRefreshToken = strings.Trim(GoogleDriveOAuthRefreshToken, `"'`)
 
 	// Токен для рассадки
 	SeatingAPIToken = strings.TrimSpace(os.Getenv("SEATING_API_TOKEN"))

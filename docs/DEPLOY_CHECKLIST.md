@@ -21,7 +21,9 @@ cd webapp-react && npm run build
 - `BOT_TOKEN` задан и актуален.
 - `GOOGLE_SHEETS_ID` указывает на рабочую таблицу.
 - `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` заданы корректно.
-- `GOOGLE_DRIVE_FOLDER_ID` указывает на папку для фото, а сервисный аккаунт имеет к ней доступ.
+- `GOOGLE_DRIVE_FOLDER_ID` указывает на папку для фото и видео.
+- Если используется личный Google Drive, заданы `GOOGLE_DRIVE_OAUTH_CLIENT_ID`, `GOOGLE_DRIVE_OAUTH_CLIENT_SECRET`, `GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN`.
+- Если используется Shared Drive, сервисный аккаунт имеет доступ к папке.
 - `WEBAPP_URL` совпадает с реальным публичным адресом Mini App.
 - `GROUP_ID` и `GROUP_LINK` заполнены, если используется сценарий группового чата.
 - `DEBUG=false` для production.

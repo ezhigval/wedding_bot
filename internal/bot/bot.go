@@ -421,8 +421,8 @@ func handlePhotoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if err := google_sheets.SavePhotoFromUser(ctx, int(userID), &username, displayName, fileID, mimeType, content); err != nil {
 		log.Printf("Ошибка сохранения фото: %v", err)
 		errorText := "❌ Ошибка сохранения фото"
-		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
-			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) || errors.Is(err, google_sheets.ErrGoogleDriveOAuthIncomplete) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Проверьте ID папки и OAuth-настройки Google Drive."
 		}
 		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
 		bot.Send(msg)
@@ -479,8 +479,8 @@ func handleVideoMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	); err != nil {
 		log.Printf("Ошибка сохранения видео: %v", err)
 		errorText := "❌ Ошибка сохранения видео"
-		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
-			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) || errors.Is(err, google_sheets.ErrGoogleDriveOAuthIncomplete) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Проверьте ID папки и OAuth-настройки Google Drive."
 		}
 		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
 		bot.Send(msg)
@@ -536,8 +536,8 @@ func handleVideoNoteMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	); err != nil {
 		log.Printf("Ошибка сохранения кружочка: %v", err)
 		errorText := "❌ Ошибка сохранения кружочка"
-		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) {
-			errorText = "❌ Хранилище Google Drive ещё не настроено. Передайте организаторам ID папки и доступ сервисному аккаунту."
+		if errors.Is(err, google_sheets.ErrGoogleDriveNotConfigured) || errors.Is(err, google_sheets.ErrGoogleDriveOAuthIncomplete) {
+			errorText = "❌ Хранилище Google Drive ещё не настроено. Проверьте ID папки и OAuth-настройки Google Drive."
 		}
 		msg := tgbotapi.NewMessage(message.Chat.ID, errorText)
 		bot.Send(msg)
