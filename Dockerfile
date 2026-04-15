@@ -1,43 +1,38 @@
-# Build stage
-FROM golang:alpine AS builder
+FROM golang:1.24-alpine3.22 AS builder
 
-# Install build dependencies for CGO and Node.js for frontend build
 RUN apk add --no-cache gcc musl-dev nodejs npm
 
 WORKDIR /app
 
-# Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
+COPY webapp-react/package.json webapp-react/package-lock.json ./webapp-react/
+RUN cd webapp-react && npm ci
+
 COPY . .
 
-# Build frontend first
-WORKDIR /app/webapp-react
-RUN npm ci && npm run build
+RUN cd webapp-react && npm run build
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
-# Build the application
+FROM alpine:3.22
+
+RUN apk --no-cache add ca-certificates \
+	&& addgroup -S app \
+	&& adduser -S -G app app
+
 WORKDIR /app
-RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
 
-# Runtime stage
-FROM alpine:latest
-
-RUN apk --no-cache add ca-certificates
-
-WORKDIR /root/
-
-# Copy the binary from builder
-COPY --from=builder /app/server .
-
-# Copy static files
+COPY --from=builder /out/server ./server
 COPY --from=builder /app/webapp ./webapp
-COPY --from=builder /app/webapp-react ./webapp-react
 COPY --from=builder /app/res ./res
 
-# Expose port
+RUN mkdir -p /app/data && chown -R app:app /app
+
+USER app
+
+ENV PORT=10000
+
 EXPOSE 10000
 
-# Run the server
 CMD ["./server"]
