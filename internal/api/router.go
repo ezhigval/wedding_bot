@@ -107,6 +107,13 @@ func InitAPI(ctx context.Context) (*mux.Router, error) {
 	// Seating
 	api.HandleFunc("/seating/info", getSeatingInfo).Methods("GET")
 	api.HandleFunc("/seating/personal", getPersonalSeatingInfo).Methods("GET")
+	api.HandleFunc("/seating/on-edit", handleSeatingOnEdit).Methods("POST")
+	api.HandleFunc("/seating/full-reconcile", handleSeatingFullReconcile).Methods("POST")
+	api.HandleFunc("/seating/rebuild-header", handleSeatingRebuildHeader).Methods("POST")
+	api.HandleFunc("/seating/sync-from-seating", handleSeatingSyncFromSeating).Methods("POST")
+
+	// Sheets integration
+	api.HandleFunc("/ping/from-sheets", handlePingFromSheets).Methods("POST")
 
 	// Parse init data
 	api.HandleFunc("/parse-init-data", parseInitData).Methods("POST")
@@ -133,7 +140,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Api-Token")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -218,6 +225,8 @@ func humanizeError(code string) string {
 	switch code {
 	case "invalid request":
 		return "Некорректный запрос"
+	case "invalid_api_token":
+		return "Неверный API токен"
 	case "invalid_user_id":
 		return "Неверный user_id"
 	case "photo_required":
