@@ -98,7 +98,7 @@ Telegram-бот и Mini App используют общий Go-backend. Backend 
 - `BOT_TOKEN` — токен Telegram-бота.
 - `GOOGLE_SHEETS_ID` — ID основной таблицы.
 - `GOOGLE_SHEETS_CREDENTIALS` или `GOOGLE_SHEETS_CREDENTIALS_BASE64` — credentials сервисного аккаунта.
-- `GOOGLE_DRIVE_FOLDER_ID` — ID папки Google Drive, куда складываются все загруженные фото.
+- `GOOGLE_DRIVE_FOLDER_ID` — ID папки Google Drive или полная ссылка на папку, куда складываются все загруженные фото.
 - `WEBAPP_URL` — публичный URL Mini App.
 - `WEBAPP_PATH` — путь до собранного фронтенда, по умолчанию `webapp`.
 - `GROUP_ID` и `GROUP_LINK` — общий чат гостей.

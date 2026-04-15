@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
@@ -70,7 +72,8 @@ func GetGoogleDriveClient() (*drive.Service, error) {
 
 // UploadPhotoToDrive загружает фото в заранее настроенную папку Google Drive.
 func UploadPhotoToDrive(ctx context.Context, params DriveUploadParams) (*DriveUploadResult, error) {
-	if config.GoogleDriveFolderID == "" {
+	folderID := normalizeGoogleDriveFolderID(config.GoogleDriveFolderID)
+	if folderID == "" {
 		return nil, fmt.Errorf("%w: GOOGLE_DRIVE_FOLDER_ID не установлен", ErrGoogleDriveNotConfigured)
 	}
 	if len(params.Content) == 0 {
@@ -86,7 +89,7 @@ func UploadPhotoToDrive(ctx context.Context, params DriveUploadParams) (*DriveUp
 		Name:        params.FileName,
 		Description: params.Description,
 		MimeType:    params.MimeType,
-		Parents:     []string{config.GoogleDriveFolderID},
+		Parents:     []string{folderID},
 	}
 
 	created, err := service.Files.Create(file).
@@ -108,4 +111,55 @@ func UploadPhotoToDrive(ctx context.Context, params DriveUploadParams) (*DriveUp
 		MimeType:    created.MimeType,
 		Size:        created.Size,
 	}, nil
+}
+
+func normalizeGoogleDriveFolderID(raw string) string {
+	clean := strings.TrimSpace(strings.Trim(raw, `"'`))
+	if clean == "" {
+		return ""
+	}
+
+	if !looksLikeGoogleDriveURL(clean) {
+		return clean
+	}
+
+	candidate := clean
+	if !strings.Contains(candidate, "://") {
+		candidate = "https://" + candidate
+	}
+
+	parsed, err := url.Parse(candidate)
+	if err != nil {
+		return ""
+	}
+
+	return extractGoogleDriveFolderID(parsed)
+}
+
+func looksLikeGoogleDriveURL(raw string) bool {
+	return strings.Contains(raw, "://") ||
+		strings.HasPrefix(raw, "drive.google.com/") ||
+		strings.HasPrefix(raw, "docs.google.com/")
+}
+
+func extractGoogleDriveFolderID(parsed *url.URL) string {
+	if parsed == nil {
+		return ""
+	}
+
+	if id := strings.TrimSpace(strings.Trim(parsed.Query().Get("id"), `"'`)); id != "" {
+		return id
+	}
+
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for i := 0; i < len(segments)-1; i++ {
+		switch segments[i] {
+		case "folders", "d":
+			if id := strings.TrimSpace(strings.Trim(segments[i+1], `"'`)); id != "" {
+				return id
+			}
+		}
+	}
+
+	return ""
 }
