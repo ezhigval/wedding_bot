@@ -11,16 +11,17 @@ import (
 
 // BroadcastState хранит состояние рассылки для пользователя
 type BroadcastState struct {
-	Text                string
-	PhotoID             string
-	VideoID             string
-	ButtonURL           string
-	ButtonText          string
-	Buttons             []tgbotapi.InlineKeyboardButton
-	Recipients          []int64 // пустой = всем, иначе список конкретных user_id
-	AvailableRecipients []BroadcastRecipientInfo
-	Step                string // текущий шаг: "text", "media", "button", "recipients", "preview"
-	TestOnly            bool
+	Text                  string
+	PhotoID               string
+	VideoID               string
+	ButtonURL             string
+	ButtonText            string
+	Buttons               []tgbotapi.InlineKeyboardButton
+	SelectedPresetButtons map[string]bool
+	Recipients            []int64 // пустой = всем, иначе список конкретных user_id
+	AvailableRecipients   []BroadcastRecipientInfo
+	Step                  string // текущий шаг: "text", "media", "button", "recipients", "preview"
+	TestOnly              bool
 }
 
 var (
@@ -72,14 +73,15 @@ func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int
 	for _, userID := range targetRecipients {
 		// Создаем клавиатуру если есть кнопка
 		keyboard := broadcastReplyMarkup(state)
+		renderedText := broadcastRenderedText(state)
 
 		// Отправляем сообщение
 		var err error
 		if state.VideoID != "" {
 			// Приоритет видео над фото
 			video := tgbotapi.NewVideo(userID, tgbotapi.FileID(state.VideoID))
-			if state.Text != "" {
-				video.Caption = state.Text
+			if renderedText != "" {
+				video.Caption = renderedText
 			}
 			if keyboard != nil {
 				video.ReplyMarkup = keyboard
@@ -87,15 +89,15 @@ func SendBroadcast(bot *tgbotapi.BotAPI, state *BroadcastState, recipients []int
 			_, err = bot.Send(video)
 		} else if state.PhotoID != "" {
 			photo := tgbotapi.NewPhoto(userID, tgbotapi.FileID(state.PhotoID))
-			if state.Text != "" {
-				photo.Caption = state.Text
+			if renderedText != "" {
+				photo.Caption = renderedText
 			}
 			if keyboard != nil {
 				photo.ReplyMarkup = keyboard
 			}
 			_, err = bot.Send(photo)
 		} else {
-			msg := tgbotapi.NewMessage(userID, state.Text)
+			msg := tgbotapi.NewMessage(userID, renderedText)
 			if keyboard != nil {
 				msg.ReplyMarkup = keyboard
 			}
@@ -163,6 +165,7 @@ func clearBroadcastButtons(state *BroadcastState) {
 	state.ButtonText = ""
 	state.ButtonURL = ""
 	state.Buttons = nil
+	state.SelectedPresetButtons = nil
 }
 
 func addBroadcastButton(state *BroadcastState, buttonText string, buttonURL string) {
@@ -170,13 +173,7 @@ func addBroadcastButton(state *BroadcastState, buttonText string, buttonURL stri
 		return
 	}
 
-	for _, existing := range state.Buttons {
-		if existing.Text == buttonText && broadcastButtonURL(existing) == buttonURL {
-			return
-		}
-	}
-
-	state.Buttons = append(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL(buttonText, buttonURL))
+	state.Buttons = addBroadcastInlineButton(state.Buttons, tgbotapi.NewInlineKeyboardButtonURL(buttonText, buttonURL))
 	state.ButtonText = ""
 	state.ButtonURL = ""
 }

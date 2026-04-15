@@ -794,6 +794,21 @@ func CancelGuestRegistrationByUserID(ctx context.Context, userID int) error {
 	return CancelGuestRegistrationByIdentifier(ctx, userID, "")
 }
 
+// ConfirmGuestRegistrationByUserID подтверждает регистрацию гостя по user_id.
+func ConfirmGuestRegistrationByUserID(ctx context.Context, userID int) error {
+	return ConfirmGuestRegistrationByIdentifier(ctx, userID, "")
+}
+
+// ConfirmGuestRegistrationByUsername подтверждает регистрацию по username (column F).
+func ConfirmGuestRegistrationByUsername(ctx context.Context, username string) error {
+	return ConfirmGuestRegistrationByIdentifier(ctx, 0, username)
+}
+
+// ConfirmGuestRegistrationByIdentifier подтверждает регистрацию по user_id и/или username.
+func ConfirmGuestRegistrationByIdentifier(ctx context.Context, userID int, username string) error {
+	return setGuestRegistrationByIdentifier(ctx, userID, username, true)
+}
+
 // CancelGuestRegistrationByUsername отменяет регистрацию по username (column F).
 func CancelGuestRegistrationByUsername(ctx context.Context, username string) error {
 	return CancelGuestRegistrationByIdentifier(ctx, 0, username)
@@ -801,6 +816,10 @@ func CancelGuestRegistrationByUsername(ctx context.Context, username string) err
 
 // CancelGuestRegistrationByIdentifier отменяет регистрацию по user_id и/или username.
 func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, username string) error {
+	return setGuestRegistrationByIdentifier(ctx, userID, username, false)
+}
+
+func setGuestRegistrationByIdentifier(ctx context.Context, userID int, username string, confirmed bool) error {
 	if userID <= 0 && NormalizeTelegramUsername(username) == "" {
 		return fmt.Errorf("идентификатор гостя не передан")
 	}
@@ -842,7 +861,7 @@ func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, userna
 	for _, row := range foundRows {
 		updates = append(updates, &sheets.ValueRange{
 			Range:  fmt.Sprintf("%s!C%d", sheetName, row),
-			Values: [][]interface{}{{false}},
+			Values: [][]interface{}{{confirmed}},
 		})
 	}
 
@@ -855,10 +874,14 @@ func CancelGuestRegistrationByIdentifier(ctx context.Context, userID int, userna
 		return fmt.Errorf("ошибка обновления: %w", err)
 	}
 
+	actionText := "отменена"
+	if confirmed {
+		actionText = "подтверждена"
+	}
 	if userID > 0 {
-		log.Printf("Регистрация гостя с user_id=%d отменена (строк: %d)", userID, len(foundRows))
+		log.Printf("Регистрация гостя с user_id=%d %s (строк: %d)", userID, actionText, len(foundRows))
 	} else {
-		log.Printf("Регистрация гостя с username=%s отменена (строк: %d)", NormalizeTelegramUsername(username), len(foundRows))
+		log.Printf("Регистрация гостя с username=%s %s (строк: %d)", NormalizeTelegramUsername(username), actionText, len(foundRows))
 	}
 	return nil
 }

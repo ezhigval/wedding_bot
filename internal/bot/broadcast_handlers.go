@@ -10,7 +10,6 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"wedding-bot/internal/config"
 	"wedding-bot/internal/keyboards"
 )
 
@@ -159,8 +158,12 @@ func handleBroadcastText(bot *tgbotapi.BotAPI, message *tgbotapi.Message, text s
 func showBroadcastButtonSelection(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state *BroadcastState) {
 	rows := [][]tgbotapi.InlineKeyboardButton{
 		{
-			tgbotapi.NewInlineKeyboardButtonData("💒 Добавить мини-эпп", "broadcast:btn:miniapp"),
-			tgbotapi.NewInlineKeyboardButtonData("💬 Добавить общий чат", "broadcast:btn:group"),
+			tgbotapi.NewInlineKeyboardButtonData(broadcastAdminPresetButtonText(state, broadcastPresetMiniApp), "broadcast:btn:miniapp"),
+			tgbotapi.NewInlineKeyboardButtonData(broadcastAdminPresetButtonText(state, broadcastPresetConfirmAttendance), "broadcast:btn:confirm_attendance"),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData(broadcastAdminPresetButtonText(state, broadcastPresetCancelAttendance), "broadcast:btn:cancel_attendance"),
+			tgbotapi.NewInlineKeyboardButtonData(broadcastAdminPresetButtonText(state, broadcastPresetQuestion), "broadcast:btn:question"),
 		},
 		{
 			tgbotapi.NewInlineKeyboardButtonData("➕ Добавить свою кнопку", "broadcast:btn:custom"),
@@ -208,11 +211,14 @@ func showBroadcastButtonSelection(bot *tgbotapi.BotAPI, message *tgbotapi.Messag
 			lines = append(lines, fmt.Sprintf("%d. <b>%s</b>", idx+1, html.EscapeString(button.Text)))
 		}
 		buttonsSummary = "Текущие кнопки:\n" + strings.Join(lines, "\n")
+		if broadcastHasPresetButton(state, broadcastPresetQuestion) {
+			buttonsSummary += "\n\nℹ️ К тексту сообщения будет добавлена подпись: <i>Можете задать любой вопрос в общем чате</i>"
+		}
 	}
 
 	msgText := "📨 <b>Шаг 3/5: Кнопки и ссылки</b>\n\n" +
 		statusText + "\n\n" +
-		"Здесь можно собрать одну или несколько кнопок для сообщения.\n\n" +
+		"Нажимайте на кнопки ниже, чтобы прикреплять или снимать их. На этом шаге это только выбор для рассылки, а гостям потом уйдут уже реальные кнопки с реальными действиями.\n\n" +
 		buttonsSummary
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
@@ -271,24 +277,42 @@ func handleBroadcastButton(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuer
 		state.Step = "recipients"
 		showRecipientsSelection(bot, callback, state)
 	case "miniapp":
-		if err := validateBroadcastButtonURL(config.WebappURL); err != nil {
+		if err := toggleBroadcastPresetButton(state, broadcastPresetMiniApp); err != nil {
 			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
 			bot.Send(msg)
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
-		addBroadcastButton(state, "💒 Открыть приглашение", config.WebappURL)
 		state.Step = "button"
 		showBroadcastButtonSelection(bot, callback.Message, state)
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
-	case "group":
-		if err := validateBroadcastButtonURL(config.GroupLink); err != nil {
+	case "confirm_attendance":
+		if err := toggleBroadcastPresetButton(state, broadcastPresetConfirmAttendance); err != nil {
 			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
 			bot.Send(msg)
 			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
-		addBroadcastButton(state, "💬 Общий чат", config.GroupLink)
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, callback.Message, state)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	case "cancel_attendance":
+		if err := toggleBroadcastPresetButton(state, broadcastPresetCancelAttendance); err != nil {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
+		state.Step = "button"
+		showBroadcastButtonSelection(bot, callback.Message, state)
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	case "question", "group":
+		if err := toggleBroadcastPresetButton(state, broadcastPresetQuestion); err != nil {
+			msg := tgbotapi.NewMessage(callback.Message.Chat.ID, fmt.Sprintf("❌ %s", err.Error()))
+			bot.Send(msg)
+			bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			return
+		}
 		state.Step = "button"
 		showBroadcastButtonSelection(bot, callback.Message, state)
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
@@ -397,12 +421,13 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 
 	// Создаем клавиатуру для превью
 	previewKeyboard := broadcastReplyMarkup(state)
+	renderedText := broadcastRenderedText(state)
 
 	// Отправляем превью
 	if state.VideoID != "" {
 		video := tgbotapi.NewVideo(callback.Message.Chat.ID, tgbotapi.FileID(state.VideoID))
-		if state.Text != "" {
-			video.Caption = state.Text
+		if renderedText != "" {
+			video.Caption = renderedText
 		}
 		if previewKeyboard != nil {
 			video.ReplyMarkup = previewKeyboard
@@ -410,15 +435,15 @@ func showBroadcastPreview(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 		bot.Send(video)
 	} else if state.PhotoID != "" {
 		photo := tgbotapi.NewPhoto(callback.Message.Chat.ID, tgbotapi.FileID(state.PhotoID))
-		if state.Text != "" {
-			photo.Caption = state.Text
+		if renderedText != "" {
+			photo.Caption = renderedText
 		}
 		if previewKeyboard != nil {
 			photo.ReplyMarkup = previewKeyboard
 		}
 		bot.Send(photo)
 	} else {
-		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, state.Text)
+		msg := tgbotapi.NewMessage(callback.Message.Chat.ID, renderedText)
 		if previewKeyboard != nil {
 			msg.ReplyMarkup = previewKeyboard
 		}

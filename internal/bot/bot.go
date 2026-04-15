@@ -695,6 +695,8 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		handleFixNamesPageCallback(bot, callback, parts[1:])
 	case "delete_guest":
 		handleDeleteGuestCallback(bot, callback, parts[1:])
+	case "guest":
+		handleGuestCallback(bot, callback, parts[1:])
 	case "broadcast":
 		handleBroadcastCallback(bot, callback, parts[1:])
 	default:

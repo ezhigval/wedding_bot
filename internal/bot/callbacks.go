@@ -10,6 +10,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
+	"wedding-bot/internal/cache"
 	"wedding-bot/internal/config"
 	"wedding-bot/internal/google_sheets"
 	"wedding-bot/internal/keyboards"
@@ -732,6 +733,62 @@ func handleDeleteGuestCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.Callback
 	default:
 		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
+}
+
+func handleGuestCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
+	if len(parts) == 0 {
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	switch parts[0] {
+	case "attendance":
+		handleGuestAttendanceCallback(bot, callback, parts[1:])
+	default:
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	}
+}
+
+func handleGuestAttendanceCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, parts []string) {
+	if len(parts) == 0 {
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	userID := int(callback.From.ID)
+	username := callback.From.UserName
+
+	var err error
+	var answerText string
+
+	switch parts[0] {
+	case "confirm":
+		err = google_sheets.ConfirmGuestRegistrationByIdentifier(ctx, userID, username)
+		answerText = "✅ Присутствие подтверждено"
+	case "cancel":
+		err = google_sheets.CancelGuestRegistrationByIdentifier(ctx, userID, username)
+		answerText = "❌ Присутствие отменено"
+	default:
+		bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	if err != nil {
+		log.Printf("Ошибка обновления присутствия гостя %d: %v", callback.From.ID, err)
+		callbackConfig := tgbotapi.NewCallbackWithAlert(callback.ID, "❌ Не удалось обновить присутствие. Если проблема повторится, напишите администраторам.")
+		bot.Request(callbackConfig)
+		return
+	}
+
+	cache.SetMemoryCache(fmt.Sprintf("registration:id:%d", userID), parts[0] == "confirm", 30*time.Second)
+	if normalizedUsername := google_sheets.NormalizeTelegramUsername(username); normalizedUsername != "" {
+		cache.SetMemoryCache(fmt.Sprintf("registration:username:%s", normalizedUsername), parts[0] == "confirm", 30*time.Second)
+	}
+
+	bot.Request(tgbotapi.NewCallback(callback.ID, answerText))
 }
 
 // handleBroadcastCallback обрабатывает callback от рассылки
