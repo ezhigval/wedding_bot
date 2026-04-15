@@ -590,19 +590,13 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 	// Получаем user_id из initData если не передан напрямую
 	userID := req.UserID
 	manualUsername := req.Username
-	// #region agent log
-	log.Printf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
-	// #endregion
+	debugLogf("[DEBUG registerGuest] Initial userID from request: %d, hasInitData: %v, initData length: %d", userID, req.InitData != "", len(req.InitData))
 	userID, manualUsername = resolveAuthIdentityFromRequest(r, userID, manualUsername, req.InitData)
-	// #region agent log
-	log.Printf("[DEBUG registerGuest] Resolved auth identity: user_id=%d, username=%s", userID, manualUsername)
-	// #endregion
+	debugLogf("[DEBUG registerGuest] Resolved auth identity: user_id=%d, username=%s", userID, manualUsername)
 
 	// Разрешаем регистрацию без user_id только при наличии username (режим браузера вне Telegram)
 	if userID == 0 && manualUsername == "" {
-		// #region agent log
-		log.Printf("[DEBUG registerGuest] user_id is 0 after all attempts. InitData provided: %v (len=%d), UserID in request: %d, FirstName: %s, LastName: %s", req.InitData != "", len(req.InitData), req.UserID, req.FirstName, req.LastName)
-		// #endregion
+		debugLogf("[DEBUG registerGuest] user_id is 0 after all attempts. InitData provided: %v (len=%d), UserID in request: %d, FirstName: %s, LastName: %s", req.InitData != "", len(req.InitData), req.UserID, req.FirstName, req.LastName)
 		log.Printf("Registration failed: user_id is 0. InitData provided: %v, UserID in request: %d", req.InitData != "", req.UserID)
 		JSONError(w, http.StatusBadRequest, "user_id required")
 		return

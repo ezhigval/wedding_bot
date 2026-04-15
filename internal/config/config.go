@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,6 +80,9 @@ var (
 
 	// WordleDictionaryPath - путь к локальному словарю для проверки слов
 	WordleDictionaryPath string
+
+	// Debug - флаг debug-режима
+	Debug bool
 )
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -91,6 +95,8 @@ func LoadConfig() error {
 	BotToken = strings.TrimSpace(os.Getenv("BOT_TOKEN"))
 	// Дополнительная очистка от пробелов и кавычек
 	BotToken = strings.Trim(BotToken, `"'`)
+
+	Debug = parseBoolEnv(os.Getenv("DEBUG"))
 
 	// Данные о свадьбе
 	weddingDateStr := os.Getenv("WEDDING_DATE")
@@ -248,4 +254,22 @@ func LoadConfig() error {
 	}
 
 	return nil
+}
+
+func parseBoolEnv(raw string) bool {
+	parsed, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+
+	return parsed
+}
+
+// IsDebug возвращает актуальное состояние debug-режима.
+func IsDebug() bool {
+	if Debug {
+		return true
+	}
+
+	return parseBoolEnv(os.Getenv("DEBUG"))
 }

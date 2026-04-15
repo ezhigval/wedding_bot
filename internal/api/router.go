@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -254,7 +253,7 @@ func buildAllowedOrigins() []string {
 	}
 
 	// Локальная разработка
-	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+	if config.IsDebug() {
 		origins = append(origins,
 			"http://localhost:5173",
 			"http://127.0.0.1:5173",

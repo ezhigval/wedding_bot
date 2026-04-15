@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,7 +97,7 @@ func buildDataCheckString(params map[string]string) string {
 func verifyTelegramSignature(params map[string]string) error {
 	if config.BotToken == "" {
 		// В dev среде допускаем отсутствие токена, но явно сигнализируем
-		if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+		if config.IsDebug() {
 			log.Printf("⚠️ BOT_TOKEN не задан, пропускаем проверку подписи initData (DEBUG)")
 			return nil
 		}
@@ -129,25 +128,19 @@ func verifyTelegramSignature(params map[string]string) error {
 
 // ParseInitData парсит initData от Telegram для извлечения user_id
 func ParseInitData(initData string) (map[string]interface{}, error) {
-	// #region agent log
-	log.Printf("[DEBUG ParseInitData] Called with initData length: %d, empty: %v", len(initData), initData == "")
-	// #endregion
+	debugLogf("[DEBUG ParseInitData] Called with initData length: %d, empty: %v", len(initData), initData == "")
 	if initData == "" {
 		return nil, fmt.Errorf("initData required")
 	}
 
 	// Парсим query string: собираем сырые пары для подписи и декодированные для данных
 	params, rawParams := parseInitDataParams(initData)
-	isDebug := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
-	// #region agent log
-	log.Printf("[DEBUG ParseInitData] Parsed params: has_user=%v, user_value_length=%d, isDebug=%v", params["user"] != "", len(params["user"]), isDebug)
-	// #endregion
+	isDebug := config.IsDebug()
+	debugLogf("[DEBUG ParseInitData] Parsed params: has_user=%v, user_value_length=%d, isDebug=%v", params["user"] != "", len(params["user"]), isDebug)
 
 	// Проверяем подпись
 	if err := verifyInitDataSignature(params, rawParams, isDebug); err != nil {
-		// #region agent log
-		log.Printf("[DEBUG ParseInitData] Signature verification failed: %v", err)
-		// #endregion
+		debugLogf("[DEBUG ParseInitData] Signature verification failed: %v", err)
 		if isDebug {
 			log.Printf("⚠️ Ошибка подписи initData, продолжаем в DEBUG: %v", err)
 		} else {
@@ -157,9 +150,7 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 
 	// Извлекаем user из user JSON
 	userJSON := params["user"]
-	// #region agent log
-	log.Printf("[DEBUG ParseInitData] userJSON extracted: length=%d, empty=%v", len(userJSON), userJSON == "")
-	// #endregion
+	debugLogf("[DEBUG ParseInitData] userJSON extracted: length=%d, empty=%v", len(userJSON), userJSON == "")
 	if userJSON == "" {
 		return nil, fmt.Errorf("user not found in initData")
 	}
@@ -167,7 +158,8 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	// Парсим user JSON
 	var userData map[string]interface{}
 	if err := json.Unmarshal([]byte(userJSON), &userData); err != nil {
-		log.Printf("Ошибка парсинга user JSON: %v, raw: %s", err, userJSON)
+		log.Printf("Ошибка парсинга user JSON: %v", err)
+		debugLogf("[DEBUG ParseInitData] raw user JSON: %s", userJSON)
 		// Если не удалось распарсить, пробуем упрощенный способ
 		userIDStr := extractUserIDFromJSON(userJSON)
 		if userIDStr == "" {
@@ -191,27 +183,19 @@ func ParseInitData(initData string) (map[string]interface{}, error) {
 	switch v := userData["id"].(type) {
 	case float64:
 		userID = int(v)
-		// #region agent log
-		log.Printf("[DEBUG ParseInitData] Extracted userID from float64: %d", userID)
-		// #endregion
+		debugLogf("[DEBUG ParseInitData] Extracted userID from float64: %d", userID)
 	case int:
 		userID = v
-		// #region agent log
-		log.Printf("[DEBUG ParseInitData] Extracted userID from int: %d", userID)
-		// #endregion
+		debugLogf("[DEBUG ParseInitData] Extracted userID from int: %d", userID)
 	case int64:
 		userID = int(v)
-		// #region agent log
-		log.Printf("[DEBUG ParseInitData] Extracted userID from int64: %d", userID)
-		// #endregion
+		debugLogf("[DEBUG ParseInitData] Extracted userID from int64: %d", userID)
 	default:
-		// #region agent log
 		keys := make([]string, 0, len(userData))
 		for k := range userData {
 			keys = append(keys, k)
 		}
-		log.Printf("[DEBUG ParseInitData] user_id not found or invalid type: %T, value: %v, userData keys: %v", v, v, keys)
-		// #endregion
+		debugLogf("[DEBUG ParseInitData] user_id not found or invalid type: %T, value: %v, userData keys: %v", v, v, keys)
 		return nil, fmt.Errorf("user_id not found or invalid type in user: %T", v)
 	}
 

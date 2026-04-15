@@ -2,8 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -12,22 +13,27 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/unrolled/secure"
+
+	"wedding-bot/internal/config"
 )
+
+type contextKey string
+
+const requestIDContextKey contextKey = "request_id"
 
 // initLogger инициализирует структурированное логирование
 func initLogger() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	// Проверяем переменную окружения для debug режима
-	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+	if config.IsDebug() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 }
 
 // securityMiddleware добавляет security headers
 func securityMiddleware(next http.Handler) http.Handler {
-	isDev := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
+	isDev := config.IsDebug()
 
 	connectSrc := []string{"'self'"}
 	if isDev {
@@ -80,9 +86,11 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 func structuredLoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		requestID, _ := r.Context().Value(requestIDContextKey).(string)
 
 		// Создаем logger с контекстом запроса
 		logger := log.With().
+			Str("request_id", requestID).
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Str("remote_addr", r.RemoteAddr).
@@ -99,14 +107,14 @@ func structuredLoggingMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		event := logger.Info().
 			Int("status", rw.statusCode).
-			Dur("duration_ms", duration).
-			Int64("duration_ns", duration.Nanoseconds())
+			Dur("duration", duration).
+			Int64("duration_ms", duration.Milliseconds())
 
 		if rw.statusCode >= 400 {
 			event = logger.Error().
 				Int("status", rw.statusCode).
-				Dur("duration_ms", duration).
-				Int64("duration_ns", duration.Nanoseconds())
+				Dur("duration", duration).
+				Int64("duration_ms", duration.Milliseconds())
 		}
 
 		event.Msg("HTTP request")
@@ -133,7 +141,7 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Добавляем request ID в контекст
-		ctx := context.WithValue(r.Context(), "request_id", requestID)
+		ctx := context.WithValue(r.Context(), requestIDContextKey, requestID)
 		r = r.WithContext(ctx)
 
 		// Добавляем в заголовок ответа
@@ -145,15 +153,10 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 
 // generateRequestID генерирует уникальный ID запроса
 func generateRequestID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
-}
-
-// randomString генерирует случайную строку
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	var suffix [8]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return time.Now().UTC().Format("20060102150405.000000000")
 	}
-	return string(b)
+
+	return time.Now().UTC().Format("20060102150405") + "-" + hex.EncodeToString(suffix[:])
 }

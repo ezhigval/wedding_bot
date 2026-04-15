@@ -33,7 +33,7 @@ var (
 func main() {
 	// Инициализируем структурированное логирование
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+	if config.IsDebug() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	} else {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
