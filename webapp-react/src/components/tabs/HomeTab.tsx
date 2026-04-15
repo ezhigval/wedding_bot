@@ -9,6 +9,9 @@ import { useRegistration } from '../../contexts/RegistrationContext'
 import { useUser } from '../../contexts/UserContext'
 import type { Config } from '../../types'
 
+const DEFAULT_VENUE_NAME = 'Ресторан "Марсала"'
+const DEFAULT_VENUE_ADDRESS = 'Большой проспект Петроградской стороны, 84, Санкт-Петербург'
+
 export default function HomeTab() {
   const [config, setConfig] = useState<Config | null>(null)
   const { isRegistered, isLoading: registrationLoading, refreshRegistration } = useRegistration()
@@ -170,31 +173,48 @@ export default function HomeTab() {
   )
 }
 
-function splitVenueAddress(address?: string) {
+function resolveVenue(address?: string) {
   const normalized = (address || '').trim()
   if (!normalized) {
     return {
-      title: 'Место проведения',
-      details: 'Адрес уточняется',
+      title: DEFAULT_VENUE_NAME,
+      details: DEFAULT_VENUE_ADDRESS,
+      mapQuery: `${DEFAULT_VENUE_NAME}, ${DEFAULT_VENUE_ADDRESS}`,
     }
   }
 
+  const normalizedForMatch = normalized.toLowerCase().replace(/[«»"]/g, '')
+  const hasVenueName = normalizedForMatch.includes('марсала')
   const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean)
+
+  if (!hasVenueName) {
+    return {
+      title: DEFAULT_VENUE_NAME,
+      details: normalized,
+      mapQuery: `${DEFAULT_VENUE_NAME}, ${normalized}`,
+    }
+  }
+
   if (parts.length === 0) {
     return {
-      title: normalized,
-      details: normalized,
+      title: DEFAULT_VENUE_NAME,
+      details: DEFAULT_VENUE_ADDRESS,
+      mapQuery: `${DEFAULT_VENUE_NAME}, ${DEFAULT_VENUE_ADDRESS}`,
     }
   }
 
+  const title = parts[0] || DEFAULT_VENUE_NAME
+  const details = parts.slice(1).join(', ') || DEFAULT_VENUE_ADDRESS
+
   return {
-    title: parts[0],
-    details: parts.slice(1).join(', ') || normalized,
+    title,
+    details,
+    mapQuery: `${title}, ${details}`,
   }
 }
 
 function VenueInfo({ address }: { address?: string }) {
-  const venue = splitVenueAddress(address)
+  const venue = resolveVenue(address)
 
   return (
     <motion.div
@@ -217,9 +237,10 @@ function VenueInfo({ address }: { address?: string }) {
 }
 
 function VenueMap({ address }: { address?: string }) {
-  const normalizedAddress = (address || 'Ресторан Марсала, Большой проспект Петроградской стороны, 84, Санкт-Петербург').trim()
-  const query = encodeURIComponent(normalizedAddress)
-  const mapUrl = `https://yandex.ru/map-widget/v1/?mode=search&text=${query}&z=16`
+  const venue = resolveVenue(address)
+  const query = encodeURIComponent(venue.mapQuery)
+  const mapUrl = `https://www.google.com/maps?q=${query}&z=17&output=embed`
+  const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${query}`
 
   return (
     <motion.div
@@ -227,16 +248,29 @@ function VenueMap({ address }: { address?: string }) {
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5 }}
-      className="w-full aspect-video rounded-lg overflow-hidden shadow-lg mb-4"
+      className="mb-4 space-y-3"
     >
-      <iframe
-        src={mapUrl}
-        width="100%"
-        height="100%"
-        frameBorder="0"
-        className="border-0"
-        allowFullScreen
-      />
+      <div className="w-full aspect-video rounded-lg overflow-hidden shadow-lg">
+        <iframe
+          src={mapUrl}
+          width="100%"
+          height="100%"
+          frameBorder="0"
+          className="border-0"
+          allowFullScreen
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          title="Карта ресторана Марсала"
+        />
+      </div>
+      <a
+        href={directionsUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="block rounded-lg border border-[#E5C98B] bg-[#FFF7E2] px-4 py-3 text-center text-[16.8px] font-semibold text-primary transition-colors hover:bg-[#FBEBC1]"
+      >
+        Открыть маршрут до ресторана
+      </a>
     </motion.div>
   )
 }
