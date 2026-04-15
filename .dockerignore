@@ -1,6 +1,7 @@
 node_modules
 .git
 .env
+.env.local
 *.pyc
 __pycache__
 data
@@ -10,3 +11,6 @@ data
 webapp-react/node_modules
 webapp-react/dist
 webapp-react/.vite
+/server
+/wedding-bot
+/wedding-bot-test

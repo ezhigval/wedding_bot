@@ -30,6 +30,7 @@ server.log
 # Временные файлы
 tmp_*/
 *.tmp
+coverage.out
 
 # Старые/неиспользуемые файлы
 database.py
@@ -53,5 +54,11 @@ data/llm_memory.db
 
 # Скрипты ответов LLM (можно добавить в git, но пока в игноре для локальной разработки)
 # response_scripts.txt
+
+# Локальные и сборочные артефакты
+/server
+/wedding-bot
+/wedding-bot-test
+webapp-react/.vite/
 
 prompt.txt
