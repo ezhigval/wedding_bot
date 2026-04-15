@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
@@ -252,7 +252,7 @@ export default function SeatingTab() {
   const [personalInfo, setPersonalInfo] = useState<PersonalSeatingInfo | null>(null)
   const [loadingInfo, setLoadingInfo] = useState(true)
 
-  const loadSeating = async () => {
+  const loadSeating = useCallback(async () => {
     setLoadingInfo(true)
     const [loadedPublicInfo, loadedPersonalInfo] = await Promise.all([
       getSeatingInfo(),
@@ -261,7 +261,7 @@ export default function SeatingTab() {
     setPublicInfo(loadedPublicInfo)
     setPersonalInfo(loadedPersonalInfo)
     setLoadingInfo(false)
-  }
+  }, [manualUsername, userId])
 
   useEffect(() => {
     if (isRegistered) {
@@ -271,7 +271,7 @@ export default function SeatingTab() {
       setPersonalInfo(null)
       setLoadingInfo(false)
     }
-  }, [isRegistered, userId, manualUsername])
+  }, [isRegistered, loadSeating])
 
   if (isLoading) {
     return (

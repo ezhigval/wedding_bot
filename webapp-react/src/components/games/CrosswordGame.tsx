@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
 import { generateCrossword, type CrosswordGrid, type CrosswordWord } from '../../utils/crosswordGenerator'
 import { getCrosswordData, saveCrosswordProgress, updateGameScore, loadConfig } from '../../utils/api'
@@ -45,6 +45,8 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
   const lastTapRef = useRef<number>(0)
   const keyboardStartY = useRef(0)
   const keyboardCurrentY = useRef(0)
+  const crosswordRef = useRef<CrosswordGrid | null>(null)
+  const saveCrosswordCellStateRef = useRef<(cellsToSave?: Cell[][]) => Promise<void>>(async () => {})
   
   // Проверяем, завершен ли кроссворд (все клетки заполнены)
   const isCompleted = crossword ? crossword.words.every(word => {
@@ -71,6 +73,64 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     'Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э',
     'Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю', 'Ё'
   ]
+
+  const calculateTimeUntilNext = useCallback((startDate: string) => {
+    const startDateObj = new Date(startDate + 'T00:00:00')
+    const nextDateObj = new Date(startDateObj)
+    nextDateObj.setDate(nextDateObj.getDate() + 1)
+
+    const now = new Date()
+    const diff = nextDateObj.getTime() - now.getTime()
+
+    if (diff <= 0) {
+      return { hours: 0, minutes: 0, seconds: 0 }
+    }
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+    return { hours, minutes, seconds }
+  }, [])
+
+  const startCountdownTimer = useCallback((startDate: string) => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+    }
+
+    setTimeUntilNextCrossword(calculateTimeUntilNext(startDate))
+
+    timerIntervalRef.current = setInterval(() => {
+      const time = calculateTimeUntilNext(startDate)
+      setTimeUntilNextCrossword(time)
+
+      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current)
+        }
+        window.location.reload()
+      }
+    }, 1000)
+  }, [calculateTimeUntilNext])
+
+  const saveCrosswordCellState = useCallback(async (cellsToSave: Cell[][] = cells) => {
+    if (!crossword || isCompleted) return
+
+    const cellLetters: { [key: string]: string } = {}
+    cellsToSave.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        if (cell.isFilled && cell.letter) {
+          cellLetters[`${rowIndex},${colIndex}`] = cell.letter
+        }
+      })
+    })
+
+    try {
+      await saveCrosswordProgress({ userId, username: manualUsername }, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongWords), crosswordStartDate)
+    } catch (error) {
+      console.error('Error saving crossword cell state:', error)
+    }
+  }, [cells, crossword, crosswordIndex, crosswordStartDate, guessedWords, isCompleted, manualUsername, userId, wrongWords])
 
   useEffect(() => {
     loadConfig().then(setConfig)
@@ -235,7 +295,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
 
     loadGame()
-  }, [config, userId, manualUsername])
+  }, [config, manualUsername, startCountdownTimer, userId])
 
   const handleCellClick = (row: number, col: number) => {
     if (!crossword || isCompleted) return // Блокируем клики после завершения
@@ -490,7 +550,7 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     setCells(newCells)
     
     // Сохраняем состояние клеток при изменении
-    saveCrosswordCellState()
+    void saveCrosswordCellState(newCells)
   }
   
   // Проверка завершения кроссворда и финальная проверка всех слов
@@ -608,79 +668,19 @@ export default function CrosswordGame({ onClose }: CrosswordGameProps) {
     }
   }
 
-  // Функция для сохранения состояния клеток
-  const saveCrosswordCellState = async () => {
-    if (!crossword || isCompleted) return
-    
-    // Собираем текущие буквы в клетках
-    const cellLetters: { [key: string]: string } = {}
-    cells.forEach((row, rowIndex) => {
-      row.forEach((cell, colIndex) => {
-        if (cell.isFilled && cell.letter) {
-          cellLetters[`${rowIndex},${colIndex}`] = cell.letter
-        }
-      })
-    })
-    
-    // Сохраняем прогресс с текущими буквами
-    try {
-      await saveCrosswordProgress({ userId, username: manualUsername }, Array.from(guessedWords), crosswordIndex, cellLetters, Array.from(wrongWords), crosswordStartDate)
-    } catch (error) {
-      console.error('Error saving crossword cell state:', error)
-    }
-  }
-  
-  // Функция для расчета времени до следующего кроссворда
-  const calculateTimeUntilNext = (startDate: string) => {
-    const startDateObj = new Date(startDate + 'T00:00:00')
-    const nextDateObj = new Date(startDateObj)
-    nextDateObj.setDate(nextDateObj.getDate() + 1)
-    
-    const now = new Date()
-    const diff = nextDateObj.getTime() - now.getTime()
-    
-    if (diff <= 0) {
-      return { hours: 0, minutes: 0, seconds: 0 }
-    }
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-    
-    return { hours, minutes, seconds }
-  }
+  useEffect(() => {
+    crosswordRef.current = crossword
+  }, [crossword])
 
-  // Запуск таймера обратного отсчета
-  const startCountdownTimer = (startDate: string) => {
-    // Очищаем предыдущий таймер
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current)
-    }
-    
-    // Обновляем сразу
-    setTimeUntilNextCrossword(calculateTimeUntilNext(startDate))
-    
-    // Обновляем каждую секунду
-    timerIntervalRef.current = setInterval(() => {
-      const time = calculateTimeUntilNext(startDate)
-      setTimeUntilNextCrossword(time)
-      
-      // Если время истекло, перезагружаем игру
-      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
-        if (timerIntervalRef.current) {
-          clearInterval(timerIntervalRef.current)
-        }
-        // Перезагружаем игру для получения нового кроссворда
-        window.location.reload()
-      }
-    }, 1000)
-  }
+  useEffect(() => {
+    saveCrosswordCellStateRef.current = saveCrosswordCellState
+  }, [saveCrosswordCellState])
 
   // Сохраняем состояние при выходе
   useEffect(() => {
     return () => {
-      if (crossword) {
-        saveCrosswordCellState().catch(console.error)
+      if (crosswordRef.current) {
+        saveCrosswordCellStateRef.current().catch(console.error)
       }
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)

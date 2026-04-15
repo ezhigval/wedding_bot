@@ -29,17 +29,20 @@ func initLogger() {
 func securityMiddleware(next http.Handler) http.Handler {
 	isDev := os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1"
 
+	connectSrc := []string{"'self'"}
+	if isDev {
+		connectSrc = append(connectSrc, "http://localhost:5173", "http://127.0.0.1:5173")
+	}
+
 	cspParts := []string{
 		"default-src 'self'",
-		"script-src 'self' https://telegram.org https://*.telegram.org",
+		"script-src 'self' https://telegram.org https://*.telegram.org https://megatimer.ru",
 		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
 		"img-src 'self' data: blob: https://*.telegram.org",
 		"font-src 'self' data: https://fonts.gstatic.com",
-		"connect-src 'self'",
+		"connect-src " + strings.Join(connectSrc, " "),
+		"frame-src 'self' https://www.google.com https://maps.google.com",
 		"frame-ancestors 'self'",
-	}
-	if isDev {
-		cspParts = append(cspParts, "connect-src 'self' http://localhost:5173 http://127.0.0.1:5173")
 	}
 
 	secureMiddleware := secure.New(secure.Options{

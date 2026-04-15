@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { checkRegistration, type RegistrationStatus } from '../utils/api'
 import { useUser } from './UserContext'
 
@@ -24,7 +24,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const { userId, manualUsername, isLoading: userIdLoading } = useUser()
 
-  const refreshRegistration = async (options?: RegistrationRefreshOptions) => {
+  const refreshRegistration = useCallback(async (options?: RegistrationRefreshOptions) => {
     if (userIdLoading) {
       setIsLoading(true)
       return
@@ -55,11 +55,11 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [manualUsername, userId, userIdLoading])
 
   useEffect(() => {
     void refreshRegistration()
-  }, [userId, userIdLoading, manualUsername])
+  }, [refreshRegistration])
 
   return (
     <RegistrationContext.Provider value={{ isRegistered, isLoading, refreshRegistration }}>
@@ -68,6 +68,7 @@ export function RegistrationProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRegistration() {
   const context = useContext(RegistrationContext)
   if (context === undefined) {

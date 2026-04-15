@@ -251,14 +251,6 @@ function readStoredUserId(): number {
     }
   }
 
-  const persistentUserId = localStorage.getItem('telegram_user_id')
-  if (persistentUserId) {
-    const parsed = parseInt(persistentUserId, 10)
-    if (!isNaN(parsed) && parsed > 0) {
-      return parsed
-    }
-  }
-
   return 0
 }
 
@@ -273,7 +265,7 @@ function readStoredUsername(): string {
     return manualUsername
   }
 
-  return normalizeApiUsername(localStorage.getItem('telegram_username'))
+  return ''
 }
 
 function resolveApiAuth(auth?: ApiAuth): ResolvedApiAuth {

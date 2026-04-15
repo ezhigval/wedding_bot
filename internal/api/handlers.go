@@ -165,15 +165,20 @@ func registrationCacheKeys(userID int, username string) []string {
 func authSessionSecret() []byte {
 	secret := strings.TrimSpace(config.BotToken)
 	if secret == "" {
-		secret = "wedding-bot-session-secret"
+		return nil
 	}
 	return []byte(secret)
 }
 
-func signAuthSession(body string) string {
-	mac := hmac.New(sha256.New, authSessionSecret())
+func signAuthSession(body string) (string, bool) {
+	secret := authSessionSecret()
+	if len(secret) == 0 {
+		return "", false
+	}
+
+	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(body))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), true
 }
 
 func encodeAuthSession(userID int, username string) (string, error) {
@@ -194,7 +199,10 @@ func encodeAuthSession(userID int, username string) (string, error) {
 	}
 
 	body := base64.RawURLEncoding.EncodeToString(raw)
-	signature := signAuthSession(body)
+	signature, ok := signAuthSession(body)
+	if !ok {
+		return "", fmt.Errorf("auth session secret not configured")
+	}
 	return body + "." + signature, nil
 }
 
@@ -206,7 +214,10 @@ func decodeAuthSession(raw string) (int, string, bool) {
 
 	body := parts[0]
 	signature := parts[1]
-	expectedSignature := signAuthSession(body)
+	expectedSignature, ok := signAuthSession(body)
+	if !ok {
+		return 0, "", false
+	}
 	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
 		return 0, "", false
 	}

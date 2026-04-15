@@ -48,7 +48,7 @@ export default function DresscodeTab() {
             alt="Дресс-код"
             className="w-full h-auto rounded-lg"
             onError={(e) => {
-              ;(e.target as HTMLImageElement).style.display = 'none'
+              (e.target as HTMLImageElement).style.display = 'none'
             }}
           />
         </motion.div>
@@ -56,4 +56,3 @@ export default function DresscodeTab() {
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getWordleWord, getWordleProgress, submitWordleGuess, getWordleState, saveWordleState, loadConfig } from '../../utils/api'
 import { hapticFeedback } from '../../utils/telegram'
@@ -27,6 +27,17 @@ interface Cell {
   state: LetterState
 }
 
+function normalizeLetterState(state: string): LetterState {
+  switch (state) {
+    case 'correct':
+    case 'present':
+    case 'absent':
+      return state
+    default:
+      return 'empty'
+  }
+}
+
 export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const [targetWord, setTargetWord] = useState<string>('')
   const [guesses, setGuesses] = useState<Cell[][]>([])
@@ -45,6 +56,70 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const saveStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const calculateTimeUntilNext = useCallback((lastDate: string) => {
+    const lastDateObj = new Date(lastDate + 'T00:00:00')
+    const nextDateObj = new Date(lastDateObj)
+    nextDateObj.setDate(nextDateObj.getDate() + 1)
+
+    const now = new Date()
+    const diff = nextDateObj.getTime() - now.getTime()
+
+    if (diff <= 0) {
+      return { hours: 0, minutes: 0, seconds: 0 }
+    }
+
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+    return { hours, minutes, seconds }
+  }, [])
+
+  const startCountdownTimer = useCallback((lastDate: string) => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+    }
+
+    setTimeUntilNextWord(calculateTimeUntilNext(lastDate))
+
+    timerIntervalRef.current = setInterval(() => {
+      const time = calculateTimeUntilNext(lastDate)
+      setTimeUntilNextWord(time)
+
+      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current)
+        }
+        window.location.reload()
+      }
+    }, 1000)
+  }, [calculateTimeUntilNext])
+
+  const saveGameState = useCallback(async () => {
+    if (!targetWord || !lastWordDate) return
+
+    if (saveStateTimeoutRef.current) {
+      clearTimeout(saveStateTimeoutRef.current)
+    }
+
+    saveStateTimeoutRef.current = setTimeout(async () => {
+      try {
+        const attemptsToSave = guesses
+          .filter(row => row.some(cell => cell.state !== 'empty' && cell.letter !== ''))
+          .map(row =>
+            row.map(cell => ({
+              letter: cell.letter,
+              state: cell.state
+            }))
+          )
+
+        await saveWordleState({ userId, username: manualUsername }, targetWord, attemptsToSave, lastWordDate, currentGuess)
+      } catch (error) {
+        console.error('Error saving Wordle state:', error)
+      }
+    }, 1000)
+  }, [currentGuess, guesses, lastWordDate, manualUsername, targetWord, userId])
 
   // Русская раскладка клавиатуры ЙЦУКЕН (как в кроссворде)
   const russianLetters = [
@@ -77,10 +152,10 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
           
           // Восстанавливаем попытки
           if (state.attempts && state.attempts.length > 0) {
-            const restoredGuesses: Cell[][] = state.attempts.map((attempt: any[]) => 
-              attempt.map((cell: any) => ({
+            const restoredGuesses: Cell[][] = state.attempts.map((attempt) =>
+              attempt.map((cell) => ({
                 letter: cell.letter || '',
-                state: (cell.state || 'empty') as LetterState
+                state: normalizeLetterState(cell.state)
               }))
             )
             
@@ -180,7 +255,7 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     }
     
     loadGame()
-  }, [config, userId, manualUsername])
+  }, [config, manualUsername, startCountdownTimer, userId])
 
   // Функция проверки валидности слова по словарю
   const checkWordValidity = async (word: string): Promise<boolean> => {
@@ -221,104 +296,18 @@ export default function WordleGame({ onScore, onClose }: WordleGameProps) {
     if (key === 'ENTER') {
       handleSubmit()
     } else if (key === 'BACKSPACE') {
-      setCurrentGuess(prev => {
-        const newGuess = prev.slice(0, -1)
-        // Сохраняем состояние после изменения
-        setTimeout(() => saveGameState(), 500)
-        return newGuess
-      })
+      setCurrentGuess(prev => prev.slice(0, -1))
     } else if (currentGuess.length < WORD_LENGTH && /[А-ЯЁ]/.test(key)) {
-      setCurrentGuess(prev => {
-        const newGuess = prev + key.toUpperCase()
-        // Сохраняем состояние после изменения
-        setTimeout(() => saveGameState(), 500)
-        return newGuess
-      })
+      setCurrentGuess(prev => prev + key.toUpperCase())
     }
-  }
-
-  // Функция сохранения состояния игры
-  const saveGameState = async () => {
-    if (!targetWord || !lastWordDate) return
-    
-    // Отменяем предыдущий таймер, если он есть
-    if (saveStateTimeoutRef.current) {
-      clearTimeout(saveStateTimeoutRef.current)
-    }
-    
-    // Сохраняем с небольшой задержкой, чтобы не спамить запросами
-    saveStateTimeoutRef.current = setTimeout(async () => {
-      try {
-        // Преобразуем guesses в формат для сохранения (только отправленные попытки)
-        const attemptsToSave = guesses
-          .filter(row => row.some(cell => cell.state !== 'empty' && cell.letter !== ''))
-          .map(row => 
-            row.map(cell => ({
-              letter: cell.letter,
-              state: cell.state
-            }))
-          )
-        
-        // Сохраняем текущий ввод (currentGuess) отдельно
-        await saveWordleState({ userId, username: manualUsername }, targetWord, attemptsToSave, lastWordDate, currentGuess)
-      } catch (error) {
-        console.error('Error saving Wordle state:', error)
-      }
-    }, 1000)
   }
 
   // Сохраняем состояние при изменении guesses или currentGuess
   useEffect(() => {
     if (targetWord && !loading) {
-      saveGameState()
+      void saveGameState()
     }
-  }, [guesses, currentGuess, userId, manualUsername, targetWord, loading])
-
-  // Функция для расчета времени до следующего слова
-  const calculateTimeUntilNext = (lastDate: string) => {
-    const lastDateObj = new Date(lastDate + 'T00:00:00')
-    const nextDateObj = new Date(lastDateObj)
-    nextDateObj.setDate(nextDateObj.getDate() + 1)
-    
-    const now = new Date()
-    const diff = nextDateObj.getTime() - now.getTime()
-    
-    if (diff <= 0) {
-      return { hours: 0, minutes: 0, seconds: 0 }
-    }
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-    
-    return { hours, minutes, seconds }
-  }
-
-  // Запуск таймера обратного отсчета
-  const startCountdownTimer = (lastDate: string) => {
-    // Очищаем предыдущий таймер
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current)
-    }
-    
-    // Обновляем сразу
-    setTimeUntilNextWord(calculateTimeUntilNext(lastDate))
-    
-    // Обновляем каждую секунду
-    timerIntervalRef.current = setInterval(() => {
-      const time = calculateTimeUntilNext(lastDate)
-      setTimeUntilNextWord(time)
-      
-      // Если время истекло, перезагружаем игру
-      if (time.hours === 0 && time.minutes === 0 && time.seconds === 0) {
-        if (timerIntervalRef.current) {
-          clearInterval(timerIntervalRef.current)
-        }
-        // Перезагружаем игру для получения нового слова
-        window.location.reload()
-      }
-    }, 1000)
-  }
+  }, [loading, saveGameState, targetWord])
 
   // Сохраняем состояние при выходе из компонента
   useEffect(() => {

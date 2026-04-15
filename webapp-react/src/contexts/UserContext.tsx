@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { loadConfig } from '../utils/api'
 import { getInitDataAny } from '../utils/telegram'
 
@@ -20,12 +20,17 @@ interface ExtractedIdentity {
 
 const SESSION_USER_ID_KEY = 'telegram_user_id_session'
 const SESSION_USERNAME_KEY = 'telegram_username_session'
-const PERSISTENT_USER_ID_KEY = 'telegram_user_id'
-const PERSISTENT_USERNAME_KEY = 'telegram_username'
+const LEGACY_PERSISTENT_USER_ID_KEY = 'telegram_user_id'
+const LEGACY_PERSISTENT_USERNAME_KEY = 'telegram_username'
 
 function normalizeUsername(username?: string | null): string | null {
   const normalized = (username || '').trim().replace(/^@/, '').toLowerCase()
   return normalized || null
+}
+
+function clearLegacyTelegramIdentity() {
+  localStorage.removeItem(LEGACY_PERSISTENT_USER_ID_KEY)
+  localStorage.removeItem(LEGACY_PERSISTENT_USERNAME_KEY)
 }
 
 function parseIdentityFromInitData(initData: string): ExtractedIdentity {
@@ -67,7 +72,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [manualUsername, setManualUsernameState] = useState<string | null>(null)
 
-  const setManualUsername = (username: string | null) => {
+  const setManualUsername = useCallback((username: string | null) => {
     const cleaned = normalizeUsername(username)
     if (!cleaned) {
       localStorage.removeItem('manual_username')
@@ -78,9 +83,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('manual_username', cleaned)
     sessionStorage.setItem(SESSION_USERNAME_KEY, cleaned)
     setManualUsernameState(cleaned)
-  }
+  }, [])
 
-  const extractIdentity = async (): Promise<ExtractedIdentity> => {
+  const extractIdentity = useCallback(async (): Promise<ExtractedIdentity> => {
     const tg = window.Telegram?.WebApp
     const initData = getInitDataAny()
     const unsafeUser = tg?.initDataUnsafe?.user
@@ -142,23 +147,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Способ 5: Из localStorage (persistent fallback, как в рабочей схеме a554b30)
-    const savedPersistentUserId = localStorage.getItem(PERSISTENT_USER_ID_KEY)
-    const savedPersistentUsername = normalizeUsername(localStorage.getItem(PERSISTENT_USERNAME_KEY))
-    if (savedPersistentUserId) {
-      const parsedId = parseInt(savedPersistentUserId, 10)
-      if (!isNaN(parsedId) && parsedId > 0) {
-        console.log('[UserContext] Got user_id from localStorage:', parsedId)
-        return { userId: parsedId, username: savedPersistentUsername }
-      }
-    }
-
-    // Способ 6: Ручной username (для режима вне Telegram)
+    // Способ 5: Ручной username (для режима вне Telegram)
     const savedManualUsername = normalizeUsername(localStorage.getItem('manual_username'))
-    return { userId: null, username: savedManualUsername || savedPersistentUsername }
-  }
+    return { userId: null, username: savedManualUsername }
+  }, [])
 
-  const refreshUserId = async () => {
+  const refreshUserId = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -184,28 +178,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (identity.username) {
-        setManualUsername(identity.username)
-      }
-
       if (identity.userId) {
         setUserId(identity.userId)
-        // Сохраняем только в пределах текущей сессии,
-        // чтобы не тащить старый user_id между разными пользователями на устройстве.
+        clearLegacyTelegramIdentity()
         sessionStorage.setItem(SESSION_USER_ID_KEY, identity.userId.toString())
-        localStorage.setItem(PERSISTENT_USER_ID_KEY, identity.userId.toString())
         if (identity.username) {
-          localStorage.setItem(PERSISTENT_USERNAME_KEY, identity.username)
+          sessionStorage.setItem(SESSION_USERNAME_KEY, identity.username)
+          setManualUsernameState(identity.username)
+        } else {
+          sessionStorage.removeItem(SESSION_USERNAME_KEY)
         }
         setError(null)
       } else {
         setUserId(null)
+        clearLegacyTelegramIdentity()
         sessionStorage.removeItem(SESSION_USER_ID_KEY)
         if (!identity.username) {
           setError('user_id_not_found')
         } else {
           setError(null)
           sessionStorage.setItem(SESSION_USERNAME_KEY, identity.username)
+          setManualUsernameState(identity.username)
         }
         console.warn('[UserContext] Could not extract user_id. Available:', {
           hasTg: !!window.Telegram?.WebApp,
@@ -221,7 +214,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [extractIdentity])
 
   useEffect(() => {
     const savedSessionUsername = normalizeUsername(sessionStorage.getItem(SESSION_USERNAME_KEY))
@@ -233,8 +226,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setManualUsernameState(savedManual)
       }
     }
-    refreshUserId()
-  }, [])
+    void refreshUserId()
+  }, [refreshUserId])
 
   useEffect(() => {
     // Всплывающий fallback для браузерного режима без Telegram user_id
@@ -250,7 +243,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setManualUsername(entered)
       }
     }
-  }, [isLoading, userId, manualUsername, error])
+  }, [error, isLoading, manualUsername, setManualUsername, userId])
 
   return (
     <UserContext.Provider value={{ userId, isLoading, error, refreshUserId, manualUsername, setManualUsername }}>
@@ -259,6 +252,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUser() {
   const context = useContext(UserContext)
   if (context === undefined) {

@@ -7,6 +7,22 @@ interface CountdownTimerProps {
   weddingDate: string
 }
 
+interface MegaTimerInstance {
+  run: () => void
+}
+
+type MegaTimerConstructor = new (id: string, options: unknown) => MegaTimerInstance
+type LegacyScriptElement = HTMLScriptElement & {
+  onreadystatechange: (() => void) | null
+  readyState?: string
+}
+
+declare global {
+  interface Window {
+    MegaTimer?: MegaTimerConstructor
+  }
+}
+
 export default function CountdownTimer({ weddingDate }: CountdownTimerProps) {
   const timerContainerRef = useRef<HTMLDivElement>(null)
   const timerIdRef = useRef<string>('')
@@ -44,12 +60,16 @@ export default function CountdownTimer({ weddingDate }: CountdownTimerProps) {
     // Функция инициализации (как в оригинале)
     const initTimer = (run: boolean = false) => {
       // Проверяем, что MegaTimer доступен
-      if (typeof (window as any).MegaTimer === 'undefined') {
+      if (typeof window.MegaTimer === 'undefined') {
         console.error('MegaTimer не загружен')
         return
       }
 
-      const MegaTimer = (window as any).MegaTimer
+      const MegaTimer = window.MegaTimer
+      if (!MegaTimer) {
+        return
+      }
+
       const timer = new MegaTimer(uniqueId, {
         view: [1, 1, 1, 1], // Показываем все единицы времени
         type: {
@@ -101,8 +121,9 @@ export default function CountdownTimer({ weddingDate }: CountdownTimerProps) {
     // Обработчики загрузки скрипта (как в оригинале)
     script.onload = () => initTimer(true)
     // Поддержка старых браузеров (IE)
-    ;(script as any).onreadystatechange = function () {
-      if ((script as any).readyState === 'loaded') {
+    const legacyScript = script as LegacyScriptElement
+    legacyScript.onreadystatechange = () => {
+      if (legacyScript.readyState === 'loaded') {
         initTimer(true)
       }
     }
@@ -195,4 +216,3 @@ export default function CountdownTimer({ weddingDate }: CountdownTimerProps) {
     </section>
   )
 }
-

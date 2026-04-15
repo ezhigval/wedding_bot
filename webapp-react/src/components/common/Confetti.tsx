@@ -16,13 +16,12 @@ interface Particle {
   rotationSpeed: number
 }
 
+const CONFETTI_COLORS = ['#5A7C52', '#FFE9AD', '#DBD0C4', '#C8A067', '#4A6B42']
+
 export default function Confetti({ trigger, duration = 2000 }: ConfettiProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<Particle[]>([])
   const animationFrameRef = useRef<number>()
-
-  // Цвета из палитры проекта
-  const colors = ['#5A7C52', '#FFE9AD', '#DBD0C4', '#C8A067', '#4A6B42']
 
   useEffect(() => {
     if (!trigger) return
@@ -48,13 +47,13 @@ export default function Confetti({ trigger, duration = 2000 }: ConfettiProps) {
         vx: (Math.random() - 0.5) * 8,
         vy: (Math.random() - 0.5) * 8 - 2, // Немного вверх
         size: Math.random() * 8 + 4,
-        color: colors[Math.floor(Math.random() * colors.length)],
+        color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
         rotation: Math.random() * Math.PI * 2,
         rotationSpeed: (Math.random() - 0.5) * 0.2,
       })
     }
 
-    let startTime = Date.now()
+    const startTime = Date.now()
 
     const animate = () => {
       const elapsed = Date.now() - startTime
@@ -103,4 +102,3 @@ export default function Confetti({ trigger, duration = 2000 }: ConfettiProps) {
     />
   )
 }
-

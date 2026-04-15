@@ -6,6 +6,13 @@ interface FlappyBirdGameProps {
   onClose: () => void
 }
 
+interface Pipe {
+  x: number
+  topHeight: number
+  gap: number
+  passed?: boolean
+}
+
 // Реализация игры Flappy Bird
 export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -14,7 +21,7 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
   const [gameStarted, setGameStarted] = useState(false)
   const gameLoopRef = useRef<number>()
   const birdRef = useRef({ x: 100, y: 200, width: 40, height: 30, velocityY: 0 })
-  const pipesRef = useRef<Array<{ x: number; topHeight: number; gap: number }>>([])
+  const pipesRef = useRef<Pipe[]>([])
   const gameSpeedRef = useRef(3)
   const scoreRef = useRef(0)
   const birdFaceImageRef = useRef<HTMLImageElement | null>(null)
@@ -151,12 +158,13 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
           pipesRef.current.push({
             x: canvas.width,
             topHeight,
-            gap
+            gap,
+            passed: false,
           })
         }
 
         // Проверка столкновений с трубами
-        pipesRef.current.forEach((pipe: any) => {
+        pipesRef.current.forEach((pipe) => {
           // Верхняя труба
           if (
             bird.x < pipe.x + 60 &&
@@ -388,4 +396,3 @@ export default function FlappyBirdGame({ onScore, onClose }: FlappyBirdGameProps
     </div>
   )
 }
-

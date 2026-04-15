@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import SectionCard from '../common/SectionCard'
 import SectionTitle from '../common/SectionTitle'
@@ -53,13 +53,7 @@ export default function ChallengeTab() {
     }
   }, [])
 
-  useEffect(() => {
-    if (isRegistered && config) {
-      loadStats()
-    }
-  }, [isRegistered, config, userId, manualUsername])
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     if (!config) return
     
     setLoadingStats(true)
@@ -71,7 +65,13 @@ export default function ChallengeTab() {
     } finally {
       setLoadingStats(false)
     }
-  }
+  }, [config, manualUsername, userId])
+
+  useEffect(() => {
+    if (isRegistered) {
+      void loadStats()
+    }
+  }, [isRegistered, loadStats])
 
   const handleGameClick = (gameType: GameType) => {
     hapticFeedback('light')
@@ -159,8 +159,8 @@ export default function ChallengeTab() {
     setActiveGame(null)
     hapticFeedback('light')
     // Перезагружаем статистику
-    if (isRegistered && config) {
-      loadStats()
+    if (isRegistered) {
+      void loadStats()
     }
   }
 

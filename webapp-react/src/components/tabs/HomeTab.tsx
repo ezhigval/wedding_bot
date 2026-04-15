@@ -48,7 +48,7 @@ export default function HomeTab() {
             alt="Валентин и Мария"
             className="w-full h-full object-cover object-[center_top] blur-md scale-110"
             onError={(e) => {
-              ;(e.target as HTMLImageElement).style.display = 'none'
+              (e.target as HTMLImageElement).style.display = 'none'
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/60 to-black/80" />
@@ -68,7 +68,7 @@ export default function HomeTab() {
                   alt="Валентин и Мария"
                   className="w-full h-full object-cover object-[center_top]"
                   onError={(e) => {
-                    ;(e.target as HTMLImageElement).style.display = 'none'
+                    (e.target as HTMLImageElement).style.display = 'none'
                   }}
                 />
               </div>
