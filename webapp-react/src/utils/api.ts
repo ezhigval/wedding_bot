@@ -350,7 +350,7 @@ export async function submitRSVP(
     firstName: string
     category: string
     side: string
-    guests: Array<{ firstName: string; lastName: string; telegram?: string }>
+    guests: Array<{ firstName: string; lastName: string }>
   },
   auth?: { initData?: string; username?: string }
 ): Promise<{ success: boolean; error?: string }> {

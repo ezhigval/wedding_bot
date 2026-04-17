@@ -40,7 +40,6 @@ type authSessionPayload struct {
 type registerGuestCompanionRequest struct {
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
-	Telegram  string `json:"telegram"`
 }
 
 func normalizeRegistrationNamePart(value string) string {
@@ -658,8 +657,11 @@ func registerGuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if userID > 0 && hasPrimaryGuestData {
-		primaryFullName := buildNormalizedRegistrationFullName(req.FirstName, req.LastName)
+	if userID > 0 && (hasPrimaryGuestData || usernamePtr != nil) {
+		primaryFullName := ""
+		if hasPrimaryGuestData {
+			primaryFullName = buildNormalizedRegistrationFullName(req.FirstName, req.LastName)
+		}
 		if err := google_sheets.UpdateInvitationUserID(ctx, primaryFullName, userID, usernamePtr); err != nil {
 			log.Printf("Warning: failed to sync invitation identity for %s: %v", primaryFullName, err)
 		}

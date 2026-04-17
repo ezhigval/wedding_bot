@@ -62,26 +62,21 @@ func GetGuestNameByUserID(ctx context.Context, userID int) (string, string, erro
 		return "", "", fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	userIDStr := fmt.Sprintf("%d", userID)
 	for _, row := range resp.Values {
 		if len(row) > 5 {
-			if val, ok := row[5].(string); ok {
-				if strings.TrimSpace(val) == userIDStr {
-					// Нашли user_id в столбце F
-					fullName := ""
-					if val, ok := row[0].(string); ok {
-						fullName = strings.TrimSpace(val)
-					}
-					if fullName != "" {
-						nameParts := strings.SplitN(fullName, " ", 2)
-						firstName := nameParts[0]
-						lastName := ""
-						if len(nameParts) > 1 {
-							lastName = nameParts[1]
-						}
-						return firstName, lastName, nil
-					}
+			if !guestIdentifierMatches(cellToString(row[5]), userID, "") {
+				continue
+			}
+
+			fullName := cellToString(row[0])
+			if fullName != "" {
+				nameParts := strings.SplitN(fullName, " ", 2)
+				firstName := nameParts[0]
+				lastName := ""
+				if len(nameParts) > 1 {
+					lastName = nameParts[1]
 				}
+				return firstName, lastName, nil
 			}
 		}
 	}

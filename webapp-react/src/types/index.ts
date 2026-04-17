@@ -17,7 +17,6 @@ export interface Guest {
   id: number
   firstName: string
   lastName: string
-  telegram?: string
 }
 
 export interface VenueInfo {
@@ -29,4 +28,3 @@ export interface VenueInfo {
 }
 
 export type TabName = 'home' | 'challenge' | 'menu' | 'photo' | 'timeline' | 'dresscode' | 'seating' | 'wishes'
-

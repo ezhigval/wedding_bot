@@ -37,7 +37,6 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
       id: Date.now(),
       firstName: '',
       lastName: '',
-      telegram: '',
     }
     setGuests([...guests, newGuest])
     hapticFeedback('light')
@@ -102,7 +101,6 @@ export default function RSVPForm({ mode, onSuccess }: RSVPFormProps) {
       guests: guests.map((g) => ({
         firstName: g.firstName,
         lastName: g.lastName,
-        telegram: g.telegram,
       })),
     }, { initData: getInitData(), username: manualUsername || '' })
 
@@ -316,14 +314,7 @@ function GuestForm({
             required
           />
         </div>
-        <input
-          type="text"
-          placeholder="Telegram (необязательно)"
-          value={guest.telegram || ''}
-          onChange={(e) => onUpdate('telegram', e.target.value)}
-        />
       </div>
     </motion.div>
   )
 }
-

@@ -139,8 +139,8 @@ Scheduler ежедневного reset игровых циклов. Модуль
 
 1. Frontend отправляет форму на `/api/register`.
 2. Backend нормализует identity.
-3. `google_sheets.AddGuestGroupToSheets` обновляет основного гостя и дополнительных гостей.
-4. Backend обновляет registration cache и auth cookie.
+3. `google_sheets.AddGuestGroupToSheets` обновляет основного гостя и дополнительных гостей, а при наличии Telegram `user_id` повышает старые username-based строки до numeric ID.
+4. Backend синхронизирует identity в листах `Список гостей` и `Приглашения`, затем обновляет registration cache и auth cookie.
 
 ### Фото / видео
 

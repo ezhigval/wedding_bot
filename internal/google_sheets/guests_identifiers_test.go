@@ -75,3 +75,68 @@ func TestGuestIdentifierMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveGuestIdentifierUpdate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		existingIdentifier string
+		userID             int
+		username           string
+		expectedIdentifier string
+		expectedWrite      bool
+	}{
+		{
+			name:               "promote username to user id",
+			existingIdentifier: "@TestUser",
+			userID:             123456,
+			username:           "testuser",
+			expectedIdentifier: "123456",
+			expectedWrite:      true,
+		},
+		{
+			name:               "keep same numeric user id",
+			existingIdentifier: "123456",
+			userID:             123456,
+			username:           "testuser",
+			expectedIdentifier: "",
+			expectedWrite:      false,
+		},
+		{
+			name:               "do not overwrite foreign numeric user id",
+			existingIdentifier: "654321",
+			userID:             123456,
+			username:           "testuser",
+			expectedIdentifier: "",
+			expectedWrite:      false,
+		},
+		{
+			name:               "write username only for empty cell fallback",
+			existingIdentifier: "",
+			userID:             0,
+			username:           "@TestUser",
+			expectedIdentifier: "testuser",
+			expectedWrite:      true,
+		},
+		{
+			name:               "do not downgrade numeric user id to username",
+			existingIdentifier: "123456",
+			userID:             0,
+			username:           "@TestUser",
+			expectedIdentifier: "",
+			expectedWrite:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotIdentifier, gotWrite := resolveGuestIdentifierUpdate(tt.existingIdentifier, tt.userID, tt.username)
+			if gotIdentifier != tt.expectedIdentifier || gotWrite != tt.expectedWrite {
+				t.Fatalf("resolveGuestIdentifierUpdate(%q, %d, %q) = (%q, %v), want (%q, %v)", tt.existingIdentifier, tt.userID, tt.username, gotIdentifier, gotWrite, tt.expectedIdentifier, tt.expectedWrite)
+			}
+		})
+	}
+}

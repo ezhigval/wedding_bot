@@ -7,6 +7,7 @@
 - Telegram-бот с пользовательскими и админскими сценариями.
 - Telegram Mini App с вкладками приглашения, RSVP, фото, играми, таймингом и рассадкой.
 - Регистрация гостей с поддержкой дополнительных гостей.
+- Регистрация сохраняет в `Список гостей` canonical `user_id`, а `username` использует только как compatibility fallback, пока numeric ID недоступен.
 - Проверка регистрации по `user_id`, `initData`, `username` и подписанной cookie-сессии.
 - Загрузка фото и видео в Google Drive с записью метаданных в Google Sheets.
 - Игры `Wordle`, `Crossword`, `Flappy Bird`, `Dragon` с рейтингом и прогрессом.

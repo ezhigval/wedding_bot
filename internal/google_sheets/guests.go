@@ -88,6 +88,40 @@ func buildAuthIdentifierForStorage(userID int, username string) string {
 	return ""
 }
 
+func resolveGuestIdentifierUpdate(existingIdentifier string, userID int, username string) (string, bool) {
+	normalizedExisting := normalizeGuestIdentifier(existingIdentifier)
+
+	if userID > 0 {
+		targetIdentifier := strconv.Itoa(userID)
+		if normalizedExisting == targetIdentifier {
+			return "", false
+		}
+		if normalizedExisting == "" {
+			return targetIdentifier, true
+		}
+		if _, isNumeric := normalizeNumericIdentifier(normalizedExisting); isNumeric {
+			return "", false
+		}
+
+		normalizedUsername := NormalizeTelegramUsername(username)
+		if normalizedUsername != "" && normalizedExisting == normalizedUsername {
+			return targetIdentifier, true
+		}
+
+		return "", false
+	}
+
+	normalizedUsername := NormalizeTelegramUsername(username)
+	if normalizedUsername == "" {
+		return "", false
+	}
+	if normalizedExisting == "" {
+		return normalizedUsername, true
+	}
+
+	return "", false
+}
+
 func isConfirmedValue(value string) bool {
 	clean := strings.TrimSpace(value)
 	if clean == "" {
@@ -231,21 +265,7 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 		// Обновляем идентификатор в колонке F:
 		// 1) всегда заполняем пустой идентификатор,
 		// 2) если пришел user_id, а в ячейке username — заменяем на user_id.
-		identifierToWrite := ""
-		shouldWriteIdentifier := false
-		if authUserID > 0 {
-			identifierToWrite = strconv.Itoa(authUserID)
-			if existingIdentifier == "" {
-				shouldWriteIdentifier = true
-			} else if _, isNumeric := normalizeNumericIdentifier(existingIdentifier); !isNumeric {
-				shouldWriteIdentifier = true
-			}
-		} else if authIdentifier != "" && existingIdentifier == "" {
-			identifierToWrite = authIdentifier
-			shouldWriteIdentifier = true
-		}
-
-		if shouldWriteIdentifier {
+		if identifierToWrite, shouldWriteIdentifier := resolveGuestIdentifierUpdate(existingIdentifier, authUserID, authUsername); shouldWriteIdentifier {
 			updates = append(updates, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!F%d", sheetName, foundRow),
 				Values: [][]interface{}{{identifierToWrite}},
@@ -318,6 +338,67 @@ func AddGuestToSheets(ctx context.Context, firstName, lastName string, age *int,
 	return nil
 }
 
+// PromoteGuestRegistrationIdentifier заменяет username в колонке F на numeric user_id
+// для уже найденной регистрации владельца.
+func PromoteGuestRegistrationIdentifier(ctx context.Context, userID int, username string) error {
+	normalizedUsername := NormalizeTelegramUsername(username)
+	if userID <= 0 || normalizedUsername == "" {
+		return nil
+	}
+
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return err
+	}
+
+	spreadsheetID := config.GoogleSheetsID
+	sheetName := config.GoogleSheetsSheetName
+
+	readRange := fmt.Sprintf("%s!A:F", sheetName)
+	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+	if err != nil {
+		return fmt.Errorf("ошибка чтения значений: %w", err)
+	}
+
+	updates := make([]*sheets.ValueRange, 0, 2)
+	for i, row := range resp.Values {
+		if len(row) <= 5 {
+			continue
+		}
+
+		existingIdentifier := cellToString(row[5])
+		if !guestIdentifierMatches(existingIdentifier, 0, normalizedUsername) {
+			continue
+		}
+
+		identifierToWrite, shouldWriteIdentifier := resolveGuestIdentifierUpdate(existingIdentifier, userID, normalizedUsername)
+		if !shouldWriteIdentifier {
+			continue
+		}
+
+		updates = append(updates, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!F%d", sheetName, i+1),
+			Values: [][]interface{}{{identifierToWrite}},
+		})
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	batchUpdate := &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "USER_ENTERED",
+		Data:             updates,
+	}
+
+	if _, err := service.Spreadsheets.Values.BatchUpdate(spreadsheetID, batchUpdate).Do(); err != nil {
+		return fmt.Errorf("ошибка обновления идентификатора гостя: %w", err)
+	}
+
+	log.Printf("Гостевые строки для @%s переведены на user_id=%d (обновлено: %d)", normalizedUsername, userID, len(updates))
+	return nil
+}
+
 func resolveCompanionMetadata(ctx context.Context, category, side *string, userID *int, username *string) (*string, *string, error) {
 	effectiveCategory := cloneStringPointer(category)
 	effectiveSide := cloneStringPointer(side)
@@ -378,6 +459,12 @@ func AddGuestGroupToSheets(ctx context.Context, firstName, lastName string, age 
 
 	if !hasPrimaryGuest && len(companions) > 0 && existingOwner == nil {
 		return fmt.Errorf("основной гость не найден, сначала завершите регистрацию для себя")
+	}
+
+	if !hasPrimaryGuest && authUserID > 0 && authUsername != "" {
+		if err := PromoteGuestRegistrationIdentifier(ctx, authUserID, authUsername); err != nil {
+			return err
+		}
 	}
 
 	effectiveCategory, effectiveSide, err := resolveCompanionMetadata(ctx, category, side, userID, username)
@@ -896,8 +983,6 @@ func DeleteGuestFromSheets(ctx context.Context, userID int) error {
 	spreadsheetID := config.GoogleSheetsID
 	sheetName := config.GoogleSheetsSheetName
 
-	userIDStr := fmt.Sprintf("%d", userID)
-
 	// Получаем все значения
 	readRange := fmt.Sprintf("%s!A:F", sheetName)
 	resp, err := service.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
@@ -908,13 +993,9 @@ func DeleteGuestFromSheets(ctx context.Context, userID int) error {
 	// Ищем строку по user_id
 	foundRow := -1
 	for i, row := range resp.Values {
-		if len(row) > 5 {
-			if val, ok := row[5].(string); ok {
-				if strings.TrimSpace(val) == userIDStr {
-					foundRow = i + 1
-					break
-				}
-			}
+		if len(row) > 5 && guestIdentifierMatches(cellToString(row[5]), userID, "") {
+			foundRow = i + 1
+			break
 		}
 	}
 

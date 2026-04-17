@@ -66,10 +66,7 @@ func GetAdminsList(ctx context.Context) ([]AdminInfo, error) {
 			continue
 		}
 
-		username := ""
-		if val, ok := row[0].(string); ok {
-			username = strings.TrimSpace(val)
-		}
+		username := cellToString(row[0])
 		if username == "" {
 			continue
 		}
@@ -83,42 +80,31 @@ func GetAdminsList(ctx context.Context) ([]AdminInfo, error) {
 
 		// User ID (столбец B)
 		if len(row) > 1 {
-			if val, ok := row[1].(string); ok {
-				val = strings.TrimSpace(val)
-				if val != "" {
-					if userID, err := strconv.Atoi(val); err == nil {
-						admin.UserID = &userID
-					}
+			if val := cellToString(row[1]); val != "" {
+				if userID, err := strconv.Atoi(val); err == nil {
+					admin.UserID = &userID
 				}
 			}
 		}
 
 		// API ID (столбец D)
 		if len(row) > 3 {
-			if val, ok := row[3].(string); ok {
-				admin.APIID = strings.TrimSpace(val)
-			}
+			admin.APIID = cellToString(row[3])
 		}
 
 		// API Hash (столбец E)
 		if len(row) > 4 {
-			if val, ok := row[4].(string); ok {
-				admin.APIHash = strings.TrimSpace(val)
-			}
+			admin.APIHash = cellToString(row[4])
 		}
 
 		// Phone (столбец F)
 		if len(row) > 5 {
-			if val, ok := row[5].(string); ok {
-				admin.Phone = strings.TrimSpace(val)
-			}
+			admin.Phone = cellToString(row[5])
 		}
 
 		// Login Code (столбец G)
 		if len(row) > 6 {
-			if val, ok := row[6].(string); ok {
-				admin.LoginCode = strings.TrimSpace(val)
-			}
+			admin.LoginCode = cellToString(row[6])
 		}
 
 		admins = append(admins, admin)
@@ -162,12 +148,7 @@ func GetAdminLoginCodeAndClear(ctx context.Context, adminUserID int) (string, er
 			continue
 		}
 
-		userIDCell := ""
-		if val, ok := row[1].(string); ok {
-			userIDCell = strings.TrimSpace(val)
-		}
-
-		userIDValue, err := strconv.Atoi(userIDCell)
+		userIDValue, err := strconv.Atoi(cellToString(row[1]))
 		if err != nil || userIDValue != adminUserID {
 			continue
 		}
@@ -175,9 +156,7 @@ func GetAdminLoginCodeAndClear(ctx context.Context, adminUserID int) (string, er
 		// Нашли строку текущего админа
 		code := ""
 		if len(row) > 6 {
-			if val, ok := row[6].(string); ok {
-				code = strings.TrimSpace(val)
-			}
+			code = cellToString(row[6])
 		}
 
 		if code == "" {
@@ -248,10 +227,7 @@ func SaveAdminToSheets(ctx context.Context, username string, userID int) error {
 	for i := startRow; i < len(resp.Values); i++ {
 		row := resp.Values[i]
 		if len(row) > 0 {
-			existingUsername := ""
-			if val, ok := row[0].(string); ok {
-				existingUsername = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(val)), "@")
-			}
+			existingUsername := strings.TrimPrefix(strings.ToLower(cellToString(row[0])), "@")
 			if existingUsername == usernameLower {
 				foundRow = i + 1
 				break

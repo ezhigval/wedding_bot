@@ -13,10 +13,10 @@ import (
 
 // InvitationInfo представляет информацию о приглашении
 type InvitationInfo struct {
-	Name      string
+	Name       string
 	TelegramID string
-	UserID    string
-	IsSent    bool
+	UserID     string
+	IsSent     bool
 }
 
 // NormalizeTelegramUsername приводит Telegram username/ссылку к каноничному виду (lowercase, без @ и t.me/)
@@ -100,33 +100,24 @@ func GetInvitationsList(ctx context.Context) ([]InvitationInfo, error) {
 			continue
 		}
 
-		name := ""
-		if val, ok := row[0].(string); ok {
-			name = strings.TrimSpace(val)
-		}
+		name := cellToString(row[0])
 		if name == "" {
 			continue
 		}
 
 		telegramID := ""
 		if len(row) > 1 {
-			if val, ok := row[1].(string); ok {
-				telegramID = NormalizeTelegramID(val)
-			}
+			telegramID = NormalizeTelegramID(cellToString(row[1]))
 		}
 
 		status := ""
 		if len(row) > 2 {
-			if val, ok := row[2].(string); ok {
-				status = strings.TrimSpace(val)
-			}
+			status = cellToString(row[2])
 		}
 
 		userID := ""
 		if len(row) > 3 {
-			if val, ok := row[3].(string); ok {
-				userID = strings.TrimSpace(val)
-			}
+			userID = cellToString(row[3])
 		}
 
 		isSent := strings.ToUpper(status) == "ДА"
@@ -144,6 +135,60 @@ func GetInvitationsList(ctx context.Context) ([]InvitationInfo, error) {
 }
 
 // UpdateInvitationUserID обновляет user_id и username в таблице приглашений
+func invitationDataStartRow(values [][]interface{}) int {
+	if len(values) == 0 {
+		return 0
+	}
+
+	firstRow := values[0]
+	if len(firstRow) == 0 {
+		return 0
+	}
+
+	firstCell := strings.ToLower(cellToString(firstRow[0]))
+	if strings.Contains(firstCell, "имя") || strings.Contains(firstCell, "name") || strings.Contains(firstCell, "гость") {
+		return 1
+	}
+
+	return 0
+}
+
+func findInvitationRow(values [][]interface{}, guestName string, username *string) (int, string) {
+	startRow := invitationDataStartRow(values)
+	normalizedGuestName := strings.ToLower(strings.TrimSpace(guestName))
+
+	if normalizedGuestName != "" {
+		for i := startRow; i < len(values); i++ {
+			row := values[i]
+			if len(row) == 0 {
+				continue
+			}
+
+			if strings.ToLower(cellToString(row[0])) == normalizedGuestName {
+				return i + 1, "name"
+			}
+		}
+	}
+
+	if username != nil {
+		normalizedUsername := NormalizeTelegramUsername(*username)
+		if normalizedUsername != "" {
+			for i := startRow; i < len(values); i++ {
+				row := values[i]
+				if len(row) < 2 {
+					continue
+				}
+
+				if NormalizeTelegramUsername(cellToString(row[1])) == normalizedUsername {
+					return i + 1, "username"
+				}
+			}
+		}
+	}
+
+	return -1, ""
+}
+
 func UpdateInvitationUserID(ctx context.Context, guestName string, userID int, username *string) error {
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
@@ -159,34 +204,11 @@ func UpdateInvitationUserID(ctx context.Context, guestName string, userID int, u
 		return fmt.Errorf("ошибка чтения значений: %w", err)
 	}
 
-	startRow := 0
-	if len(resp.Values) > 0 {
-		firstRow := resp.Values[0]
-		if len(firstRow) > 0 {
-			firstCell := strings.ToLower(fmt.Sprintf("%v", firstRow[0]))
-			if strings.Contains(firstCell, "имя") || strings.Contains(firstCell, "name") || strings.Contains(firstCell, "гость") {
-				startRow = 1
-			}
-		}
-	}
-
-	// Ищем строку с именем гостя
-	foundRow := -1
-	for i := startRow; i < len(resp.Values); i++ {
-		row := resp.Values[i]
-		if len(row) > 0 {
-			name := ""
-			if val, ok := row[0].(string); ok {
-				name = strings.TrimSpace(strings.ToLower(val))
-			}
-			if name == strings.ToLower(guestName) {
-				foundRow = i + 1
-				break
-			}
-		}
-	}
-
+	foundRow, foundBy := findInvitationRow(resp.Values, guestName, username)
 	if foundRow <= 0 {
+		if username != nil && NormalizeTelegramUsername(*username) != "" {
+			return fmt.Errorf("гость %s / @%s не найден в таблице приглашений", guestName, NormalizeTelegramUsername(*username))
+		}
 		return fmt.Errorf("гость %s не найден в таблице приглашений", guestName)
 	}
 
@@ -217,7 +239,7 @@ func UpdateInvitationUserID(ctx context.Context, guestName string, userID int, u
 		return fmt.Errorf("ошибка обновления: %w", err)
 	}
 
-	log.Printf("Обновлены username и user_id для %s в строке %d", guestName, foundRow)
+	log.Printf("Обновлены username и user_id для %s в строке %d (поиск: %s)", guestName, foundRow, foundBy)
 	return nil
 }
 
@@ -253,10 +275,7 @@ func MarkInvitationAsSent(ctx context.Context, guestName string) error {
 	for i := startRow; i < len(resp.Values); i++ {
 		row := resp.Values[i]
 		if len(row) > 0 {
-			name := ""
-			if val, ok := row[0].(string); ok {
-				name = strings.TrimSpace(strings.ToLower(val))
-			}
+			name := strings.TrimSpace(strings.ToLower(cellToString(row[0])))
 			if name == strings.ToLower(guestName) {
 				foundRow = i + 1
 				break
@@ -287,4 +306,3 @@ func MarkInvitationAsSent(ctx context.Context, guestName string) error {
 	log.Printf("Приглашение для %s отмечено как отправленное (строка %d)", guestName, foundRow)
 	return nil
 }
-
