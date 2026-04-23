@@ -18,6 +18,17 @@ const (
 	editableSeatingUnassignedLabel = "Без стола"
 )
 
+var (
+	defaultEditableSeatingBackgroundColor = rgbSheetsColor(255, 255, 255)
+	defaultEditableSeatingForegroundColor = rgbSheetsColor(32, 35, 41)
+	familyBackgroundColor                 = rgbSheetsColor(247, 230, 236)
+	relativesBackgroundColor              = rgbSheetsColor(248, 242, 214)
+	friendsBackgroundColor                = rgbSheetsColor(226, 240, 227)
+	groomForegroundColor                  = rgbSheetsColor(69, 103, 178)
+	brideForegroundColor                  = rgbSheetsColor(183, 91, 137)
+	commonForegroundColor                 = rgbSheetsColor(80, 136, 103)
+)
+
 // SeatingSyncReport описывает результат синхронизации между листами гостей и рассадки.
 type SeatingSyncReport struct {
 	GuestRows        int  `json:"guest_rows"`
@@ -32,6 +43,9 @@ type guestSeatRow struct {
 	FullName       string
 	ComparableName string
 	Table          string
+	Confirmed      bool
+	Category       string
+	Side           string
 }
 
 type editableSeatingSnapshot struct {
@@ -43,12 +57,28 @@ type editableSeatingSnapshot struct {
 	AmbiguousComparableNames   map[string]struct{}
 }
 
+type editableSeatingCellFormat struct {
+	RowIndex    int64
+	ColumnIndex int64
+	Format      *sheets.CellFormat
+}
+
+type editableSeatingLayout struct {
+	Values          [][]interface{}
+	TableOrder      []string
+	GuestCellStyles []editableSeatingCellFormat
+}
+
 // SyncSeatingFromGuestList перестраивает лист "Рассадка" по колонке G листа "Список гостей".
 func SyncSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
 	if err := EnsureSheetExists(config.GoogleSheetsID, editableSeatingSheetName); err != nil {
 		return nil, err
 	}
 
+	return syncEditableSeatingFromGuestList(ctx)
+}
+
+func syncEditableSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
 	guestRows, _, err := readGuestSeatRows(ctx)
 	if err != nil {
 		return nil, err
@@ -59,18 +89,21 @@ func SyncSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
 		return nil, err
 	}
 
-	matrix := buildEditableSeatingMatrix(guestRows, seatingSnapshot)
+	layout := buildEditableSeatingLayout(guestRows, seatingSnapshot)
 	rewritten := false
-	if !sheetMatrixEquals(seatingSnapshot.RawValues, matrix) {
-		if err := rewriteEditableSeatingSheet(ctx, matrix); err != nil {
+	if !sheetMatrixEquals(seatingSnapshot.RawValues, layout.Values) {
+		if err := rewriteEditableSeatingSheet(ctx, layout.Values); err != nil {
 			return nil, err
 		}
 		rewritten = true
 	}
+	if err := applyEditableSeatingFormatting(ctx, seatingSnapshot, layout); err != nil {
+		return nil, err
+	}
 
 	report := &SeatingSyncReport{
 		GuestRows:        len(guestRows),
-		SeatingTables:    len(mergeEditableTableOrder(seatingSnapshot.TableOrder, guestRows)),
+		SeatingTables:    len(layout.TableOrder),
 		UnassignedGuests: countUnassignedGuestRows(guestRows),
 		RewrittenSeating: rewritten,
 	}
@@ -107,7 +140,6 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 	}
 
 	updates := make([]*sheets.ValueRange, 0)
-	unassignedCount := 0
 
 	for _, guestRow := range guestRows {
 		if hasComparableGuestName(guestAmbiguous, guestRow.ComparableName) || hasComparableGuestName(seatingSnapshot.AmbiguousComparableNames, guestRow.ComparableName) {
@@ -115,9 +147,6 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 		}
 
 		targetTable := normalizeSeatTable(seatingSnapshot.AssignmentByComparableName[guestRow.ComparableName])
-		if targetTable == "" {
-			unassignedCount++
-		}
 
 		if targetTable == guestRow.Table {
 			continue
@@ -140,11 +169,17 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 		}
 	}
 
+	canonicalReport, err := syncEditableSeatingFromGuestList(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	report := &SeatingSyncReport{
 		GuestRows:        len(guestRows),
-		SeatingTables:    len(seatingSnapshot.TableOrder),
-		UnassignedGuests: unassignedCount,
+		SeatingTables:    canonicalReport.SeatingTables,
+		UnassignedGuests: canonicalReport.UnassignedGuests,
 		UpdatedGuestRows: len(updates),
+		RewrittenSeating: canonicalReport.RewrittenSeating,
 	}
 
 	log.Printf(
@@ -199,6 +234,9 @@ func readGuestSeatRows(ctx context.Context) ([]guestSeatRow, map[string]struct{}
 			Row:            rowIdx + 1,
 			FullName:       fullName,
 			ComparableName: comparableName,
+			Confirmed:      isConfirmedValue(cellToStringAt(row, 2)),
+			Category:       cellToStringAt(row, 3),
+			Side:           cellToStringAt(row, 4),
 			Table:          normalizeSeatTable(cellToStringAt(row, 6)),
 		})
 	}
@@ -287,45 +325,12 @@ func markEditableSeatingGuest(snapshot *editableSeatingSnapshot, tableName, gues
 }
 
 func buildEditableSeatingMatrix(guestRows []guestSeatRow, seatingSnapshot *editableSeatingSnapshot) [][]interface{} {
+	return buildEditableSeatingLayout(guestRows, seatingSnapshot).Values
+}
+
+func buildEditableSeatingLayout(guestRows []guestSeatRow, seatingSnapshot *editableSeatingSnapshot) *editableSeatingLayout {
 	tableOrder := mergeEditableTableOrder(seatingSnapshot.TableOrder, guestRows)
-	rowsByComparableName, guestAmbiguous := buildGuestRowsByComparableName(guestRows)
-	guestsByTable := make(map[string][]string, len(tableOrder)+1)
-	addedRows := make(map[int]struct{}, len(guestRows))
-
-	tables := make([]string, 0, len(tableOrder)+1)
-	tables = append(tables, "")
-	tables = append(tables, tableOrder...)
-
-	for _, tableName := range tables {
-		for _, comparableName := range seatingSnapshot.OrderedComparableByTable[tableName] {
-			if hasComparableGuestName(guestAmbiguous, comparableName) {
-				continue
-			}
-
-			guestRow, exists := rowsByComparableName[comparableName]
-			if !exists || guestRow.Table != tableName {
-				continue
-			}
-			if _, alreadyAdded := addedRows[guestRow.Row]; alreadyAdded {
-				continue
-			}
-
-			guestsByTable[tableName] = append(guestsByTable[tableName], guestRow.FullName)
-			addedRows[guestRow.Row] = struct{}{}
-		}
-
-		for _, guestRow := range guestRows {
-			if guestRow.Table != tableName {
-				continue
-			}
-			if _, alreadyAdded := addedRows[guestRow.Row]; alreadyAdded {
-				continue
-			}
-
-			guestsByTable[tableName] = append(guestsByTable[tableName], guestRow.FullName)
-			addedRows[guestRow.Row] = struct{}{}
-		}
-	}
+	guestsByTable := buildSeatingGuestsByTable(guestRows)
 
 	maxGuests := len(guestsByTable[""])
 	for _, tableName := range tableOrder {
@@ -346,25 +351,42 @@ func buildEditableSeatingMatrix(guestRows []guestSeatRow, seatingSnapshot *edita
 	}
 	values[0] = header
 
+	cellStyles := make([]editableSeatingCellFormat, 0, len(guestRows))
+
 	for rowIdx := 0; rowIdx < maxGuests; rowIdx++ {
 		row := make([]interface{}, len(tableOrder)+1)
 		for idx := range row {
 			row[idx] = ""
 		}
-		if rowIdx < len(guestsByTable[""]) {
-			row[0] = guestsByTable[""][rowIdx]
+
+		if guestRow, ok := seatingGuestAt(guestsByTable[""], rowIdx); ok {
+			row[0] = guestRow.FullName
+			cellStyles = append(cellStyles, editableSeatingCellFormat{
+				RowIndex:    int64(rowIdx + 1),
+				ColumnIndex: 0,
+				Format:      buildEditableSeatingCellFormat(guestRow),
+			})
 		}
 
 		for colIdx, tableName := range tableOrder {
-			if rowIdx < len(guestsByTable[tableName]) {
-				row[colIdx+1] = guestsByTable[tableName][rowIdx]
+			if guestRow, ok := seatingGuestAt(guestsByTable[tableName], rowIdx); ok {
+				row[colIdx+1] = guestRow.FullName
+				cellStyles = append(cellStyles, editableSeatingCellFormat{
+					RowIndex:    int64(rowIdx + 1),
+					ColumnIndex: int64(colIdx + 1),
+					Format:      buildEditableSeatingCellFormat(guestRow),
+				})
 			}
 		}
 
 		values[rowIdx+1] = row
 	}
 
-	return values
+	return &editableSeatingLayout{
+		Values:          values,
+		TableOrder:      tableOrder,
+		GuestCellStyles: cellStyles,
+	}
 }
 
 func rewriteEditableSeatingSheet(ctx context.Context, values [][]interface{}) error {
@@ -380,6 +402,75 @@ func rewriteEditableSeatingSheet(ctx context.Context, values [][]interface{}) er
 
 	if err := UpdateSheetValues(config.GoogleSheetsID, editableSeatingSheetName, "A1", values); err != nil {
 		return fmt.Errorf("ошибка записи рассадки: %w", err)
+	}
+
+	return nil
+}
+
+func applyEditableSeatingFormatting(ctx context.Context, seatingSnapshot *editableSeatingSnapshot, layout *editableSeatingLayout) error {
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return err
+	}
+
+	sheetID, err := getSheetIDByName(config.GoogleSheetsID, editableSeatingSheetName)
+	if err != nil {
+		return err
+	}
+
+	maxRows := maxInt(len(seatingSnapshot.RawValues), len(layout.Values))
+	maxCols := maxSheetMatrixWidth(seatingSnapshot.RawValues, layout.Values)
+
+	requests := make([]*sheets.Request, 0, len(layout.GuestCellStyles)+1)
+	if maxRows > 1 && maxCols > 0 {
+		requests = append(requests, &sheets.Request{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    1,
+					EndRowIndex:      int64(maxRows),
+					StartColumnIndex: 0,
+					EndColumnIndex:   int64(maxCols),
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						BackgroundColor: defaultEditableSeatingBackgroundColor,
+						TextFormat: &sheets.TextFormat{
+							ForegroundColor: defaultEditableSeatingForegroundColor,
+						},
+					},
+				},
+				Fields: "userEnteredFormat(backgroundColor,textFormat.foregroundColor)",
+			},
+		})
+	}
+
+	for _, cellStyle := range layout.GuestCellStyles {
+		requests = append(requests, &sheets.Request{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    cellStyle.RowIndex,
+					EndRowIndex:      cellStyle.RowIndex + 1,
+					StartColumnIndex: cellStyle.ColumnIndex,
+					EndColumnIndex:   cellStyle.ColumnIndex + 1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: cellStyle.Format,
+				},
+				Fields: "userEnteredFormat(backgroundColor,textFormat.foregroundColor)",
+			},
+		})
+	}
+
+	if len(requests) == 0 {
+		return nil
+	}
+
+	if _, err := service.Spreadsheets.BatchUpdate(config.GoogleSheetsID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do(); err != nil {
+		return fmt.Errorf("ошибка форматирования листа рассадки: %w", err)
 	}
 
 	return nil
@@ -433,6 +524,54 @@ func buildGuestRowsByComparableName(guestRows []guestSeatRow) (map[string]guestS
 	}
 
 	return rowsByComparableName, ambiguous
+}
+
+func buildSeatingGuestsByTable(guestRows []guestSeatRow) map[string][]guestSeatRow {
+	guestsByTable := make(map[string][]guestSeatRow, 4)
+	for _, guestRow := range guestRows {
+		guestsByTable[guestRow.Table] = append(guestsByTable[guestRow.Table], guestRow)
+	}
+
+	for tableName := range guestsByTable {
+		sortGuestRowsForSeating(guestsByTable[tableName])
+	}
+
+	return guestsByTable
+}
+
+func sortGuestRowsForSeating(guestRows []guestSeatRow) {
+	sort.SliceStable(guestRows, func(i, j int) bool {
+		left := guestRows[i]
+		right := guestRows[j]
+
+		if left.Confirmed != right.Confirmed {
+			return left.Confirmed && !right.Confirmed
+		}
+
+		leftName := normalizeSeatingSortName(left.FullName)
+		rightName := normalizeSeatingSortName(right.FullName)
+		if leftName != rightName {
+			return strings.Compare(leftName, rightName) < 0
+		}
+
+		if left.ComparableName != right.ComparableName {
+			return strings.Compare(left.ComparableName, right.ComparableName) < 0
+		}
+
+		return left.Row < right.Row
+	})
+}
+
+func seatingGuestAt(guestRows []guestSeatRow, idx int) (guestSeatRow, bool) {
+	if idx < 0 || idx >= len(guestRows) {
+		return guestSeatRow{}, false
+	}
+
+	return guestRows[idx], true
+}
+
+func normalizeSeatingSortName(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
 }
 
 func compareSeatTableLabels(left, right string) int {
@@ -489,6 +628,77 @@ func normalizeSeatTable(value string) string {
 		return ""
 	default:
 		return clean
+	}
+}
+
+func normalizeSeatingCategory(value string) string {
+	clean := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.HasPrefix(clean, "сем"):
+		return "семья"
+	case strings.HasPrefix(clean, "друз"):
+		return "друзья"
+	case strings.HasPrefix(clean, "родствен"):
+		return "родственники"
+	default:
+		return clean
+	}
+}
+
+func normalizeSeatingSide(value string) string {
+	clean := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.HasPrefix(clean, "жених"):
+		return "жених"
+	case strings.HasPrefix(clean, "невест"):
+		return "невеста"
+	case strings.HasPrefix(clean, "общ"):
+		return "общие"
+	default:
+		return clean
+	}
+}
+
+func buildEditableSeatingCellFormat(guestRow guestSeatRow) *sheets.CellFormat {
+	return &sheets.CellFormat{
+		BackgroundColor: seatingCategoryBackgroundColor(guestRow.Category),
+		TextFormat: &sheets.TextFormat{
+			ForegroundColor: seatingSideForegroundColor(guestRow.Side),
+		},
+	}
+}
+
+func seatingCategoryBackgroundColor(category string) *sheets.Color {
+	switch normalizeSeatingCategory(category) {
+	case "семья":
+		return familyBackgroundColor
+	case "родственники":
+		return relativesBackgroundColor
+	case "друзья":
+		return friendsBackgroundColor
+	default:
+		return defaultEditableSeatingBackgroundColor
+	}
+}
+
+func seatingSideForegroundColor(side string) *sheets.Color {
+	switch normalizeSeatingSide(side) {
+	case "жених":
+		return groomForegroundColor
+	case "невеста":
+		return brideForegroundColor
+	case "общие":
+		return commonForegroundColor
+	default:
+		return defaultEditableSeatingForegroundColor
+	}
+}
+
+func rgbSheetsColor(r, g, b int) *sheets.Color {
+	return &sheets.Color{
+		Red:   float64(r) / 255.0,
+		Green: float64(g) / 255.0,
+		Blue:  float64(b) / 255.0,
 	}
 }
 
@@ -574,4 +784,38 @@ func countUnassignedGuestRows(guestRows []guestSeatRow) int {
 		}
 	}
 	return count
+}
+
+func getSheetIDByName(spreadsheetID, sheetName string) (int64, error) {
+	spreadsheet, err := GetSpreadsheet(spreadsheetID)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			return sheet.Properties.SheetId, nil
+		}
+	}
+
+	return 0, fmt.Errorf("лист %s не найден", sheetName)
+}
+
+func maxSheetMatrixWidth(matrices ...[][]interface{}) int {
+	maxWidth := 0
+	for _, matrix := range matrices {
+		for _, row := range matrix {
+			if len(row) > maxWidth {
+				maxWidth = len(row)
+			}
+		}
+	}
+	return maxWidth
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
