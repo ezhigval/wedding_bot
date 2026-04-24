@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"wedding-bot/internal/config"
-	"wedding-bot/internal/google_sheets"
 )
 
 type seatingEditRequest struct {
@@ -55,43 +53,12 @@ func handleSeatingOnEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sheetName := strings.TrimSpace(req.SheetName)
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	switch sheetName {
-	case config.GoogleSheetsSheetName, "Список гостей":
-		report, err := google_sheets.SyncSeatingFromGuestList(ctx)
-		if err != nil {
-			log.Printf("handleSeatingOnEdit guests->seating error: %v", err)
-			JSONError(w, http.StatusInternalServerError, "server_error")
-			return
-		}
-
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"status":    "ok",
-			"direction": "guests_to_seating",
-			"report":    report,
-		})
-	case "Рассадка":
-		report, err := google_sheets.SyncGuestListTablesFromSeating(ctx)
-		if err != nil {
-			log.Printf("handleSeatingOnEdit seating->guests error: %v", err)
-			JSONError(w, http.StatusInternalServerError, "server_error")
-			return
-		}
-
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"status":    "ok",
-			"direction": "seating_to_guests",
-			"report":    report,
-		})
-	default:
-		JSONResponse(w, http.StatusOK, map[string]interface{}{
-			"status": "ignored",
-			"reason": "irrelevant_sheet",
-			"sheet":  sheetName,
-		})
-	}
+	log.Printf("handleSeatingOnEdit: backend sync disabled, sheet=%s", sheetName)
+	JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"status": "disabled",
+		"reason": "moved_to_apps_script",
+		"sheet":  sheetName,
+	})
 }
 
 func handleSeatingFullReconcile(w http.ResponseWriter, r *http.Request) {
@@ -99,28 +66,11 @@ func handleSeatingFullReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-	defer cancel()
-
-	fromSeatingReport, err := google_sheets.SyncGuestListTablesFromSeating(ctx)
-	if err != nil {
-		log.Printf("handleSeatingFullReconcile seating->guests error: %v", err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
-	}
-
-	fromGuestsReport, err := google_sheets.SyncSeatingFromGuestList(ctx)
-	if err != nil {
-		log.Printf("handleSeatingFullReconcile guests->seating error: %v", err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
-	}
-
+	log.Printf("handleSeatingFullReconcile: backend sync disabled")
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"status":       "ok",
-		"seating_sync": fromSeatingReport,
-		"guests_sync":  fromGuestsReport,
-		"description":  "full_reconcile_completed",
+		"status":      "disabled",
+		"reason":      "moved_to_apps_script",
+		"description": "full_reconcile_disabled",
 	})
 }
 
@@ -129,19 +79,10 @@ func handleSeatingRebuildHeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	report, err := google_sheets.SyncSeatingFromGuestList(ctx)
-	if err != nil {
-		log.Printf("handleSeatingRebuildHeader error: %v", err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
-	}
-
+	log.Printf("handleSeatingRebuildHeader: backend sync disabled")
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"status": "ok",
-		"report": report,
+		"status": "disabled",
+		"reason": "moved_to_apps_script",
 	})
 }
 
@@ -150,19 +91,10 @@ func handleSeatingSyncFromSeating(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	report, err := google_sheets.SyncGuestListTablesFromSeating(ctx)
-	if err != nil {
-		log.Printf("handleSeatingSyncFromSeating error: %v", err)
-		JSONError(w, http.StatusInternalServerError, "server_error")
-		return
-	}
-
+	log.Printf("handleSeatingSyncFromSeating: backend sync disabled")
 	JSONResponse(w, http.StatusOK, map[string]interface{}{
-		"status": "ok",
-		"report": report,
+		"status": "disabled",
+		"reason": "moved_to_apps_script",
 	})
 }
 
