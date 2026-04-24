@@ -6,6 +6,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 
 	"wedding-bot/internal/config"
 
@@ -27,7 +28,15 @@ var (
 	groomForegroundColor                  = rgbSheetsColor(69, 103, 178)
 	brideForegroundColor                  = rgbSheetsColor(183, 91, 137)
 	commonForegroundColor                 = rgbSheetsColor(80, 136, 103)
+	editableSeatingSheetIDCache           editableSeatingSheetIDState
 )
+
+type editableSeatingSheetIDState struct {
+	mu            sync.RWMutex
+	spreadsheetID string
+	sheetID       int64
+	ok            bool
+}
 
 // SeatingSyncReport описывает результат синхронизации между листами гостей и рассадки.
 type SeatingSyncReport struct {
@@ -71,14 +80,15 @@ type editableSeatingLayout struct {
 
 // SyncSeatingFromGuestList перестраивает лист "Рассадка" по колонке G листа "Список гостей".
 func SyncSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
-	if err := EnsureSheetExists(config.GoogleSheetsID, editableSeatingSheetName); err != nil {
+	sheetID, err := ensureEditableSeatingSheetID(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	return syncEditableSeatingFromGuestList(ctx)
+	return syncEditableSeatingFromGuestList(ctx, sheetID)
 }
 
-func syncEditableSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
+func syncEditableSeatingFromGuestList(ctx context.Context, sheetID int64) (*SeatingSyncReport, error) {
 	guestRows, _, err := readGuestSeatRows(ctx)
 	if err != nil {
 		return nil, err
@@ -89,6 +99,10 @@ func syncEditableSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, 
 		return nil, err
 	}
 
+	return syncEditableSeatingWithSnapshot(ctx, sheetID, guestRows, seatingSnapshot)
+}
+
+func syncEditableSeatingWithSnapshot(ctx context.Context, sheetID int64, guestRows []guestSeatRow, seatingSnapshot *editableSeatingSnapshot) (*SeatingSyncReport, error) {
 	layout := buildEditableSeatingLayout(guestRows, seatingSnapshot)
 	rewritten := false
 	if !sheetMatrixEquals(seatingSnapshot.RawValues, layout.Values) {
@@ -97,7 +111,7 @@ func syncEditableSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, 
 		}
 		rewritten = true
 	}
-	if err := applyEditableSeatingFormatting(ctx, seatingSnapshot, layout); err != nil {
+	if err := applyEditableSeatingFormatting(ctx, sheetID, seatingSnapshot, layout); err != nil {
 		return nil, err
 	}
 
@@ -120,7 +134,8 @@ func syncEditableSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, 
 
 // SyncGuestListTablesFromSeating обновляет колонку G листа "Список гостей" по текущему состоянию листа "Рассадка".
 func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, error) {
-	if err := EnsureSheetExists(config.GoogleSheetsID, editableSeatingSheetName); err != nil {
+	sheetID, err := ensureEditableSeatingSheetID(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -141,7 +156,8 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 
 	updates := make([]*sheets.ValueRange, 0)
 
-	for _, guestRow := range guestRows {
+	for idx := range guestRows {
+		guestRow := &guestRows[idx]
 		if hasComparableGuestName(guestAmbiguous, guestRow.ComparableName) || hasComparableGuestName(seatingSnapshot.AmbiguousComparableNames, guestRow.ComparableName) {
 			continue
 		}
@@ -156,6 +172,7 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 			Range:  fmt.Sprintf("%s!G%d", config.GoogleSheetsSheetName, guestRow.Row),
 			Values: [][]interface{}{{targetTable}},
 		})
+		guestRow.Table = targetTable
 	}
 
 	if len(updates) > 0 {
@@ -169,7 +186,7 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 		}
 	}
 
-	canonicalReport, err := syncEditableSeatingFromGuestList(ctx)
+	canonicalReport, err := syncEditableSeatingWithSnapshot(ctx, sheetID, guestRows, seatingSnapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -407,13 +424,8 @@ func rewriteEditableSeatingSheet(ctx context.Context, values [][]interface{}) er
 	return nil
 }
 
-func applyEditableSeatingFormatting(ctx context.Context, seatingSnapshot *editableSeatingSnapshot, layout *editableSeatingLayout) error {
+func applyEditableSeatingFormatting(ctx context.Context, sheetID int64, seatingSnapshot *editableSeatingSnapshot, layout *editableSeatingLayout) error {
 	service, err := GetGoogleSheetsClient()
-	if err != nil {
-		return err
-	}
-
-	sheetID, err := getSheetIDByName(config.GoogleSheetsID, editableSeatingSheetName)
 	if err != nil {
 		return err
 	}
@@ -786,19 +798,51 @@ func countUnassignedGuestRows(guestRows []guestSeatRow) int {
 	return count
 }
 
-func getSheetIDByName(spreadsheetID, sheetName string) (int64, error) {
-	spreadsheet, err := GetSpreadsheet(spreadsheetID)
+func ensureEditableSeatingSheetID(ctx context.Context) (int64, error) {
+	if cachedSheetID, ok := getCachedEditableSeatingSheetID(config.GoogleSheetsID); ok {
+		return cachedSheetID, nil
+	}
+
+	spreadsheet, err := GetSpreadsheet(config.GoogleSheetsID)
 	if err != nil {
 		return 0, err
 	}
 
 	for _, sheet := range spreadsheet.Sheets {
-		if sheet.Properties.Title == sheetName {
+		if sheet.Properties.Title == editableSeatingSheetName {
+			cacheEditableSeatingSheetID(config.GoogleSheetsID, sheet.Properties.SheetId)
 			return sheet.Properties.SheetId, nil
 		}
 	}
 
-	return 0, fmt.Errorf("лист %s не найден", sheetName)
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := service.Spreadsheets.BatchUpdate(config.GoogleSheetsID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{
+			{
+				AddSheet: &sheets.AddSheetRequest{
+					Properties: &sheets.SheetProperties{
+						Title: editableSeatingSheetName,
+					},
+				},
+			},
+		},
+	}).Do()
+	if err != nil {
+		return 0, fmt.Errorf("ошибка создания листа %s: %w", editableSeatingSheetName, err)
+	}
+
+	if len(resp.Replies) > 0 && resp.Replies[0].AddSheet != nil && resp.Replies[0].AddSheet.Properties != nil {
+		sheetID := resp.Replies[0].AddSheet.Properties.SheetId
+		cacheEditableSeatingSheetID(config.GoogleSheetsID, sheetID)
+		return sheetID, nil
+	}
+
+	invalidateEditableSeatingSheetID(config.GoogleSheetsID)
+	return 0, fmt.Errorf("лист %s создан, но sheet_id не получен", editableSeatingSheetName)
 }
 
 func maxSheetMatrixWidth(matrices ...[][]interface{}) int {
@@ -818,4 +862,37 @@ func maxInt(left, right int) int {
 		return left
 	}
 	return right
+}
+
+func getCachedEditableSeatingSheetID(spreadsheetID string) (int64, bool) {
+	editableSeatingSheetIDCache.mu.RLock()
+	defer editableSeatingSheetIDCache.mu.RUnlock()
+
+	if !editableSeatingSheetIDCache.ok || editableSeatingSheetIDCache.spreadsheetID != spreadsheetID {
+		return 0, false
+	}
+
+	return editableSeatingSheetIDCache.sheetID, true
+}
+
+func cacheEditableSeatingSheetID(spreadsheetID string, sheetID int64) {
+	editableSeatingSheetIDCache.mu.Lock()
+	defer editableSeatingSheetIDCache.mu.Unlock()
+
+	editableSeatingSheetIDCache.spreadsheetID = spreadsheetID
+	editableSeatingSheetIDCache.sheetID = sheetID
+	editableSeatingSheetIDCache.ok = true
+}
+
+func invalidateEditableSeatingSheetID(spreadsheetID string) {
+	editableSeatingSheetIDCache.mu.Lock()
+	defer editableSeatingSheetIDCache.mu.Unlock()
+
+	if editableSeatingSheetIDCache.spreadsheetID != spreadsheetID {
+		return
+	}
+
+	editableSeatingSheetIDCache.spreadsheetID = ""
+	editableSeatingSheetIDCache.sheetID = 0
+	editableSeatingSheetIDCache.ok = false
 }
