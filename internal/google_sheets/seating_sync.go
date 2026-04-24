@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"wedding-bot/internal/config"
 
@@ -16,7 +17,9 @@ import (
 const (
 	editableSeatingSheetName       = "Рассадка"
 	editableSeatingReadRange       = "A:AZ"
+	guestSeatRowsReadRange         = "A:G"
 	editableSeatingUnassignedLabel = "Без стола"
+	guestSeatRowsCacheTTL          = 5 * time.Minute
 )
 
 var (
@@ -29,12 +32,22 @@ var (
 	brideForegroundColor                  = rgbSheetsColor(183, 91, 137)
 	commonForegroundColor                 = rgbSheetsColor(80, 136, 103)
 	editableSeatingSheetIDCache           editableSeatingSheetIDState
+	guestSeatRowsCache                    guestSeatRowsCacheState
 )
 
 type editableSeatingSheetIDState struct {
 	mu            sync.RWMutex
 	spreadsheetID string
 	sheetID       int64
+	ok            bool
+}
+
+type guestSeatRowsCacheState struct {
+	mu            sync.RWMutex
+	spreadsheetID string
+	rows          []guestSeatRow
+	ambiguous     map[string]struct{}
+	cachedAt      time.Time
 	ok            bool
 }
 
@@ -89,12 +102,7 @@ func SyncSeatingFromGuestList(ctx context.Context) (*SeatingSyncReport, error) {
 }
 
 func syncEditableSeatingFromGuestList(ctx context.Context, sheetID int64) (*SeatingSyncReport, error) {
-	guestRows, _, err := readGuestSeatRows(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	seatingSnapshot, err := readEditableSeatingSnapshot(ctx)
+	guestRows, _, seatingSnapshot, err := readSeatingSyncState(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -139,12 +147,7 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 		return nil, err
 	}
 
-	guestRows, guestAmbiguous, err := readGuestSeatRows(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	seatingSnapshot, err := readEditableSeatingSnapshot(ctx)
+	guestRows, guestAmbiguous, seatingSnapshot, err := readSeatingSyncStateWithGuestCache(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +187,8 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 		if _, err := service.Spreadsheets.Values.BatchUpdate(config.GoogleSheetsID, batchUpdate).Do(); err != nil {
 			return nil, fmt.Errorf("ошибка обновления столов в списке гостей: %w", err)
 		}
+
+		cacheGuestSeatRows(config.GoogleSheetsID, guestRows, guestAmbiguous)
 	}
 
 	canonicalReport, err := syncEditableSeatingWithSnapshot(ctx, sheetID, guestRows, seatingSnapshot)
@@ -209,29 +214,84 @@ func SyncGuestListTablesFromSeating(ctx context.Context) (*SeatingSyncReport, er
 	return report, nil
 }
 
+func readSeatingSyncState(ctx context.Context) ([]guestSeatRow, map[string]struct{}, *editableSeatingSnapshot, error) {
+	return readSeatingSyncStateBatch(ctx)
+}
+
+func readSeatingSyncStateWithGuestCache(ctx context.Context) ([]guestSeatRow, map[string]struct{}, *editableSeatingSnapshot, error) {
+	if guestRows, guestAmbiguous, ok := getCachedGuestSeatRows(config.GoogleSheetsID); ok {
+		log.Printf("♻️ Синхронизация рассадки: используется кэш списка гостей")
+		seatingSnapshot, err := readEditableSeatingSnapshot(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return guestRows, guestAmbiguous, seatingSnapshot, nil
+	}
+
+	return readSeatingSyncStateBatch(ctx)
+}
+
+func readSeatingSyncStateBatch(ctx context.Context) ([]guestSeatRow, map[string]struct{}, *editableSeatingSnapshot, error) {
+	service, err := GetGoogleSheetsClient()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	guestReadRange := fmt.Sprintf("%s!%s", config.GoogleSheetsSheetName, guestSeatRowsReadRange)
+	seatingReadRange := fmt.Sprintf("%s!%s", editableSeatingSheetName, editableSeatingReadRange)
+
+	log.Printf("📊 Синхронизация рассадки: пакетное чтение %s и %s", guestReadRange, seatingReadRange)
+	resp, err := service.Spreadsheets.Values.BatchGet(config.GoogleSheetsID).Ranges(guestReadRange, seatingReadRange).Do()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("ошибка пакетного чтения данных рассадки: %w", err)
+	}
+
+	var guestValues [][]interface{}
+	var seatingValues [][]interface{}
+	if len(resp.ValueRanges) > 0 {
+		guestValues = resp.ValueRanges[0].Values
+	}
+	if len(resp.ValueRanges) > 1 {
+		seatingValues = resp.ValueRanges[1].Values
+	}
+
+	guestRows, ambiguous := parseGuestSeatRows(guestValues)
+	seatingSnapshot := parseEditableSeatingSnapshot(seatingValues)
+	cacheGuestSeatRows(config.GoogleSheetsID, guestRows, ambiguous)
+
+	return guestRows, ambiguous, seatingSnapshot, nil
+}
+
 func readGuestSeatRows(ctx context.Context) ([]guestSeatRow, map[string]struct{}, error) {
 	service, err := GetGoogleSheetsClient()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	readRange := fmt.Sprintf("%s!A:G", config.GoogleSheetsSheetName)
+	readRange := fmt.Sprintf("%s!%s", config.GoogleSheetsSheetName, guestSeatRowsReadRange)
 	resp, err := service.Spreadsheets.Values.Get(config.GoogleSheetsID, readRange).Do()
 	if err != nil {
 		return nil, nil, fmt.Errorf("ошибка чтения списка гостей: %w", err)
 	}
 
+	guestRows, ambiguous := parseGuestSeatRows(resp.Values)
+	cacheGuestSeatRows(config.GoogleSheetsID, guestRows, ambiguous)
+	return guestRows, ambiguous, nil
+}
+
+func parseGuestSeatRows(values [][]interface{}) ([]guestSeatRow, map[string]struct{}) {
 	startRow := 0
-	if len(resp.Values) > 0 && looksLikeGuestHeaderRow(resp.Values[0]) {
+	if len(values) > 0 && looksLikeGuestHeaderRow(values[0]) {
 		startRow = 1
 	}
 
-	rows := make([]guestSeatRow, 0, len(resp.Values))
+	rows := make([]guestSeatRow, 0, len(values))
 	nameSeen := make(map[string]int)
 	ambiguous := make(map[string]struct{})
 
-	for rowIdx := startRow; rowIdx < len(resp.Values); rowIdx++ {
-		row := resp.Values[rowIdx]
+	for rowIdx := startRow; rowIdx < len(values); rowIdx++ {
+		row := values[rowIdx]
 		fullName := cellToStringAt(row, 0)
 		if fullName == "" {
 			continue
@@ -258,7 +318,7 @@ func readGuestSeatRows(ctx context.Context) ([]guestSeatRow, map[string]struct{}
 		})
 	}
 
-	return rows, ambiguous, nil
+	return rows, ambiguous
 }
 
 func readEditableSeatingSnapshot(ctx context.Context) (*editableSeatingSnapshot, error) {
@@ -273,8 +333,12 @@ func readEditableSeatingSnapshot(ctx context.Context) (*editableSeatingSnapshot,
 		return nil, fmt.Errorf("ошибка чтения листа рассадки: %w", err)
 	}
 
+	return parseEditableSeatingSnapshot(resp.Values), nil
+}
+
+func parseEditableSeatingSnapshot(values [][]interface{}) *editableSeatingSnapshot {
 	snapshot := &editableSeatingSnapshot{
-		RawValues:                  resp.Values,
+		RawValues:                  values,
 		UnassignedHeader:           editableSeatingUnassignedLabel,
 		TableOrder:                 []string{},
 		OrderedComparableByTable:   make(map[string][]string),
@@ -282,11 +346,11 @@ func readEditableSeatingSnapshot(ctx context.Context) (*editableSeatingSnapshot,
 		AmbiguousComparableNames:   make(map[string]struct{}),
 	}
 
-	if len(resp.Values) == 0 {
-		return snapshot, nil
+	if len(values) == 0 {
+		return snapshot
 	}
 
-	headerRow := resp.Values[0]
+	headerRow := values[0]
 	if unassignedHeader := cellToStringAt(headerRow, 0); unassignedHeader != "" {
 		snapshot.UnassignedHeader = unassignedHeader
 	}
@@ -302,8 +366,8 @@ func readEditableSeatingSnapshot(ctx context.Context) (*editableSeatingSnapshot,
 		snapshot.TableOrder = append(snapshot.TableOrder, tableName)
 	}
 
-	for rowIdx := 1; rowIdx < len(resp.Values); rowIdx++ {
-		row := resp.Values[rowIdx]
+	for rowIdx := 1; rowIdx < len(values); rowIdx++ {
+		row := values[rowIdx]
 
 		unassignedName := cellToStringAt(row, 0)
 		if unassignedName != "" {
@@ -320,7 +384,7 @@ func readEditableSeatingSnapshot(ctx context.Context) (*editableSeatingSnapshot,
 		}
 	}
 
-	return snapshot, nil
+	return snapshot
 }
 
 func markEditableSeatingGuest(snapshot *editableSeatingSnapshot, tableName, guestName string) {
@@ -895,4 +959,52 @@ func invalidateEditableSeatingSheetID(spreadsheetID string) {
 	editableSeatingSheetIDCache.spreadsheetID = ""
 	editableSeatingSheetIDCache.sheetID = 0
 	editableSeatingSheetIDCache.ok = false
+}
+
+func getCachedGuestSeatRows(spreadsheetID string) ([]guestSeatRow, map[string]struct{}, bool) {
+	guestSeatRowsCache.mu.RLock()
+	defer guestSeatRowsCache.mu.RUnlock()
+
+	if !guestSeatRowsCache.ok || guestSeatRowsCache.spreadsheetID != spreadsheetID {
+		return nil, nil, false
+	}
+
+	if time.Since(guestSeatRowsCache.cachedAt) > guestSeatRowsCacheTTL {
+		return nil, nil, false
+	}
+
+	return cloneGuestSeatRows(guestSeatRowsCache.rows), cloneComparableNameSet(guestSeatRowsCache.ambiguous), true
+}
+
+func cacheGuestSeatRows(spreadsheetID string, rows []guestSeatRow, ambiguous map[string]struct{}) {
+	guestSeatRowsCache.mu.Lock()
+	defer guestSeatRowsCache.mu.Unlock()
+
+	guestSeatRowsCache.spreadsheetID = spreadsheetID
+	guestSeatRowsCache.rows = cloneGuestSeatRows(rows)
+	guestSeatRowsCache.ambiguous = cloneComparableNameSet(ambiguous)
+	guestSeatRowsCache.cachedAt = time.Now()
+	guestSeatRowsCache.ok = true
+}
+
+func cloneGuestSeatRows(rows []guestSeatRow) []guestSeatRow {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	cloned := make([]guestSeatRow, len(rows))
+	copy(cloned, rows)
+	return cloned
+}
+
+func cloneComparableNameSet(values map[string]struct{}) map[string]struct{} {
+	if len(values) == 0 {
+		return map[string]struct{}{}
+	}
+
+	cloned := make(map[string]struct{}, len(values))
+	for value := range values {
+		cloned[value] = struct{}{}
+	}
+	return cloned
 }

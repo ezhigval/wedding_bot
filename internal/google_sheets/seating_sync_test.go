@@ -38,6 +38,74 @@ func TestBuildEditableSeatingMatrixUsesColumnAAndAppliesCanonicalOrder(t *testin
 	}
 }
 
+func TestParseGuestSeatRowsReadsGuestMetadata(t *testing.T) {
+	t.Parallel()
+
+	values := [][]interface{}{
+		{"Имя", "B", "Подтверждение", "Родство", "Сторона", "USER_ID", "Стол"},
+		{"Иванов Иван", "", "TRUE", "Друзья", "Жених", "101", "5"},
+		{"Петров Петр", "", "ЛОЖЬ", "Семья", "Невеста", "102", ""},
+		{"Иванов Иван", "", "ДА", "Родственники", "Общие", "103", "2"},
+	}
+
+	rows, ambiguous := parseGuestSeatRows(values)
+	if len(rows) != 3 {
+		t.Fatalf("parseGuestSeatRows() rows len = %d, want 3", len(rows))
+	}
+
+	first := rows[0]
+	if first.Row != 2 || first.FullName != "Иванов Иван" || !first.Confirmed || first.Table != "5" {
+		t.Fatalf("first parsed row = %#v", first)
+	}
+	if first.Category != "Друзья" || first.Side != "Жених" {
+		t.Fatalf("first parsed metadata = %#v", first)
+	}
+
+	second := rows[1]
+	if second.Row != 3 || second.FullName != "Петров Петр" || second.Confirmed || second.Table != "" {
+		t.Fatalf("second parsed row = %#v", second)
+	}
+
+	if _, exists := ambiguous[normalizeComparableGuestName("Иванов Иван")]; !exists {
+		t.Fatalf("ambiguous names = %v, want duplicate for Иванов Иван", ambiguous)
+	}
+}
+
+func TestParseEditableSeatingSnapshotBuildsAssignments(t *testing.T) {
+	t.Parallel()
+
+	values := [][]interface{}{
+		{editableSeatingUnassignedLabel, "2", "5"},
+		{"Зоя Иванова", "Борис Петров", ""},
+		{"", "Антонов Антон", "Борис Петров"},
+	}
+
+	snapshot := parseEditableSeatingSnapshot(values)
+	if snapshot.UnassignedHeader != editableSeatingUnassignedLabel {
+		t.Fatalf("snapshot.UnassignedHeader = %q, want %q", snapshot.UnassignedHeader, editableSeatingUnassignedLabel)
+	}
+
+	wantOrder := []string{"2", "5"}
+	if len(snapshot.TableOrder) != len(wantOrder) {
+		t.Fatalf("snapshot.TableOrder len = %d, want %d (%v)", len(snapshot.TableOrder), len(wantOrder), snapshot.TableOrder)
+	}
+	for idx := range wantOrder {
+		if snapshot.TableOrder[idx] != wantOrder[idx] {
+			t.Fatalf("snapshot.TableOrder[%d] = %q, want %q (%v)", idx, snapshot.TableOrder[idx], wantOrder[idx], snapshot.TableOrder)
+		}
+	}
+
+	if snapshot.AssignmentByComparableName[normalizeComparableGuestName("Зоя Иванова")] != "" {
+		t.Fatalf("unassigned mapping = %q, want empty table", snapshot.AssignmentByComparableName[normalizeComparableGuestName("Зоя Иванова")])
+	}
+	if snapshot.AssignmentByComparableName[normalizeComparableGuestName("Антонов Антон")] != "2" {
+		t.Fatalf("Антонов mapping = %q, want 2", snapshot.AssignmentByComparableName[normalizeComparableGuestName("Антонов Антон")])
+	}
+	if _, exists := snapshot.AmbiguousComparableNames[normalizeComparableGuestName("Борис Петров")]; !exists {
+		t.Fatalf("ambiguous seating names = %v, want duplicate for Борис Петров", snapshot.AmbiguousComparableNames)
+	}
+}
+
 func TestBuildEditableSeatingLayoutIncludesCellFormatting(t *testing.T) {
 	t.Parallel()
 
